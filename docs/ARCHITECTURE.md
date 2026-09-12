@@ -153,7 +153,44 @@ synchronisation deux-à-deux — c'est la source des boucles infinies.
 
 ---
 
-## 8. Ce qui ne rentre pas dans le navigateur
+## 8. Socle 1D — index d'intervalles et mesures
+
+Un intervalle `[s, e)` chevauche une requête `[qs, qe)` si et seulement si `s < qe` **et**
+`e > qs`. La première condition se résout par dichotomie sur les débuts triés. La seconde est
+le piège : les intervalles sont triés par début, pas par fin, donc un candidat peut se trouver
+arbitrairement loin en arrière. Un balayage naïf devient O(n) dès qu'un gène long traîne en
+tête de chromosome — et il y en a : DMD fait 2,2 Mb, CNTNAP2 2,3 Mb.
+
+D'où un **maximum de fin par bloc** de 512 entrées : un bloc dont le maximum est ≤ `qs` ne
+peut rien contenir et se saute d'un seul test. Le filtrage des blocs est une opération numpy
+vectorisée, pas une boucle Python.
+
+Mesures sur **1 000 000 d'intervalles** (dont 0,2 % de très longs), 2 000 requêtes par ligne :
+
+| Fenêtre | Features | Index seul (méd / p99) | Index + attributs (méd / p99) |
+|---------|---------:|------------------------|-------------------------------|
+| 3 kb — un gène | 42 | 0,028 / 0,074 ms | 0,204 / 0,472 ms |
+| 30 kb — un gène + flancs | 87 | 0,028 / 0,069 ms | 0,338 / **0,819 ms** |
+| 300 kb — un TAD | 530 | 0,031 / 0,082 ms | 1,535 / 6,090 ms |
+| 3 Mb — un compartiment | 5 094 | 0,044 / 0,110 ms | 17,8 / 42,6 ms |
+
+**Cible de la semaine 2 tenue** : p99 à 0,819 ms à l'échelle d'un locus, attributs compris.
+L'index seul reste sous 0,11 ms à toutes les échelles, y compris celle d'un compartiment.
+
+### Ce que ça dit pour la semaine 9
+
+La latence ne suit pas la taille du magasin, elle suit le **nombre de features ramenées** :
+environ 3 µs chacune, dominés par le parsing JSON des attributs. Conséquence directe sur le
+format `.g3d` : les attributs ne doivent pas y être du JSON par enregistrement, mais des
+**colonnes** — tableaux numpy de codes catégoriels plus une table de chaînes. On lit alors les
+colonnes utiles et on ne parse rien.
+
+Ce n'est pas un problème pour la v1 de la CLI : une requête qui ramène un compartiment entier
+est un export, pas une interaction, et la fiche de la semaine 13 clique **une** bille.
+
+---
+
+## 9. Ce qui ne rentre pas dans le navigateur
 
 La reconstruction (recuit simulé sur ~10 000 billes, × 200 structures) et la simulation
 polymère restent côté pipeline. Le mode Recherche déclenche un travail serveur et récupère

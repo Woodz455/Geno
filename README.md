@@ -9,7 +9,32 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase de cadrage.** Le plan est écrit, le code ne l'est pas encore.
+**Phase 0, semaine 2.** Lignée de référence figée (GM12878), machinerie de vérification des
+données en place, socle 1D interrogeable.
+
+```console
+$ make build-store                              # construit depuis les fixtures
+$ make query Q=chr7:5,527,000-5,530,600
+
+chr7:5,527,000-5,530,600   3,601 pb   GRCh38   [fixtures]
+
+  bande cytogénétique  (1)
+    7p22.1  gneg                          chr7:5,000,001-7,200,000  2,200,000 pb
+
+  gènes  (1)
+    ACTB  -  protein_coding               chr7:5,527,151-5,530,601      3,451 pb
+    ENSG00000075624.17
+
+  exons  (6)
+    …
+```
+
+Le magasin d'intervalles répond en **p99 0,82 ms** à l'échelle d'un locus sur un million
+d'intervalles ([mesures](docs/ARCHITECTURE.md#8-socle-1d--index-dintervalles-et-mesures)).
+
+> Les données affichées viennent de **fixtures**, pas de sources scientifiques — l'accès
+> réseau aux dépôts est fermé dans l'environnement de développement. Toute fiche issue des
+> fixtures le dit en en-tête. Voir [`docs/DATA_SOURCES.md` § 8](docs/DATA_SOURCES.md).
 
 ## Ce qu'on construit
 
@@ -48,3 +73,15 @@ Deux modes servis par un seul moteur :
 
 Python (`cooler`, `cooltools`, `polychrom`/OpenMM, Snakemake) pour le pipeline.
 TypeScript et Three.js/WebGL2 pour le moteur. `igv.js` et HiGlass pour les vues liées.
+
+## Commandes
+
+```
+make help            toutes les cibles
+make data            télécharge et vérifie les jeux de données du manifeste
+make selftest        prouve la vérification d'empreintes, sans réseau
+make build-store     construit le magasin d'intervalles
+make query Q=…       interroge une région
+make bench           latence de requête à l'échelle réelle
+make test            suite de tests
+```

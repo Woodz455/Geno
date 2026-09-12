@@ -1,0 +1,12 @@
+# FIXTURE — table cytoBandIdeo fabriquée. Voir fixtures/README.md
+# chrom	chromStart	chromEnd	name	gieStain      (0-based, demi-ouvert)
+chr7	0	2800000	p22.3	gneg
+chr7	2800000	5000000	p22.2	gpos25
+chr7	5000000	7200000	p22.1	gneg
+chr7	7200000	13800000	p21.3	gpos75
+chr11	0	2800000	p15.5	gneg
+chr11	2800000	11700000	p15.4	gpos50
+chr17	0	3400000	p13.3	gneg
+chr17	3400000	6500000	p13.2	gpos25
+chr17	6500000	10800000	p13.1	gneg
+chr17	43000000	46800000	q21.31	gpos25

@@ -2,8 +2,9 @@ SHELL := /usr/bin/env bash
 HERE  := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 FETCH := $(HERE)/scripts/fetch.sh
 LOCK  := $(HERE)/scripts/lock.sh
+GENO  := PYTHONPATH=$(HERE) python3 -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test
 
 help:
 	@echo "Geno — pipeline de données"
@@ -21,6 +22,13 @@ help:
 	@echo "  make verify          recontrôle les empreintes déjà verrouillées"
 	@echo "  make selftest        prouve la vérification sans réseau"
 	@echo "  make status          état du manifeste"
+	@echo
+	@echo "Socle 1D"
+	@echo "  make build-store     construit le magasin d'intervalles depuis les fixtures"
+	@echo "  make query Q=…       interroge une région, ex. Q=chr7:5,527,000-5,530,600"
+	@echo "  make tracks          liste les pistes du magasin"
+	@echo "  make bench [N=…]     latence de requête à l'échelle réelle"
+	@echo "  make test            suite de tests"
 
 data:           ; @TIERS="core annot" $(FETCH)
 data-core:      ; @TIERS="core" $(FETCH)
@@ -34,6 +42,15 @@ data-all:       ; @TIERS="all" $(FETCH)
 data-lock:      ; @$(LOCK)
 verify:         ; @TIERS="all" $(FETCH)
 selftest:       ; @$(HERE)/scripts/selftest.sh
+
+build-store:    ; @$(GENO) build
+tracks:         ; @$(GENO) tracks
+bench:          ; @$(GENO) bench $(if $(N),--n $(N),)
+test:           ; @cd $(HERE) && python3 -m pytest
+
+query:
+	@test -n "$(Q)" || { echo "usage : make query Q=chr7:5,527,000-5,530,600" >&2; exit 2; }
+	@$(GENO) query "$(Q)" --time
 
 status:
 	@awk -F'\t' '\
