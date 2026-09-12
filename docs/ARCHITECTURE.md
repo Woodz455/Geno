@@ -92,21 +92,40 @@ Génome diploïde = 6,2 Gb. Positions = 3 × float32 = 12 octets par bille.
 | Fibre | 1 kb | 6,2 M | — | fenêtre visible seulement |
 | Séquence | 1 pb | — | — | géométrie procédurale |
 
-Chiffres à confirmer par le spike de semaine 4. Le budget est ensuite **tenu par des tests
-de non-régression** : un commit qui fait dépasser le budget casse la CI.
+Ce tableau est de l'**arithmétique d'octets, vérifiée**. Ce n'est pas encore une mesure de
+rendu : la colonne qui manque est le temps par frame à chaque palier, sur trois cibles
+matérielles. Le spike de la semaine 4 est écrit et sa correction est prouvée
+([`VALIDATION.md` § S4](VALIDATION.md)), mais l'environnement de développement ne rend que via
+SwiftShader, un rasteriseur logiciel — ses images par seconde ne disent rien d'un GPU.
+
+`pnpm build` produit `dist/spike.html` ; l'ouvrir sur GPU desktop, iGPU portable et téléphone
+rend les trois tableaux qui manquent. Le go/no-go de la semaine 4 attend ces chiffres.
+
+Une fois le budget arrêté, il est **tenu par des tests de non-régression** : un commit qui le
+fait dépasser casse la CI.
 
 ---
 
 ## 5. Rendu
 
 **Imposteurs de sphères, pas de maillages.** Un quad orienté caméra, le fragment shader
-calcule la normale de sphère et la profondeur. C'est ce que font Mol* et NGL, et c'est ce qui
-permet le million de billes à 60 fps là où `InstancedMesh` avec une vraie géométrie de sphère
-s'effondre.
+calcule la normale de sphère et la profondeur. C'est ce que font Mol* et NGL. Une vraie
+géométrie de sphère, même grossière à 80 triangles, ferait 80 millions de triangles pour un
+million de billes ; un imposteur en fait deux millions.
 
-**Picking GPU.** Rendu des identifiants dans une cible `RGBA32UI` hors écran, lecture d'un
-pixel au clic. Coût O(1) quel que soit le nombre d'objets — le raycasting CPU de Three.js est
-inutilisable à cette échelle.
+Le point critique est que `gl_FragDepth` vienne du **point d'impact réel**, pas du quad. Sans
+ça, deux billes qui s'interpénètrent se découpent selon l'arête du quad au lieu de la courbe
+d'intersection. Implémenté et testé dans `packages/viewer` — le test discriminant est que le
+résultat ne dépend pas de l'ordre de dessin.
+
+**Picking GPU.** Rendu des identifiants dans un attachement `R32UI`, en même temps que la
+couleur (cible multiple : une seule passe géométrique, ce qui à un million d'instances n'est
+pas une nuance). Lecture d'un pixel au clic, coût O(1) quel que soit le nombre d'objets — le
+raycasting CPU de Three.js est inutilisable à cette échelle. Vérifié exact parmi 250 005
+instances, identifiants sur toute la plage 32 bits.
+
+Les shaders sont écrits en GLSL ES 3.0 brut dans `packages/viewer/src/impostors.ts` et se
+transposent tels quels dans un `RawShaderMaterial` de Three.js.
 
 **Fibre et boucles.** Géométrie tubulaire générée depuis la polyligne, tessellation adaptative
 selon la distance caméra. Les ancres de boucles sont des arcs explicites, pas des artefacts

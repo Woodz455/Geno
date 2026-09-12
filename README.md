@@ -9,9 +9,10 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–1, semaine 3.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 4.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une
-structure plantée.
+structure plantée, et moteur de rendu par imposteurs dont la correction est prouvée dans un
+vrai navigateur.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -39,6 +40,12 @@ ICE r = +0,98 contre le biais planté, compartiments 100 %, frontières de TAD 1
 boucles 89 / 94. C'est la seule configuration où « le caller est correct » est vérifiable :
 sur des données réelles, un désaccord avec les appels publiés ne dit pas lequel des deux a
 tort. Détails et limites dans [`docs/VALIDATION.md`](docs/VALIDATION.md).
+
+Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
+Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
+le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
+Ce verdict porte sur la correction seulement — l'environnement ne rend que via SwiftShader,
+un rasteriseur logiciel, donc les images par seconde attendent du vrai matériel.
 
 > Les données affichées viennent de **fixtures**, pas de sources scientifiques — l'accès
 > réseau aux dépôts est fermé dans l'environnement de développement. Toute fiche issue des
@@ -95,4 +102,12 @@ make query Q=…       interroge une région
 make bench           latence de requête à l'échelle réelle
 make hic-validate    plante une structure Hi-C connue et valide les callers
 make test            suite de tests
+```
+
+Côté rendu (Node 22, pnpm) :
+
+```
+pnpm verify          16 assertions sur les imposteurs, dans un vrai Chromium
+pnpm typecheck       TypeScript strict
+pnpm build           produit dist/spike.html — la page de mesure à ouvrir sur du matériel
 ```

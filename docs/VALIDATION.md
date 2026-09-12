@@ -9,6 +9,86 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S4 — Imposteurs de sphères et picking GPU
+
+### Ce qui est prouvé, et ce qui ne peut pas l'être ici
+
+`pnpm verify` exécute 16 assertions dans un vrai Chromium, sur un vrai contexte WebGL2.
+**Toutes passent.** Mais Chromium headless rend via **SwiftShader**, un rasteriseur
+*logiciel* : ses images par seconde ne disent rien d'un GPU. Le verdict porte donc sur la
+**correction**, pas sur la performance.
+
+Le critère de fin de la semaine 4 — « go/no-go signé sur le budget de rendu » — demande des
+chiffres sur trois cibles matérielles réelles. Ils ne peuvent pas sortir d'ici.
+`dist/spike.html` est la page qui les produit ; elle s'ouvre dans un navigateur sur la
+machine cible et rend le tableau à reporter en [`ARCHITECTURE.md` § 4](ARCHITECTURE.md).
+
+### Pourquoi des imposteurs plutôt que des sphères
+
+On ne dessine pas de sphères : un quad par bille, orienté face caméra, et le fragment shader
+résout l'intersection rayon–sphère par pixel. Une vraie géométrie de sphère, même grossière à
+80 triangles, ferait **80 millions de triangles** pour un million de billes. Un imposteur en
+fait deux millions, et le fragment shader ne travaille que sur les pixels réellement couverts.
+
+L'essentiel tient dans une ligne du fragment shader : `gl_FragDepth` est calculé depuis le
+**point d'impact réel**, pas depuis le quad. Sans elle on obtient des vignettes plates — deux
+billes qui s'interpénètrent se découpent selon l'arête du quad au lieu de la courbe
+d'intersection, et un nuage dense devient un collage.
+
+### Les 16 assertions
+
+| Famille | Ce qui est vérifié |
+|---------|--------------------|
+| Contexte | WebGL2 disponible ; cible multiple couleur + identifiants R32UI + profondeur RGBA32F complète |
+| Shaders | compilation et édition de liens en GLSL ES 3.0 |
+| Forme | le centre de la bille est touché ; le **coin du quad est jeté** — un disque, pas un carré |
+| Profondeur | elle **bombe** : au centre 0,98098, au bord 0,98244. L'imposteur a du relief |
+| Interpénétration | la surface la plus proche gagne des deux côtés du plan d'intersection, **et le résultat ne dépend pas de l'ordre de dessin** |
+| Picking | chaque bille rend son identifiant ; le fond et le hors-cadre rendent `NO_HIT` |
+| Échelle | picking exact parmi **250 005 instances** ; un identifiant occupant les 32 bits (4 294 967 295) survit au transport |
+
+Le test d'ordre de dessin est celui qui discrimine réellement. Deux billes de même profondeur
+qui se chevauchent : si la profondeur était celle du quad, les deux quads seraient coplanaires
+et l'ordre de dessin déciderait du vainqueur. Avec la profondeur du point d'impact, c'est la
+surface la plus proche qui gagne — donc le même résultat dans les deux ordres.
+
+### Un test mal posé, corrigé
+
+La première version sondait une grille de 32 400 billes sur un canevas de 256 pixels. Chaque
+bille y couvre **0,4 pixel** : elle n'est physiquement pas pointable, et les quatre sondes
+échouaient. Ce n'était pas un défaut du picking mais la résolution de l'écran.
+
+Le test sonde désormais des billes franches placées devant, le nuage de 250 000 servant à ce
+qu'il doit servir : montrer que l'exactitude ne dépend pas du nombre d'instances. Au passage,
+l'assertion « identifiant au-delà de 2¹⁶ » portait sur un identifiant de 32 400 — elle ne
+testait rien. Elle porte maintenant sur 4 294 967 295.
+
+### Pourquoi le picking GPU et pas le raycasting
+
+Le raycasting CPU teste le rayon contre chaque objet : O(n). À six cent mille billes, un clic
+coûte plus cher qu'une frame. Le picking GPU laisse le rasteriseur faire le travail qu'il fait
+déjà — il a de toute façon déterminé quel fragment est devant — et relit **un pixel**. Coût
+constant quel que soit le nombre d'objets.
+
+C'est ce qui rend tenable la fiche de la semaine 13 : cliquer une bille parmi six cent mille
+doit coûter la même chose que cliquer parmi dix.
+
+Prix à payer, consigné : `readPixels` synchronise le CPU sur le GPU. Invisible sur un clic
+isolé ; au survol continu il faudra passer par un `PIXEL_PACK_BUFFER` et une lecture
+asynchrone.
+
+### Reste à faire, sur du matériel
+
+```console
+$ pnpm build          # produit dist/spike.html
+# ouvrir dist/spike.html sur GPU desktop, iGPU portable, téléphone
+```
+
+Trois tableaux à rapporter, puis le go/no-go. Tant qu'ils manquent, le budget LOD de
+`ARCHITECTURE.md` § 4 reste une **arithmétique d'octets vérifiée, pas une mesure de rendu**.
+
+---
+
 ## S3 — Callers de conformation contre structure plantée
 
 ### Pourquoi du synthétique, alors qu'on veut du réel
