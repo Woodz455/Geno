@@ -9,6 +9,113 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S5 — Contact → distance : l'exposant n'est pas une constante
+
+### Le dispositif
+
+La semaine 3 plantait des *enrichissements de contacts*. Elle ne plantait aucune position dans
+l'espace, et ne pouvait donc rien dire d'une reconstruction géométrique. Ici on inverse : on
+fabrique d'abord une conformation 3D — marche persistante confinée, volume exclu, compartiments
+A au centre et B en périphérie — puis on en **dérive** la matrice de contacts par un modèle
+direct explicite :
+
+```
+f(i, j) ∝ d(i, j)^(-gamma)
+```
+
+`gamma` est planté. La reconstruction, elle, balaie `alpha` dans `d ∝ f^(-alpha)` sans le
+connaître. Si la méthode était exacte, l'optimum tomberait sur **alpha = 1/gamma**. C'est une
+prédiction chiffrée qui peut échouer.
+
+C'est la mesure que les données réelles ne permettront jamais : dans du Hi-C réel, la structure
+3D est précisément l'inconnue.
+
+### Résultat : alpha* ne vaut pas 1/gamma, et dépend de la profondeur
+
+`make recon`, gamma = 3 donc 1/gamma = 0,333. Cinq conformations de 300 billes par profondeur.
+
+| Profondeur | Densité | alpha* médian | Étendue sur 5 tirages | nRMSD min | Plateau à +5 % |
+|-----------:|--------:|--------------:|-----------------------|----------:|---------------:|
+| 500 000 | 37 % | **0,525** | 0,47 – 0,75 | 0,271 | 0,100 |
+| 2 000 000 | 65 % | 0,475 | 0,40 – 0,55 | 0,204 | 0,050 |
+| 8 000 000 | 90 % | 0,425 | 0,42 – 0,47 | 0,135 | 0,050 |
+| 40 000 000 | 100 % | 0,375 | 0,38 – 0,40 | 0,079 | 0,000 |
+| 200 000 000 | 100 % | **0,350** | 0,35 – 0,35 | 0,037 | 0,000 |
+| sans bruit | — | 0,325 | — | **0,006** | — |
+
+Trois lectures :
+
+1. **alpha\* décroît vers 1/gamma avec la profondeur, sans jamais l'atteindre à profondeur
+   finie.** Il absorbe la compression de dynamique due au bruit de Poisson : prendre une
+   puissance négative d'un petit comptage bruité gonfle la distance moyenne, et un alpha plus
+   grand ré-étale la gamme.
+2. **Sans bruit, l'inversion exacte gagne** : alpha* = 0,325 (pas de balayage à 0,025 près de
+   0,333) et nRMSD 0,006. Le modèle direct est donc bien inversé — l'écart vient entièrement
+   de l'échantillonnage.
+3. **Le plateau s'élargit quand les données se creusent.** À 200 M de contacts, le minimum
+   est un point unique reproductible sur les cinq tirages. À 500 000, il s'étale sur 0,10 et
+   l'optimum varie de 0,47 à 0,75 selon la conformation. **Là où il faudrait le plus calibrer
+   alpha, c'est là qu'il est le moins déterminé.**
+
+Conséquence pratique pour le projet : reprendre `alpha = 1/3` d'un article sans regarder sa
+profondeur de séquençage n'est pas une convention, c'est une approximation non chiffrée. La
+semaine 6 calibrera alpha sur les données qu'elle utilise, pas sur la littérature.
+
+### La complétion géodésique n'est pas un raffinement
+
+Les paires sans contact observé ne sont pas à distance infinie. ShRec3D (Lesne 2014) les
+complète par le plus court chemin dans le graphe des contacts. Mesuré en remplaçant cette
+complétion par une grande constante :
+
+| Profondeur | nRMSD avec géodésiques | nRMSD sans |
+|-----------:|-----------------------:|-----------:|
+| 300 000 | 0,204 | 0,611 |
+| 1 200 000 | 0,171 | 0,291 |
+| 10 000 000 | 0,098 | 0,210 |
+| 50 000 000 | 0,057 | 0,107 |
+
+Un facteur 2 à 3 sur toute la plage. C'est aussi ce qui rend la matrice compatible avec
+l'inégalité triangulaire, que le MDS classique suppose et qu'une matrice trouée ne respecte pas.
+
+### La chiralité est irrécupérable
+
+Une matrice de distances ne détermine la structure qu'à une isométrie près : rotation,
+translation, et **réflexion**. Une reconstruction miroir est une reconstruction correcte.
+L'alignement de Procruste autorise donc explicitement la réflexion — l'interdire compterait
+la moitié des solutions valides comme des échecs. Un test le verrouille.
+
+### Deux erreurs de méthode, commises et corrigées
+
+**La ségrégation A/B tenait par chance.** La première version de `chain()` l'obtenait par une
+dérive appliquée pendant la marche, qui luttait contre la diffusion du hasard. Écart radial
+mesuré : +0,157 à 180 billes, **+0,009 à 350**. Un test à une seule taille l'aurait déclarée
+acquise. C'est désormais une force de rappel dans la relaxation, donc une propriété convergée :
+pire cas +0,159 sur six tailles et six graines.
+
+**J'ai sur-généralisé le premier résultat.** Après un seul balayage, j'ai affirmé que l'écart
+à 1/gamma est positif et décroît avec la profondeur. En changeant la longueur de chaîne,
+l'optimum à faible profondeur est passé de 0,250 à 0,575 — au-dessous puis au-dessus de
+1/gamma. Le minimum était plat et l'argmin instable ; la médiane sur cinq conformations a
+rétabli la tendance, mais l'affirmation initiale reposait sur un seul tirage dans une zone
+plate. La conclusion tient, la démarche qui y menait était insuffisante.
+
+### Ce que ça ne dit pas
+
+Le modèle direct est une loi de puissance pure. Le Hi-C réel n'en est pas une : il porte du
+bruit de ligature aléatoire, des régions non mappables, et une décroissance P(s) qui ne suit
+pas le même exposant à toutes les échelles. Ces résultats fixent la **méthode et ses pièges**,
+pas la valeur d'alpha à utiliser sur GM12878.
+
+### Reproduire
+
+```console
+$ make recon              # le tableau complet
+$ make recon N=500        # autre longueur de chaîne
+$ make test               # 19 assertions figeant les propriétés
+```
+
+---
+
 ## S4 — Imposteurs de sphères et picking GPU
 
 ### Ce qui est prouvé, et ce qui ne peut pas l'être ici

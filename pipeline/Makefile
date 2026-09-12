@@ -5,7 +5,7 @@ LOCK  := $(HERE)/scripts/lock.sh
 PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
 GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon
 
 help:
 	@echo "Geno — pipeline de données"
@@ -33,6 +33,7 @@ help:
 	@echo
 	@echo "Conformation"
 	@echo "  make hic-validate    plante une structure Hi-C connue et valide les callers"
+	@echo "  make recon           balaie l'exposant contact vers distance"
 
 data:           ; @TIERS="core annot" $(FETCH)
 data-core:      ; @TIERS="core" $(FETCH)
@@ -52,6 +53,7 @@ tracks:         ; @$(GENO) tracks
 bench:          ; @$(GENO) bench $(if $(N),--n $(N),)
 test:           ; @cd $(HERE) && PYTHONPATH=$(HERE) $(PY) -m pytest
 hic-validate:   ; @$(GENO) hic $(if $(N),--bins $(N),)
+recon:          ; @$(GENO) recon $(if $(N),--n $(N),)
 
 query:
 	@test -n "$(Q)" || { echo "usage : make query Q=chr7:5,527,000-5,530,600" >&2; exit 2; }

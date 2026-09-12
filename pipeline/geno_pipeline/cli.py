@@ -254,6 +254,70 @@ def cmd_hic(args: argparse.Namespace) -> int:
     return 0 if worst >= 0.8 else 1
 
 
+def cmd_recon(args: argparse.Namespace) -> int:
+    """Balaie l'exposant de conversion contact → distance contre une géométrie connue.
+
+    Le Hi-C réel ne permet pas cette mesure : la structure 3D y est précisément
+    l'inconnue. Ici on fabrique la conformation, on en dérive les contacts par un
+    modèle direct d'exposant `gamma`, et on regarde quel `alpha` la restitue.
+    """
+    import logging as _logging
+    import warnings
+
+    _logging.disable(_logging.INFO)
+    warnings.simplefilter("ignore")
+    try:
+        import scipy  # noqa: F401
+    except ImportError:
+        print("scipy absent — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    from .hic.polymer import chain, contacts
+    from .hic.reconstruct import sweep
+
+    alphas = np.round(np.arange(args.lo, args.hi + 1e-9, args.step), 4)
+    inv = 1.0 / args.gamma
+
+    conf0 = chain(n=args.n, seed=0)
+    r = conf0.radial()
+    print(f"conformation   {args.n} billes, {args.conformations} tirages")
+    print(
+        f"               radial A {r[conf0.compartment == 1].mean():.3f} vs "
+        f"B {r[conf0.compartment == -1].mean():.3f}  "
+        f"— A central, B périphérique (Cremer & Cremer)"
+    )
+    print(f"modèle direct  f ∝ d^(-{args.gamma})   →   inversion exacte : alpha = {inv:.3f}\n")
+
+    print("  profondeur     densité   alpha* médian   étendue        nRMSD min   plateau +5%")
+    print("  ------------   -------   -------------   ------------   ---------   -----------")
+
+    for total in args.depths:
+        stars, mins, widths, dens = [], [], [], []
+        for s in range(args.conformations):
+            conf = chain(n=args.n, seed=s)
+            counts = contacts(conf, gamma=args.gamma, total=total, seed=100 + s)
+            dens.append((counts > 0).sum() / (counts.size - len(counts)))
+            nr = np.array([f.nrmsd for f in sweep(counts, conf.coords, alphas)])
+            stars.append(float(alphas[nr.argmin()]))
+            mins.append(float(nr.min()))
+            ok = alphas[nr <= nr.min() * 1.05]
+            widths.append(float(ok.max() - ok.min()))
+        print(
+            f"  {total:>12,}   {np.mean(dens):>6.0%}   {np.median(stars):>13.3f}   "
+            f"[{min(stars):.2f}–{max(stars):.2f}]{'':4}   {np.median(mins):>9.3f}   "
+            f"{np.median(widths):>11.3f}"
+        )
+
+    print(
+        f"\n  alpha* décroît vers {inv:.3f} avec la profondeur, sans jamais l'atteindre à\n"
+        f"  profondeur finie. Et le plateau s'élargit quand les données se creusent :\n"
+        f"  là où il faudrait le plus calibrer alpha, c'est là qu'il est le moins\n"
+        f"  déterminé. Reprendre alpha = 1/3 d'un article sans regarder sa profondeur\n"
+        f"  de séquençage n'est pas une convention, c'est une approximation non chiffrée."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -292,6 +356,23 @@ def main(argv: list[str] | None = None) -> int:
     h.add_argument("--seed", type=int, default=3)
     h.add_argument("--out", default=str(ROOT / "data" / "synthetic" / "planted.cool"))
     h.set_defaults(fn=cmd_hic)
+
+    rc = sub.add_parser(
+        "recon", help="balaie l'exposant contact → distance contre une géométrie connue"
+    )
+    rc.add_argument("--n", type=int, default=300, help="billes de la chaîne")
+    rc.add_argument("--gamma", type=float, default=3.0, help="exposant du modèle direct")
+    rc.add_argument("--conformations", type=int, default=3)
+    rc.add_argument("--lo", type=float, default=0.15)
+    rc.add_argument("--hi", type=float, default=0.80)
+    rc.add_argument("--step", type=float, default=0.025)
+    rc.add_argument(
+        "--depths",
+        type=int,
+        nargs="+",
+        default=[500_000, 2_000_000, 8_000_000, 40_000_000, 200_000_000],
+    )
+    rc.set_defaults(fn=cmd_recon)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

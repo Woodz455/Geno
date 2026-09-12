@@ -9,10 +9,10 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 4.** Lignée de référence figée (GM12878), machinerie de vérification des
-données en place, socle 1D interrogeable, callers de conformation validés contre une
-structure plantée, et moteur de rendu par imposteurs dont la correction est prouvée dans un
-vrai navigateur.
+**Phase 0–2, semaine 5.** Lignée de référence figée (GM12878), machinerie de vérification des
+données en place, socle 1D interrogeable, callers de conformation validés contre une structure
+plantée, reconstruction 3D calibrée contre une géométrie connue, et moteur de rendu par
+imposteurs dont la correction est prouvée dans un vrai navigateur.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -40,6 +40,13 @@ ICE r = +0,98 contre le biais planté, compartiments 100 %, frontières de TAD 1
 boucles 89 / 94. C'est la seule configuration où « le caller est correct » est vérifiable :
 sur des données réelles, un désaccord avec les appels publiés ne dit pas lequel des deux a
 tort. Détails et limites dans [`docs/VALIDATION.md`](docs/VALIDATION.md).
+
+`make recon` va plus loin : il fabrique une conformation 3D, en dérive les contacts par un
+modèle direct d'exposant connu, et mesure quel exposant de reconstruction la restitue. Résultat
+consigné — **l'exposant optimal n'est pas 1/gamma** : il décroît vers lui avec la profondeur de
+séquençage sans jamais l'atteindre, et son minimum s'aplatit justement là où les données sont
+les plus creuses. Reprendre `alpha = 1/3` d'un article sans regarder sa profondeur n'est donc
+pas une convention.
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
@@ -101,6 +108,7 @@ make build-store     construit le magasin d'intervalles
 make query Q=…       interroge une région
 make bench           latence de requête à l'échelle réelle
 make hic-validate    plante une structure Hi-C connue et valide les callers
+make recon           balaie l'exposant contact → distance contre une géométrie connue
 make test            suite de tests
 ```
 
