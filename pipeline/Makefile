@@ -2,9 +2,10 @@ SHELL := /usr/bin/env bash
 HERE  := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 FETCH := $(HERE)/scripts/fetch.sh
 LOCK  := $(HERE)/scripts/lock.sh
-GENO  := PYTHONPATH=$(HERE) python3 -m geno_pipeline
+PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
+GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate
 
 help:
 	@echo "Geno — pipeline de données"
@@ -29,6 +30,9 @@ help:
 	@echo "  make tracks          liste les pistes du magasin"
 	@echo "  make bench [N=…]     latence de requête à l'échelle réelle"
 	@echo "  make test            suite de tests"
+	@echo
+	@echo "Conformation"
+	@echo "  make hic-validate    plante une structure Hi-C connue et valide les callers"
 
 data:           ; @TIERS="core annot" $(FETCH)
 data-core:      ; @TIERS="core" $(FETCH)
@@ -46,7 +50,8 @@ selftest:       ; @$(HERE)/scripts/selftest.sh
 build-store:    ; @$(GENO) build
 tracks:         ; @$(GENO) tracks
 bench:          ; @$(GENO) bench $(if $(N),--n $(N),)
-test:           ; @cd $(HERE) && python3 -m pytest
+test:           ; @cd $(HERE) && PYTHONPATH=$(HERE) $(PY) -m pytest
+hic-validate:   ; @$(GENO) hic $(if $(N),--bins $(N),)
 
 query:
 	@test -n "$(Q)" || { echo "usage : make query Q=chr7:5,527,000-5,530,600" >&2; exit 2; }

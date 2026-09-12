@@ -9,8 +9,9 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0, semaine 2.** Lignée de référence figée (GM12878), machinerie de vérification des
-données en place, socle 1D interrogeable.
+**Phase 0–1, semaine 3.** Lignée de référence figée (GM12878), machinerie de vérification des
+données en place, socle 1D interrogeable, callers de conformation validés contre une
+structure plantée.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -31,6 +32,13 @@ chr7:5,527,000-5,530,600   3,601 pb   GRCh38   [fixtures]
 
 Le magasin d'intervalles répond en **p99 0,82 ms** à l'échelle d'un locus sur un million
 d'intervalles ([mesures](docs/ARCHITECTURE.md#8-socle-1d--index-dintervalles-et-mesures)).
+
+Côté conformation, `make hic-validate` plante une structure Hi-C connue — compartiments,
+TADs, boucles, biais de couverture — et vérifie que les callers la retrouvent : équilibrage
+ICE r = +0,98 contre le biais planté, compartiments 100 %, frontières de TAD 100 / 100,
+boucles 89 / 94. C'est la seule configuration où « le caller est correct » est vérifiable :
+sur des données réelles, un désaccord avec les appels publiés ne dit pas lequel des deux a
+tort. Détails et limites dans [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
 > Les données affichées viennent de **fixtures**, pas de sources scientifiques — l'accès
 > réseau aux dépôts est fermé dans l'environnement de développement. Toute fiche issue des
@@ -60,6 +68,8 @@ Deux modes servis par un seul moteur :
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Le plan sur 24 semaines, semaine par semaine, avec critères de fin |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Structure du dépôt, format `.g3d`, budget de rendu, stratégie deux-modes |
 | [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) | Catalogue des sources, accessions, licences, vérification |
+| [`docs/VALIDATION.md`](docs/VALIDATION.md) | Ce qui est mesuré et prouvé, semaine par semaine |
+| [`docs/SETUP.md`](docs/SETUP.md) | Installation, et pourquoi deux niveaux de dépendances |
 
 ## Principes
 
@@ -83,5 +93,6 @@ make selftest        prouve la vérification d'empreintes, sans réseau
 make build-store     construit le magasin d'intervalles
 make query Q=…       interroge une région
 make bench           latence de requête à l'échelle réelle
+make hic-validate    plante une structure Hi-C connue et valide les callers
 make test            suite de tests
 ```

@@ -7,6 +7,11 @@ dependencies = ["numpy>=1.24"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4"]
+# Pile de conformation. Volontairement optionnelle : le socle 1D dont dépend le
+# viewer ne doit pas traîner scipy et h5py derrière lui.
+# pandas<3 : cooltools 0.7.1 appelle .idxmin() sur une colonne toute-NA dans
+# api/dotfinder.py:977, ce qui lève sous pandas 3. Voir docs/SETUP.md.
+hic = ["cooler>=0.10", "cooltools>=0.7", "pandas>=2,<3", "scipy", "h5py", "bioframe"]
 
 [project.scripts]
 geno = "geno_pipeline.cli:main"

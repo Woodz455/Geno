@@ -172,6 +172,88 @@ def cmd_bench(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_hic(args: argparse.Namespace) -> int:
+    """Plante une structure connue, fait tourner les callers, mesure l'accord.
+
+    C'est la seule configuration où « le caller est correct » est vérifiable :
+    sur des données réelles, un désaccord avec Rao 2014 ne dit pas lequel des
+    deux a tort.
+    """
+    import logging as _logging
+    import warnings
+
+    _logging.disable(_logging.INFO)
+    # Bruit de cooltools 0.7 sur pandas 2 : `.idxmin()` sur colonne toute-NA.
+    # C'est exactement ce qui lève une ValueError sous pandas 3 — d'où l'épinglage.
+    warnings.simplefilter("ignore", FutureWarning)
+    try:
+        import cooler
+    except ImportError:
+        print(
+            "la pile Hi-C n'est pas installée dans cet interpréteur.\n"
+            "  → voir docs/SETUP.md ; make hic-validate utilise pipeline/.venv",
+            file=sys.stderr,
+        )
+        return 2
+
+    from .hic import (
+        balance,
+        compartments,
+        gc_track,
+        loops,
+        match_pairs,
+        match_positions,
+        plant,
+        tad_boundaries,
+        write_cool,
+    )
+
+    out = Path(args.out)
+    print(f"plantation  {args.bins:,} bins × {args.resolution // 1000} kb, graine {args.seed}")
+    bins, pixels, truth = plant(n_bins=args.bins, resolution=args.resolution, seed=args.seed)
+    write_cool(out, bins, pixels)
+    n_contacts = int(pixels["count"].sum())
+    print(
+        f"            {truth.span / 1e6:.1f} Mb · {n_contacts:,} contacts · "
+        f"{len(pixels):,} pixels · {len(truth.boundaries)} TADs · {len(truth.loops)} boucles"
+    )
+    print(f"            écrit en {out}\n")
+
+    clr = cooler.Cooler(str(out))
+    balance(clr)
+    clr = cooler.Cooler(str(out))
+
+    cv = lambda m: float(np.nanstd(np.nansum(m, 1)) / np.nanmean(np.nansum(m, 1)))  # noqa: E731
+    cv_raw, cv_bal = cv(clr.matrix(balance=False)[:]), cv(clr.matrix(balance=True)[:])
+    w = clr.bins()["weight"][:].to_numpy()
+    ok = np.isfinite(w)
+    r_bias = float(np.corrcoef(np.log(w[ok]), -np.log(truth.bias[ok]))[0, 1])
+    print(f"  équilibrage ICE     CV des marginales {cv_raw:.3f} → {cv_bal:.3f}"
+          f"   ·  poids vs biais planté r = {r_bias:+.3f}")
+
+    table = compartments(clr, phasing_track=gc_track(truth))
+    e1 = table["E1"].to_numpy()
+    ok = np.isfinite(e1)
+    acc = float((np.where(e1[ok] > 0, 1, -1) == truth.compartment[ok]).mean())
+    print(f"  compartiments A/B   accord {acc:.1%} sur {ok.sum():,} bins"
+          f"   ·  signe orienté par la piste GC")
+
+    ins = tad_boundaries(clr, args.window)
+    called = np.flatnonzero(ins["is_boundary"].fillna(False).to_numpy())
+    a = match_positions(called, truth.boundaries, tol=1)
+    print(f"  frontières de TAD   {a}   ·  fenêtre {args.window // 1000} kb, ±1 bin")
+
+    d = loops(clr)
+    pairs = np.c_[d["start1"].to_numpy() // clr.binsize, d["start2"].to_numpy() // clr.binsize]
+    b = match_pairs(pairs, truth.loops, tol=2)
+    print(f"  boucles             {b}   ·  ±2 bins")
+
+    worst = min(acc, a.f1, b.f1)
+    print(f"\n  Le plus faible des accords : {worst:.0%}. "
+          f"En dessous de 80 %, c'est un bug du caller, pas un mauvais jour.")
+    return 0 if worst >= 0.8 else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -200,6 +282,16 @@ def main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("tracks", help="liste les pistes du magasin")
     t.add_argument("--store", default=str(DEFAULT_STORE))
     t.set_defaults(fn=cmd_tracks)
+
+    h = sub.add_parser(
+        "hic", help="plante une structure Hi-C connue et valide les callers dessus"
+    )
+    h.add_argument("--bins", type=int, default=1_000)
+    h.add_argument("--resolution", type=int, default=10_000)
+    h.add_argument("--window", type=int, default=100_000, help="fenêtre d'insulation")
+    h.add_argument("--seed", type=int, default=3)
+    h.add_argument("--out", default=str(ROOT / "data" / "synthetic" / "planted.cool"))
+    h.set_defaults(fn=cmd_hic)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)
