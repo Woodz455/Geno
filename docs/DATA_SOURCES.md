@@ -7,6 +7,12 @@ remplacées par l'identifiant exact avant tout téléchargement automatisé.
 **Règle** : rien n'entre dans le dépôt ou dans un livrable public sans une ligne de licence
 explicite dans ce tableau.
 
+> **Décision arrêtée le 2026-09-12** — **GM12878** est la lignée de référence du projet.
+> Référentiel primaire hg38, secondaire T2T-CHM13v2.0.
+
+Le manifeste exécutable vit dans [`pipeline/data/manifest.tsv`](../pipeline/data/manifest.tsv) ;
+ce document en est la justification scientifique.
+
 ---
 
 ## 1. Référentiels
@@ -89,3 +95,81 @@ nom	url	sha256	octets	licence	date_acces	version_pipeline
 
 `make data` télécharge, calcule les sha256 et échoue si l'un d'eux diverge du manifeste. Une
 structure 3D qui ne peut pas remonter à un manifeste vérifié n'est pas publiable.
+
+Trois garanties, vérifiées par `make selftest` (13 assertions, sans réseau, via des URL
+`file://`) :
+
+- une source altérée en amont est **rejetée**, et le fichier corrompu n'est pas conservé ;
+- une accession non résolue fait **échouer** le fetch au lieu d'être devinée ;
+- le verrouillage d'une empreinte est une étape **explicite et séparée** — un téléchargement
+  ne réécrit jamais un sha256 de lui-même.
+
+---
+
+## 7. Ce qu'on accepte comme source
+
+### Sources primaires
+
+Le dépôt d'origine, celui qui porte l'accession citée dans la publication : **4DN**,
+**GEO/SRA**, **ENCODE**, **UCSC**, **EBI**, **NCBI**. Rien d'autre.
+
+### Ce qu'on refuse comme source primaire
+
+Toute copie ré-hébergée dont on ne peut pas remonter la chaîne de traitement — **HuggingFace
+Hub**, Kaggle, un Zenodo tiers, un miroir de laboratoire.
+
+La raison est technique, pas dogmatique. Pour du Hi-C, les choix de traitement — aligneur,
+filtrage des duplicats et des self-ligations, correction ICE, taille de bin — **changent les
+appels de compartiments et de TADs**. Un `.mcool` ré-hébergé sans ses paramètres est un
+fichier dont on ne sait pas ce qu'il mesure. Le principe n° 3 (chaque bille remonte à une
+accession et une version de pipeline) devient alors invérifiable, et tout ce que le modèle
+affirme devient incontrôlable.
+
+Une copie ré-hébergée reste utile pour **dégrossir** — regarder à quoi ressemble un jeu avant
+de lancer un téléchargement de 40 Go. Elle ne produit jamais une position dans le modèle livré.
+
+### Recoupements admis
+
+**3D Genome Browser** (Yue lab), **3DIV**, **Nucleome Browser**, tilesets publics HiGlass :
+excellents pour comparer nos appels à ceux d'autres équipes, jamais comme source de positions.
+
+### Où HuggingFace a une vraie valeur — en v2, et pour des modèles
+
+Pas pour les données. Pour les **modèles séquence → contact**, qui prédisent une carte de
+contacts à partir de la séquence : **Akita** (Fudenberg 2020), **Orca** (Zhou 2022),
+**C.Origami** (Tan 2023) ; et plus loin les modèles de séquence génomique (Enformer, Borzoi,
+Nucleotide Transformer, DNABERT-2, HyenaDNA, Evo).
+
+Pourquoi ça nous concerne précisément : la **semaine 15** prévoit un mode variant structural
+qui, tel qu'il est écrit, applique une **règle** — on supprime une frontière de TAD, on montre
+le détournement d'enhancer attendu. Un modèle séquence → contact le rendrait **prédictif** :
+on entre le variant, il sort la carte de contacts prédite, on reconstruit dessus. C'est le
+seul endroit du projet où ces modèles apportent quelque chose que les données seules ne
+donnent pas.
+
+**Contrainte** : une position issue d'un modèle prédictif ne porte jamais l'étiquette
+« mesuré ». Elle relève d'un quatrième statut, `predicted`, distinct de `measured`,
+`simulated` et `deterministic` — voir le champ `evidence` dans
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+---
+
+## 8. État au 2026-09-12
+
+`make status` : **28 entrées** — 15 `unverified`, 13 `unresolved`.
+
+Aucune n'est encore `ok`, et ce n'est pas un oubli. L'environnement d'exécution de cette
+session applique une politique d'egress fermée : `hgdownload.soe.ucsc.edu`,
+`ftp.ebi.ac.uk`, `data.4dnucleome.org` et `ftp.ncbi.nlm.nih.gov` répondent tous **403** au
+tunnel. `make data-core` échoue donc correctement sur les six entrées, sans rien laisser
+derrière lui.
+
+Deux façons de débloquer :
+
+1. autoriser ces quatre hôtes dans la politique réseau de l'environnement ;
+2. exécuter `make data && make data-lock` sur une machine qui a l'accès, et rapatrier le
+   manifeste verrouillé — c'est précisément pour ça que les empreintes sont versionnées et
+   pas les données.
+
+Les 13 entrées `unresolved` attendent une accession exacte. Elles ne sont pas inventées : une
+accession plausible mais fausse empoisonnerait la provenance plus sûrement qu'une case vide.

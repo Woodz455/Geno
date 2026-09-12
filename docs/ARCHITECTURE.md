@@ -60,7 +60,7 @@ un médoïde d'ensemble) pour une lignée cellulaire et un assemblage.
 │  cell_type, ploidy, n_structures                             │
 │  levels: [{ bin_size, n_beads, offset, length, octree_off }] │
 │  provenance: { accessions[], pipeline_version, sha256 }      │
-│  evidence: "measured" | "simulated" | "deterministic"        │
+│  evidence: "measured"|"simulated"|"deterministic"|"predicted" │
 └──────────────────────────────────────────────────────────────┘
 ┌─ par niveau ─────────────────────────────────────────────────┐
 │  positions   Float32Array  [x,y,z] × n_beads                 │
@@ -71,7 +71,10 @@ un médoïde d'ensemble) pour une lignée cellulaire et un assemblage.
 ```
 
 Le champ `evidence` est structurel, pas cosmétique : c'est lui qui pilote le code couleur
-mesuré / simulé / déterministe exigé par le principe n°2 de la feuille de route.
+exigé par le principe n°2 de la feuille de route. `predicted` est réservé aux positions issues
+d'un modèle séquence → contact (Akita, Orca, C.Origami) — hors périmètre v1, mais le champ le
+prévoit pour qu'une telle position ne puisse jamais se faire passer pour une mesure.
+Voir [`DATA_SOURCES.md` § 7](DATA_SOURCES.md).
 
 ---
 
