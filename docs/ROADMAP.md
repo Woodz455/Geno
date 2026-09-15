@@ -164,6 +164,13 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
 - **Livrable** : `ensemble.zarr` + rapport de validation chiffré (corrélation position radiale
   modélisée vs. LADs DamID publiés).
 - **Fait quand** : le rapport existe avec ses nombres, réussite ou échec.
+- **Fait, en partie.** `make ensemble` — 200 structures en 36 min, `ensemble.zarr`, rapport
+  chiffré ([`VALIDATION.md` § S7](VALIDATION.md)). ICC 0,776 sur la profondeur : 22 % de la
+  position radiale d'une bille tient au tirage, pas à la bille. Résultat de fond : P(s)
+  **s'aplatit** au-delà de 15 Mb là où le Hi-C réel continue de décroître — le modèle a des
+  territoires, pas leur organisation interne, ce qui cadre la semaine 8. **Manque** la
+  corrélation au DamID publié, faute de fichier : le calcul est écrit et testé, il attend le
+  réseau.
 
 #### Semaine 8 — Échelle fine : polymère et extrusion de boucles
 - **Objectif** : descendre sous le TAD.

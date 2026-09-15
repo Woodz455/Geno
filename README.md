@@ -9,11 +9,12 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 6.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 7.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
-imposteurs dont la correction est prouvée dans un vrai navigateur, et **un noyau diploïde
-entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration.
+imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
+entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration — et un **ensemble de
+200 repliements** du même génome.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -60,6 +61,19 @@ compare pas d'un modèle à l'autre sans dire à quelle résolution. Le noyau pr
 critère de la semaine — chevauchement maximal sous 0,8 % du contact sur six graines, aucune
 bille hors du noyau — et ce qu'il ne prouve pas est dit aussi clairement que ce qu'il prouve
 ([`docs/VALIDATION.md` § S6](docs/VALIDATION.md)).
+
+`make ensemble` applique le principe n° 1 : une structure unique est un artefact statistique,
+et voici de combien. Deux cents repliements du même génome, et une décomposition de variance sur
+la profondeur nucléaire de chaque bille — **ICC 0,776**, donc **22 % de la position radiale
+d'une bille tient au tirage** et non à la bille. Deux structures indépendantes ne s'accordent
+qu'à r = +0,78 sur qui est profond et qui est superficiel. Afficher une bille à sa profondeur
+sans afficher ses 276 nm de dispersion, ce serait présenter un tirage comme une mesure.
+
+L'ensemble prédit aussi ce qu'une expérience Hi-C verrait — sans qu'aucune matrice de contacts
+n'ait jamais été montrée au modèle. Fraction trans 22,4 % là où le hasard donnerait 98 %, pas
+d'appariement des homologues, et une **P(s) qui s'aplatit au-delà de 15 Mb** quand le Hi-C réel
+continue de décroître. C'est un désaccord, et c'est le résultat le plus utile de la semaine : le
+modèle a le *fait* des territoires, pas leur organisation interne. La semaine 8 est là pour ça.
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
@@ -124,6 +138,7 @@ make bench           latence de requête à l'échelle réelle
 make hic-validate    plante une structure Hi-C connue et valide les callers
 make recon           balaie l'exposant contact → distance contre une géométrie connue
 make nucleus         construit un noyau diploïde complet de billes TAD
+make ensemble        200 repliements du même génome, et ce qui s'y reproduit
 make test            suite de tests
 ```
 

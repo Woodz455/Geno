@@ -9,6 +9,271 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S7 — Ensembles : ce qui est une propriété du génome, ce qui est un tirage
+
+### Le dispositif
+
+Le principe n° 1 du projet — *une structure Hi-C unique est un artefact statistique* — est une
+déclaration d'intention jusqu'à ce qu'on sache **de combien**. La semaine 7 produit deux cents
+repliements du même génome et mesure, bille par bille, quelle part de « cette bille est à telle
+profondeur » est un énoncé sur la bille et quelle part sur le tirage.
+
+`make ensemble` — 200 structures, quatre cœurs, 36 minutes. Le résultat est un
+`ensemble.zarr` dont la forme porte déjà l'essentiel : **un génome, N repliements**. Le
+découpage en billes, les rayons et la piste LAD sont écrits une seule fois ; seules les
+coordonnées portent l'indice de structure.
+
+Ce n'est pas une économie de place. Si chaque structure portait son propre génome, la
+variabilité mesurée mélangerait la variabilité de repliement et celle du génome, sans aucun
+moyen de les séparer après coup — et c'est exactement ce que faisait le code de la semaine 6,
+où `build(seed=k)` tirait la piste LAD et la conformation de la même graine. Deux cents appels
+auraient donné deux cents génomes. `lad_seed` les sépare, un test le verrouille, et la
+génération vérifie l'empreinte du génome à **chaque** structure plutôt que de s'y fier.
+
+### Il n'y a pas de repère commun, et c'est mesuré
+
+Deux noyaux recuits séparément ne partagent ni orientation — rien ne distingue un axe dans une
+sphère — ni placement des territoires, puisque chr7:a atterrit ailleurs à chaque tirage. Une
+« variance de la position de la bille i » en x, y, z serait donc un nombre sans objet.
+
+Plutôt que de l'affirmer, on l'a mesuré. Trois écarts entre deux structures, tous après
+rotation optimale (réflexion permise, cf. § S5) :
+
+| | RMSD |
+|---|---:|
+| vraie correspondance, bille i contre bille i | **4,72 µm** |
+| billes permutées à l'intérieur de leur couche radiale | 5,36 µm |
+| billes permutées librement — référence sans information | 5,35 µm |
+
+Dans un noyau de rayon 5 µm, **88 % de l'écart survit au meilleur alignement possible**.
+Une bille est typiquement plus loin de sa contrepartie que du centre du noyau.
+
+**Une hypothèse fausse, corrigée par son propre témoin.** Le témoin « couches radiales » avait
+été ajouté pour vérifier que le peu rattrapé par l'alignement était la stratification radiale
+partagée. Il dit le contraire : mêler les billes à profondeur constante ramène pratiquement à
+la référence sans information — cette explication ne vaut que **−1 % du gain**, c'est-à-dire rien. Ce
+que la correspondance porte est ailleurs, dans la **compacité des territoires** : deux
+structures ont chacune 46 blobs, et une rotation bien choisie en superpose quelques-uns. Le
+témoin est resté, parce qu'il dit ça.
+
+### Ce qui se reproduit d'un tirage à l'autre
+
+Reste la position radiale, invariante par rotation, donc comparable. Décomposition de variance
+à un facteur — la bille est le sujet, la structure le juge :
+
+| | |
+|---|---:|
+| ICC — part de variance attribuable à la bille | **0,776** |
+| dispersion entre billes | 538 nm |
+| dispersion d'une bille sur l'ensemble | 276 nm |
+| corrélation entre les profils radiaux de deux structures | **+0,777** |
+
+78 % de la variance de profondeur tient à la bille, 22 % au tirage. La dernière ligne
+dit la même chose sans passer par l'ICC, et c'est celle qu'il faut retenir : deux structures
+indépendantes s'accordent à r = +0,777 sur *qui est profond et qui est superficiel*, et
+pas plus.
+
+Conséquence directe sur ce que le viewer aura le droit d'afficher : une structure isolée porte
+les deux composantes sans les distinguer. Montrer une bille à sa profondeur sans montrer
+276 nm de dispersion serait afficher un tirage en le présentant comme une mesure.
+
+### Distributions radiales
+
+| Quartile de contenu LAD | Fraction LAD | Rayon moyen | Dispersion entre billes |
+|---|---:|---:|---:|
+| Q1 — le moins LAD | 0,00–0,00 | 0,671 | 0,071 |
+| Q2 | 0,00–0,07 | 0,673 | 0,074 |
+| Q3 | 0,07–0,73 | 0,799 | 0,061 |
+| Q4 — le plus LAD | 0,73–1,00 | **0,870** | 0,056 |
+
+Les bornes LAD comptent autant que les rayons : **plus de la moitié des billes ont une fraction
+LAD nulle ou quasi nulle**, si bien que Q1 et Q2 ne se distinguent pas — 0,671 contre 0,673. Le
+modèle ne les sépare pas, et il n'a rien pour les séparer. La stratification qu'on mesure vient
+entièrement du tiers supérieur de la piste.
+
+L'auto-cohérence avec la piste LAD d'entrée vaut r = +0,771. **Ce nombre ne valide
+rien** : la piste LAD est ce qui a fixé les rayons visés du modèle. Il dit seulement que le
+solveur a fait ce qu'on lui demandait, et il est ici pour ça.
+
+### Le médoïde, et pour quelle distance
+
+Structure 125, graine 1125 : distance cumulée 1419,4 contre 1503,6 pour la plus excentrée.
+
+Il n'existe pas de médoïde « de l'ensemble » dans l'absolu, seulement un médoïde **pour une
+distance donnée**, et celle-ci ne voit que la profondeur des billes. Deux structures aux
+territoires disposés tout autrement peuvent avoir le même profil radial ; ce médoïde ne les
+distinguera pas. C'est assumé — la profondeur est ce que cet ensemble mesure — mais ça se dit.
+
+### Ce que l'ensemble prédit d'une expérience Hi-C, et où il se trompe
+
+Aucune matrice de contacts n'a jamais été montrée au modèle. P(s), la fraction trans et les
+contacts d'homologues sortent de la seule géométrie : chaîne de sphères tangentes, volume
+exclu, confinement, territoires. Ce sont donc les **seules grandeurs de cet ensemble qu'une
+expérience puisse contredire** — et l'une d'elles est contredite.
+
+| Seuil de contact | Contacts / structure | Trans | Homologues | Plateau P(s) |
+|---:|---:|---:|---:|---:|
+| **1,50** | **41 874** | **22,4 %** | **2,0 %** | **0,0253** |
+| 1,25 | 29 503 | 19,3 % | 2,0 % | 0,0164 |
+| 2,00 | 99 167 | 28,4 % | 2,1 % | 0,0644 |
+
+Sur l'ensemble entier au seuil 1,50 : 6 498 563 contacts cis, 1 876 214 trans, 38 442 entre
+homologues.
+
+Un seuil de contact sous 1,15 ne mesure rien : c'est l'allongement maximal d'une liaison, donc
+en dessous même deux billes voisines de chaîne ne « se touchent » pas et il ne reste que les
+chevauchements résiduels. Mesuré à 1,00 : 145 contacts par structure au lieu de 41 800. Le
+seuil est un paramètre — une ligature Hi-C n'exige pas que deux nucléosomes se touchent — mais
+il a un plancher, et ce plancher est une propriété du modèle de chaîne.
+
+**P(s) n'a pas une pente, elle en a trois.**
+
+| Régime | Domaine | Pente |
+|---|---|---:|
+| chaîne | 1,4–4 Mb | −1,31 |
+| polymère | 2,2–9 Mb | **−0,85** |
+| territoire | 15–150 Mb | **−0,10** |
+
+- Le régime **chaîne** est une construction : deux billes liées sont toujours à portée dès que
+  le seuil dépasse l'allongement maximal, donc P(1) = 1 exactement. Ce qu'on y lit n'est pas du
+  repliement, c'est le modèle de liaison.
+- Le régime **polymère** donne -0,85, à comparer au ~s^-1 du Hi-C réel. C'est le bon ordre
+  de grandeur, obtenu sans qu'aucune donnée de contact n'ait été fournie.
+- Le régime **territoire** s'aplatit : -0,10, avec un plateau à P = 0,0253 au-delà de
+  15 Mb. **Le Hi-C réel ne fait pas ça** : il continue de décroître.
+
+C'est le résultat de la semaine, et c'est un échec instructif. Le modèle reproduit le *fait*
+des territoires — la fraction trans tombe à 22,4 % quand le hasard pur en donnerait 98 % —
+mais pas leur **organisation interne**. Une fois deux loci séparés de plus d'une quinzaine de
+mégabases, leur probabilité de contact ne dépend plus de leur distance génomique : le
+territoire est devenu un sac bien mélangé. Il manque au modèle tout ce qui structure l'intérieur
+d'un chromosome — boucles, TADs, ségrégation compartimentale à l'échelle sub-chromosomique.
+
+C'est exactement le périmètre de la semaine 8 (extrusion de boucles, polymère fin), et ce
+plateau en est la mesure de départ : il faudra le voir décroître.
+
+Deux lectures secondaires :
+
+- **Les homologues ne s'apparient pas** : 2,0 % des contacts trans, contre les
+  2,2 % attendus si une copie contactait ses 45 voisines au hasard. Conforme à ce
+  qu'on sait des cellules somatiques humaines, où l'appariement homologue est l'exception.
+- **La fraction trans tombe dans la fourchette du Hi-C réel** (~25–40 % pour GM12878 selon le
+  filtrage). Comme la territorialité est une entrée du modèle (§ S6), ce n'est pas une
+  prédiction indépendante ; ce qui l'est, c'est la *valeur* — rien ne garantissait qu'elle
+  tombe là plutôt qu'à 5 % ou à 70 %.
+
+### Le livrable qui manque
+
+La feuille de route demande la **corrélation entre position radiale modélisée et LADs DamID
+publiés**. Elle n'est pas dans ce rapport, et il faut être précis sur pourquoi : aucune entrée
+DamID du manifeste n'a pu être récupérée, l'egress de l'environnement restant fermé
+([`DATA_SOURCES.md` § 8](DATA_SOURCES.md)).
+
+Ce qui existe : `ensemble.damid` lit un bedGraph, attribue à chaque bille la moyenne des scores
+pondérée par le recouvrement, exclut les billes non couvertes — une bille sans mesure est une
+absence, pas un zéro, et la mettre à zéro fabriquerait de la corrélation là où il n'y a pas de
+donnée — et rend la corrélation avec la profondeur moyenne. Le chemin complet, fichier compris,
+tourne sous test. Il se lance par :
+
+```console
+$ make ensemble DAMID=chemin/vers/lads.bedGraph
+```
+
+Il lui faut un fichier, pas une ligne de code de plus.
+
+### Défauts trouvés
+
+**1. Un génome par structure.** Décrit plus haut : `build(seed=k)` tirait la piste LAD *et* la
+conformation de la même graine. Un ensemble construit ainsi aurait mesuré la variabilité de
+deux cents génomes différents en croyant mesurer celle d'un repliement, et rien dans les
+coordonnées n'aurait permis de s'en apercevoir. Corrigé par `lad_seed`, verrouillé par un test,
+et vérifié à l'exécution sur chaque structure.
+
+**2. Une copie sans homologue était son propre homologue.** La table des partenaires rend
+`partner[k] = k` pour une copie non appariée, si bien que le test `partner[ci] == cj` comptait
+**tous ses contacts cis** comme des contacts d'homologues. Trouvé par un test sur une chaîne
+unique, où le compte annonçait 234 contacts d'homologues pour 0 contact trans — une
+contradiction dans les termes, puisqu'un contact d'homologues est trans par définition. Le
+masque manquant est `& ~same`.
+
+**3. Les quartiles calculés sur les valeurs, pas sur les rangs.** Une bille de 750 kb sans le
+moindre LAD est fréquente — plus de la moitié du génome modélisé. Les quantiles 0 % et 25 % de
+la piste valent donc tous deux zéro, le groupe Q1 sort vide, et le rapport affichait `nan`.
+Découpés par rang, les quatre groupes sont toujours définis ; le tableau affiche en plus les
+bornes LAD de chacun, pour que les ex æquo se voient au lieu de se deviner.
+
+**4. Une fenêtre d'ajustement trop étroite pour ajuster quoi que ce soit.** Le régime « chaîne »
+couvrait deux points de séparation, et la pente sortait `nan`. Ce n'est pas le garde-fou qui est
+en cause — il refuse d'ajuster une droite sur moins de trois points, et il a bien fait — mais la
+fenêtre, choisie en mégabases sans vérifier combien de billes ça faisait à cette résolution.
+
+**5. Relancer la commande effaçait la série.** `zarr.open_group(mode="w")` recrée le magasin
+sans rien demander : un second `make ensemble` aurait effacé une demi-heure de calcul. Reprendre
+est devenu le défaut, recréer demande `--fresh`, et un magasin d'une autre taille est refusé
+plutôt que silencieusement remplacé.
+
+### Une erreur de méthode, commise et rattrapée
+
+Le premier essai de P(s), sur un ensemble de rodage à 3 Mb par bille, donnait une pente unique
+de **-0,82** sur une fenêtre de 1,5 à 50 Mb. J'ai failli l'écrire telle quelle : « P(s) ∝ s^-0,8,
+proche du s^-1 du Hi-C réel, obtenu sans qu'aucune donnée de contact n'ait été fournie ». Ç'aurait
+été un beau résultat, et il aurait été faux.
+
+À 3 Mb par bille, cette fenêtre couvre les séparations de 1 à 17 billes, c'est-à-dire
+essentiellement le régime **chaîne**, celui qui est une construction. En regardant enfin la
+courbe au lieu de son ajustement, elle se casse en trois : raide jusqu'à 2 Mb, en s^-0,85
+jusqu'à 9 Mb, **plate ensuite**. La conclusion honnête est l'inverse de celle que j'allais tirer :
+le modèle ne reproduit pas P(s), il s'en écarte franchement au-delà de 15 Mb, et c'est ça qui est
+intéressant.
+
+La leçon est celle de la semaine 5 sous une autre forme : une fenêtre d'ajustement se choisit en
+regardant la courbe, jamais avant. Les trois régimes sont maintenant nommés dans le code, et
+le rapport donne les trois pentes plutôt qu'une moyenne qui n'a de sens nulle part.
+
+### Ce que ça ne dit pas
+
+**Rien sur un vrai noyau**, et pour les mêmes raisons qu'en semaine 6 : aucune donnée de
+conformation ne contraint ces positions, la piste LAD est synthétique, les longueurs de
+chromosomes viennent de la table interne. Deux cents structures fausses restent fausses — un
+ensemble ne rachète pas ses entrées, il en chiffre la dispersion.
+
+**L'ICC dépend de la force du rappel radial.** Avec un rappel plus fort, les billes seraient
+plus reproductiblement placées et l'ICC monterait, sans que le modèle soit meilleur pour
+autant. Le nombre caractérise ce modèle-ci à ce réglage-là, et il se cite avec.
+
+**Deux cents n'est pas un nombre magique** — il vient de la feuille de route, pas d'un calcul
+de puissance. Alors on a regardé :
+
+| N | ICC | r entre deux | dispersion | RMSD aligné | trans | plateau | pente polymère | médoïde |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 50 | 0,773 | +0,773 | 276 nm | 4,80 µm | 22,5 % | 0,0253 | −0,84 | graine 1000 |
+| 100 | 0,775 | +0,774 | 276 nm | 4,70 µm | 22,5 % | 0,0253 | −0,85 | graine 1000 |
+| 150 | 0,776 | +0,777 | 276 nm | 4,77 µm | 22,4 % | 0,0253 | −0,85 | graine 1125 |
+| 200 | 0,776 | +0,777 | 276 nm | 4,74 µm | 22,4 % | 0,0253 | −0,85 | graine 1125 |
+
+**Tout est convergé dès cinquante structures** : même ICC à trois décimales, même plateau à
+quatre, même pente. Les deux cents de la feuille de route sont confortables, pas justes.
+
+Une exception, et elle est instructive : **le médoïde change**, de la graine 1000 à la graine
+1125 entre cent et cent cinquante structures. C'est attendu — il suffit qu'une structure
+arrivée plus tard soit un peu plus centrale — et ça rappelle qu'un médoïde est le membre le
+plus typique d'un échantillon, pas une structure privilégiée. Les statistiques de l'ensemble
+sont stables ; l'identité de son représentant ne l'est pas.
+
+### Reproduire
+
+```console
+$ make ensemble                       # 200 structures puis le rapport, ~36 min
+$ make ensemble N=50                  # plus court
+$ make ensemble DAMID=lads.bedGraph   # avec la corrélation qui manque
+$ cd pipeline && PYTHONPATH=. .venv/bin/python -m pytest tests/test_ensemble.py
+```
+
+Le magasin est repris s'il existe : relancer la commande complète la série au lieu de la
+recommencer.
+
+---
+
 ## S6 — Noyau diploïde complet : imposé, hérité, mesuré
 
 ### Le dispositif
