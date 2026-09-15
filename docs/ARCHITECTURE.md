@@ -218,3 +218,100 @@ un `.g3d`. On n'essaiera pas de porter OpenMM en WASM.
 Un ensemble complet (200 × 620 000 billes) pèse ~1,5 Go : jamais chargé entier. On streame le
 médoïde plus un scalaire de variabilité par bille ; l'ensemble ne se charge qu'à la demande,
 en résolution grossière.
+
+---
+
+## 10. Modèle de noyau — billes TAD, territoires, périphérie
+
+### La bille
+
+Une bille est un TAD. Encore faut-il dire lequel : Dixon 2012 en compte ~2 200 sur le génome
+haploïde, taille moyenne ~880 kb ; Rao 2014 en compte 9 274, médiane 185 kb. Ce ne sont pas
+deux mesures du même objet, ce sont deux définitions. Le modèle de noyau travaille à
+**750 kb par bille**, donc à l'échelle Dixon, et le génome diploïde tient en ~8 100 billes.
+
+La chromatine ayant une densité locale à peu près constante, le volume d'une bille suit sa
+longueur et son rayon la racine cubique : `r ∝ L^(1/3)`. La constante vient d'une seule
+quantité physique, la **fraction volumique** `phi` occupée par les billes — 0,30 par défaut,
+dans la fourchette 12–52 % mesurée par ChromEMT (Ou 2017).
+
+### Le rayon nucléaire n'est qu'une unité
+
+Le nombre de billes et la fraction volumique déterminent le rapport `r/R` :
+
+```
+N · (4/3)π r³ = phi · (4/3)π R³     ⟹     r / R = (phi / N)^(1/3)
+```
+
+Une fois `phi` et `N` fixés, toute la géométrie est en unités de `R`. Changer `R` change les
+micromètres affichés et rien d'autre. Les deux seuls paramètres physiques du modèle sont donc
+`phi` et la résolution.
+
+### Trois façons de dire « à la lamina », et elles ne coïncident pas
+
+Une bille **touche** l'enveloppe si l'écart entre sa surface et celle-ci est sous un demi-rayon.
+Cette bande est plus fine que l'écart entre deux couches empilées (~1,63 r), donc elle ne
+contient qu'une monocouche. Deux bornes l'encadrent :
+
+- **part à densité uniforme** — la part de volume de la coquille dans la boule accessible aux
+  centres, soit `[(R−r)³ − (R−1,5r)³] / (R−r)³`, environ `1,5 · r/(R−r)` ;
+- **borne d'empilement** — au plus `eta · 4(R−r)²/r²` billes peuvent toucher à la fois, avec
+  `eta ≤ 0,9069` la densité hexagonale.
+
+Les deux sont **linéaires en r**, donc dépendent de la résolution du modèle :
+
+| Résolution | Billes | Rayon | Densité uniforme | Borne d'empilement | Niveau `.g3d` |
+|-----------:|-------:|------:|-----------------:|-------------------:|--------------:|
+| 3 Mb | 2 021 | 264,7 nm | 8,2 % | 57 % | 24 ko |
+| **750 kb** | **8 083** | **166,8 nm** | **5,1 %** | **38 %** | **97 ko** |
+| 250 kb | 24 248 | 115,6 nm | 3,5 % | 27 % | 291 ko |
+| 100 kb | 60 621 | 85,2 nm | 2,6 % | 20 % | 727 ko |
+| 10 kb | 606 208 | 39,5 nm | 1,2 % | 9 % | 7,3 Mo |
+
+Conséquence directe : **« 35 % du génome est en LAD » et « 35 % du génome touche la lamina »
+ne sont pas la même phrase**, et la seconde ne découle pas de la première. Atteindre la borne
+d'empilement suppose un noyau à croûte dense et intérieur creux ; rester à densité uniforme
+plafonne à quelques pour cent. Une « fraction de LADs à la lamina » n'est donc pas comparable
+entre deux modèles de granularité différente sans dire laquelle.
+
+La dernière colonne donne le poids du niveau dans le `.g3d` de la semaine 9, à 12 octets par
+bille (§ 4) : à 750 kb le niveau fait **97 ko**, largement sous le budget de 500 ko de la
+semaine 10. La résolution du modèle de noyau tombe entre les paliers « Noyau » (1 Mb) et
+« Territoire » (250 kb) du § 4 ; c'est l'échelle TAD de Dixon qui l'a fixée, pas le budget.
+
+Sur les totaux : le caryotype 46,XX de GM12878 fait **6,06 Gb** d'assemblage primaire, deux
+exemplaires de chr1–22 plus deux X. Le « 6,2 Gb » du § 4 est la valeur ronde usuelle, scaffolds
+et chrY compris.
+
+### Hiérarchie des contraintes
+
+Trois conditions dures, une préférence molle, et l'ordre compte :
+
+| | Contrainte | Nature |
+|---|---|---|
+| 1 | volume exclu, `d ≥ r_i + r_j` | dure |
+| 2 | longueur de liaison **maximale**, `d ≤ stretch · (r_i + r_j)` | dure, unilatérale |
+| 3 | confinement, `\|x\| ≤ R − r` | dure |
+| 4 | rappel radial vers un rayon cible ordonné par contenu LAD | molle |
+
+La liaison est unilatérale : elle empêche la chaîne de casser, pas les billes de se rapprocher.
+Une longueur *imposée* se bat contre le volume exclu dans les replis serrés, et c'est le volume
+exclu qui cède — or c'est lui la condition.
+
+Le rappel radial vise un rayon par **rang** de contenu LAD, pas par valeur : la bille de rang
+`q` vise `q^(1/3)`, la loi des rayons d'une sphère uniforme. Le biais trie sans tasser. Le
+polissage final le coupe entièrement.
+
+### Topologie : ce que le recuit ne peut pas faire
+
+Une relaxation sous contraintes ne fait **jamais** se croiser deux chaînes. La topologie du
+noyau est donc celle de son initialisation, et la territorialité est une **entrée** du modèle,
+pas un résultat. Ce qui la justifie est la mitose : les chromosomes se décondensent là où la
+télophase les a laissés. Le seul énoncé vérifiable est que le recuit la conserve.
+
+Le solveur fait croître les rayons pendant le recuit plutôt que de partir à taille pleine
+(Lubachevsky–Stillinger). D'où une condition d'étanchéité : à l'échelle `s`, deux billes liées
+s'excluent au rayon `s·r` mais restent séparées d'au plus `stretch·2r`, donc une troisième
+bille passe entre elles dès que **`s ≤ stretch / 2`**. En dessous du seuil une chaîne traverse
+une liaison, et le défaut est difficile à défaire. Le défaut n'est pas construit : il est
+mesuré (`docs/VALIDATION.md` § S6).

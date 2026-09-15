@@ -153,6 +153,9 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
 - **Travaux** : modèle bille-par-TAD, 46 chromosomes, contraintes LAD → périphérie, rayon
   nucléaire, volume exclu, recuit simulé.
 - **Fait quand** : un noyau diploïde, ~6 000–10 000 billes TAD, sans interpénétration.
+- **Fait.** `make nucleus` — 8 082 billes de 750 kb, chevauchement maximal sous 0,5 % du
+  contact sur six graines, aucune bille hors du noyau. Résultat de fond : « en LAD » n'est pas
+  « à la lamina », et l'écart est une loi d'échelle ([`VALIDATION.md` § S6](VALIDATION.md)).
 
 #### Semaine 7 — Ensembles, pas une structure
 - **Objectif** : appliquer le principe n°1 (§4).

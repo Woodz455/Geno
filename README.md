@@ -9,10 +9,11 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 5.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 6.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
-plantée, reconstruction 3D calibrée contre une géométrie connue, et moteur de rendu par
-imposteurs dont la correction est prouvée dans un vrai navigateur.
+plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
+imposteurs dont la correction est prouvée dans un vrai navigateur, et **un noyau diploïde
+entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -48,6 +49,18 @@ séquençage sans jamais l'atteindre, et son minimum s'aplatit justement là où
 les plus creuses. Reprendre `alpha = 1/3` d'un article sans regarder sa profondeur n'est donc
 pas une convention.
 
+`make nucleus` monte d'un cran : les 46 chaînes du caryotype 46,XX de GM12878, découpées en
+billes d'échelle TAD, placées dans une sphère de dix micromètres sous volume exclu, chaînes
+tenues, confinement et rappel des LADs vers la périphérie. Le résultat de la semaine tient en
+une distinction : **la part du génome qui *est* en LAD et la part qui *touche* la lamina ne
+sont pas la même quantité**, et la seconde est bornée par la géométrie du modèle — 5,1 % à
+densité uniforme, 38 % en empilement maximal à 750 kb par bille ; 1,2 % et 9 % à 10 kb. Les
+deux bornes sont linéaires en rayon de bille, donc une « fraction de LADs à la lamina » ne se
+compare pas d'un modèle à l'autre sans dire à quelle résolution. Le noyau produit tient le
+critère de la semaine — chevauchement maximal sous 0,8 % du contact sur six graines, aucune
+bille hors du noyau — et ce qu'il ne prouve pas est dit aussi clairement que ce qu'il prouve
+([`docs/VALIDATION.md` § S6](docs/VALIDATION.md)).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
@@ -62,7 +75,8 @@ un rasteriseur logiciel, donc les images par seconde attendent du vrai matériel
 
 Un zoom continu sur quatre ordres de grandeur, du noyau (10 µm) à la paire de bases (2 nm),
 en sept niveaux : noyau et repères nucléaires, territoires chromosomiques, compartiments A/B,
-TADs, boucles CTCF, fibre de chromatine, double hélice.
+TADs, boucles CTCF, fibre de chromatine, double hélice. Le modèle de noyau et ses lois
+d'échelle sont dans [`ARCHITECTURE.md` § 10](docs/ARCHITECTURE.md#10-modèle-de-noyau--billes-tad-territoires-périphérie).
 
 Les niveaux macro viennent de **mesures** (Hi-C, Micro-C, DamID, TSA-seq). L'échelle fine
 vient d'une **simulation contrainte par les mesures**. Le niveau séquence est de la
@@ -109,6 +123,7 @@ make query Q=…       interroge une région
 make bench           latence de requête à l'échelle réelle
 make hic-validate    plante une structure Hi-C connue et valide les callers
 make recon           balaie l'exposant contact → distance contre une géométrie connue
+make nucleus         construit un noyau diploïde complet de billes TAD
 make test            suite de tests
 ```
 

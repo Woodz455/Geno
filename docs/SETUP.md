@@ -18,8 +18,10 @@ doit pas traîner derrière lui scipy, h5py et une pile scientifique complète.
 
 ## Pile de conformation — cooler et cooltools
 
-Nécessaire uniquement pour le Hi-C (semaine 3 et suivantes). Elle vit dans
-`pipeline/.venv`, que les cibles `make` utilisent automatiquement si elle existe.
+Nécessaire pour le Hi-C (`make hic-validate`, `make recon`) et pour le modèle de noyau
+(`make nucleus`), qui n'a besoin que de numpy et de `scipy.spatial` mais vit dans le même
+niveau. Elle est dans `pipeline/.venv`, que les cibles `make` utilisent automatiquement si
+elle existe — sinon elles retombent sur `python3` et signalent proprement ce qui manque.
 
 ```console
 $ cd pipeline

@@ -173,3 +173,24 @@ Deux façons de débloquer :
 
 Les 13 entrées `unresolved` attendent une accession exacte. Elles ne sont pas inventées : une
 accession plausible mais fausse empoisonnerait la provenance plus sûrement qu'une case vide.
+
+### Ce qui tourne quand même, et à quel prix
+
+Le modèle de noyau de la semaine 6 a besoin des longueurs de chromosomes. Une longueur de
+chromosome est une propriété déterministe de l'assemblage, pas une mesure, mais elle reste une
+donnée et la règle du projet est qu'une donnée remonte à un fichier empreint. D'où une
+hiérarchie explicite :
+
+1. si `data/core/hg38.chrom.sizes` existe — donc récupéré et verrouillé par `make data-core` —
+   c'est lui qui fait foi ;
+2. sinon, une table interne à `geno_pipeline/nucleus/karyotype.py`, et **tout ce qui en découle
+   est estampillé `builtin`**.
+
+L'estampille n'est pas décorative : elle sort dans l'en-tête de `make nucleus` et dans le
+`.json` frère de chaque structure écrite. Aujourd'hui tout est `builtin`, et il faudra
+revérifier la table contre le fichier officiel dès que l'hôte sera joignable.
+
+Même logique pour la piste LAD, qui n'a aucune entrée récupérable pour l'instant : le modèle en
+fabrique une, synthétique, calibrée sur les statistiques publiées de taille et de couverture, et
+l'estampille `lad_source: "synthetic"`. Ce qui s'en déduit est géométrique ; la corrélation avec
+le DamID publié, elle, attend le réseau.

@@ -9,6 +9,275 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S6 — Noyau diploïde complet : imposé, hérité, mesuré
+
+### Le dispositif
+
+La semaine 5 reconstruisait *une* chaîne à partir de contacts. La semaine 6 change d'échelle :
+le caryotype entier de GM12878 — **46,XX**, donc deux exemplaires de chr1–22 plus un X actif et
+un X inactif — découpé en billes d'échelle TAD et placé dans une sphère de dix micromètres sans
+que rien ne se traverse.
+
+Une bille est un TAD, encore faut-il dire lequel. Dixon 2012 en compte ~2 200 sur le génome
+haploïde, taille moyenne ~880 kb ; Rao 2014 en compte 9 274, médiane 185 kb. Ce ne sont pas deux
+mesures du même objet à quatre près, ce sont deux définitions. À **750 kb par bille** on est à
+l'échelle Dixon, et le noyau diploïde tient en **8 082 billes** de 166,8 nm de rayon, pour une
+fraction volumique `phi = 0,30` — dans la fourchette 12–52 % mesurée par ChromEMT (Ou 2017).
+
+Trois conditions dures et une préférence molle :
+
+| | Contrainte | Nature |
+|---|---|---|
+| 1 | volume exclu, `d ≥ r_i + r_j` | dure |
+| 2 | longueur de liaison **maximale**, `d ≤ 1,15 · (r_i + r_j)` | dure, unilatérale |
+| 3 | confinement, `\|x\| ≤ R − r` | dure |
+| 4 | rappel radial ordonné par contenu LAD | molle, coupée au polissage |
+
+Et trois étapes : placer 46 domaines sphériques, y faire pousser une chaîne auto-évitante,
+recuire le tout en faisant croître les rayons (Lubachevsky–Stillinger).
+
+### Résultat : le critère de la semaine est atteint
+
+`make nucleus`, six graines, valeurs par défaut.
+
+| Graine | Chevauchement max | p99 | Paires en contact | Liaison la plus tendue | Secousses | Territorialité av. → ap. | Temps |
+|-------:|------------------:|----:|------------------:|----------------------:|----------:|-------------------------:|------:|
+| 0 | **0,749 %** | 0,475 % | 202 | +0,88 % | 0 | 38,0 → 27,0 | 25 s |
+| 1 | **0,696 %** | 0,552 % | 174 | +0,89 % | 0 | 37,7 → 26,8 | 24 s |
+| 2 | **0,703 %** | 0,558 % | 164 | +0,98 % | 0 | 38,0 → 26,9 | 24 s |
+| 3 | **0,661 %** | 0,411 % | 197 | +0,99 % | 1 | 38,0 → 26,4 | 38 s |
+| 4 | **0,735 %** | 0,563 % | 169 | +0,95 % | 1 | 37,9 → 27,3 | 38 s |
+| 5 | **0,776 %** | 0,685 % | 118 | +0,86 % | 1 | 38,0 → 27,0 | 39 s |
+
+Aucune bille hors du noyau dans aucun cas, et **8 082 billes** dans la fourchette demandée.
+
+Le critère de la feuille de route — « un noyau diploïde, ~6 000–10 000 billes TAD, sans
+interpénétration » — demande un seuil. Une seule tolérance, **1 % en relatif**, appliquée aux
+trois conditions dures : le chevauchement (1 % du contact, soit 3,3 nm sur des billes de 334 nm
+de diamètre), la tension de liaison, et le confinement. Une chaîne tendue 20 % au-delà de sa
+limite viole une condition autant qu'une interpénétration, et c'est précisément la signature des
+cages octaédriques décrites plus bas — un critère qui ne regarderait que le chevauchement les
+laisserait passer.
+
+À lire correctement : le polissage **s'arrête dès que le critère est tenu**. Ces valeurs disent
+donc que la barre est franchie, pas jusqu'où le solveur descendrait — resserrer la tolérance le
+fait descendre plus bas et coûter plus cher, ce qui est le réglage attendu et non une propriété
+du modèle.
+
+### Ce qui est imposé, ce qui est hérité, ce qui est mesuré
+
+Trois familles de nombres qu'il ne faut pas confondre, et c'est la leçon de méthode de la
+semaine.
+
+**Imposé.** L'absence d'interpénétration, le confinement, l'intégrité des chaînes sont des
+conditions que le solveur applique. Les mesurer vérifie le solveur, pas la biologie.
+
+**Hérité.** Une relaxation sous contraintes ne fait **jamais** se croiser deux chaînes : la
+topologie du noyau est celle de son initialisation. La territorialité est donc une **entrée**
+du modèle, pas un résultat. Ce qui la justifie est la mitose — les chromosomes se décondensent
+là où la télophase les a laissés, ils n'ont pas à se trier. Le seul énoncé vérifiable est que
+le recuit la conserve : indice de territorialité **38,0 à l'initialisation, 26,4 à 27,0 après
+recuit**, soit environ **70 % de conservation**, pour un entremêlement de 31 %.
+
+Un modèle qui afficherait « territoires chromosomiques reproduits » sur cette base mentirait.
+
+**Mesuré.** Reste la stratification radiale, qui est demandée par le terme 4 et peut ne pas être
+obtenue. Elle l'est : corrélation de Pearson entre fraction LAD et rayon **+0,66 à +0,71**,
+quartile le plus LAD à **0,87** du rayon nucléaire contre **0,66** pour le moins LAD. Sans le
+terme 4, le même noyau donne **+0,091** et 0,694 contre 0,654 — la stratification vient bien du
+modèle, et le contrôle le montre.
+
+### Le résultat de fond : « en LAD » n'est pas « à la lamina »
+
+Le DamID dit qu'environ 35 % du génome est en LAD. Il est tentant d'en conclure qu'un noyau
+correct doit mettre 35 % de sa chromatine au contact de l'enveloppe. La géométrie dit non, et
+elle le dit avec des nombres.
+
+Une bille **touche** l'enveloppe si l'écart entre sa surface et celle-ci est sous un demi-rayon.
+Cette bande fait 0,5 r d'épaisseur en position de centre, soit moins que l'écart entre deux
+couches empilées (~1,63 r) : elle ne contient donc qu'une monocouche. Deux bornes l'encadrent.
+
+- **À densité uniforme**, la part des billes qui s'y trouve est la part de volume de la coquille
+  dans la boule accessible aux centres : `[(R−r)³ − (R−1,5r)³] / (R−r)³`, soit environ
+  `1,5 · r/(R−r)`. À 750 kb par bille : **5,1 %**.
+- **En empilement maximal**, au plus `eta · 4(R−r)²/r²` billes touchent à la fois, avec
+  `eta ≤ 0,9069` la densité hexagonale. À 750 kb : **38 %**.
+
+Les deux sont **linéaires en r**, donc dépendent de la résolution du modèle :
+
+| Résolution | Billes | Rayon | Densité uniforme | Empilement max |
+|-----------:|-------:|------:|-----------------:|---------------:|
+| 3 Mb | 2 021 | 264,7 nm | 8,2 % | 57 % |
+| **750 kb** | **8 083** | **166,8 nm** | **5,1 %** | **38 %** |
+| 250 kb | 24 248 | 115,6 nm | 3,5 % | 27 % |
+| 100 kb | 60 621 | 85,2 nm | 2,6 % | 20 % |
+| 10 kb | 606 208 | 39,5 nm | 1,2 % | 9 % |
+
+Trois conséquences.
+
+1. **Les deux phrases ne sont pas la même.** « 35 % du génome est en LAD » décrit une
+   *séquence* ; « 35 % du génome touche la lamina » décrit une *configuration*, et la seconde ne
+   découle pas de la première. À 10 kb par bille, l'empilement maximal lui-même plafonne à 9 %.
+2. **Une fraction de LADs à la lamina n'est pas comparable entre deux modèles** de granularité
+   différente. Sans la résolution, le nombre ne veut rien dire.
+3. **Atteindre l'empilement maximal demande un noyau à croûte dense et intérieur creux.** C'est
+   exactement ce que produisait la première version de ce solveur, par accident, et elle se
+   bloquait (§ défauts).
+
+Le modèle, lui, donne deux nombres qu'il faut lire ensemble :
+
+- **2,6 % des billes** touchent l'enveloppe, contre 5,1 % à densité uniforme. La coquille est
+  donc **appauvrie d'un facteur 2**, et c'est attendu : le confinement est dur, et une chaîne a
+  moins de latitude contre la paroi qu'au milieu.
+- ces 2,6 % de billes portent **7 % du contenu LAD** du génome modélisé. À répartition
+  indifférente elles en porteraient 2,6 % : le LAD y est donc **enrichi 2,7 fois**.
+
+Autrement dit, le terme 4 **trie** sans réussir à **remplir** — et il ne le pourrait pas, la
+coquille étant plus petite que le contenu LAD quelle que soit la force du rappel. Les 7 % sont
+bien en dessous des 34 % de couverture LAD de la piste, et du même ordre que la lecture en
+cellule unique de Kind 2013, où chaque cellule ne contacte qu'une fraction du répertoire LAD et
+non l'ensemble.
+
+Et ces nombres sont **plus sensibles à la densité d'empilement qu'au terme LAD lui-même**, ce
+qui est la mise en garde à retenir. Toutes les lignes ci-dessous tiennent le critère de 1 % :
+
+| Variante | Billes à la lamina | Contenu LAD à la lamina | Part à densité uniforme |
+|---|---:|---:|---:|
+| défaut (`phi` 0,30, plancher de bruit 0,02) | **2,6 %** | **7 %** | 5,1 % |
+| plancher de bruit 0,05 | 6,1 % | 16 % | 5,1 % |
+| sans rappel radial du tout | 3,6 % | 4 % | 5,1 % |
+| `phi` 0,15 | 0,3 % | 1 % | 4,0 % |
+| `phi` 0,45 | 14,9 % | 36 % | 5,8 % |
+
+De 0,15 à 0,45 de fraction volumique, le contenu LAD au contact passe de 1 % à 36 % — un
+facteur 36 — là où mettre ou retirer le terme LAD le fait passer de 4 % à 7 %. Le réglage qui
+décide n'est donc pas celui qu'on croit.
+
+Deux lectures secondaires, qui tiennent toutes deux à la comparaison avec la part uniforme :
+
+- **La densité fait basculer le signe.** À `phi` 0,15 la coquille est très appauvrie (0,3 %
+  contre 4,0 %), à 0,30 elle l'est encore d'un facteur 2, à 0,45 elle est **enrichie** 2,6 fois
+  (14,9 % contre 5,8 %). Une chaîne confinée peu dense évite la paroi ; serrée, l'encombrement
+  lui impose une couche de surface. Le modèle reproduit cette transition sans qu'on la lui ait
+  demandée — c'est du volume exclu contre une paroi dure, rien de plus.
+- **Le terme LAD réduit le nombre de billes à la lamina tout en y concentrant le LAD.** Sans
+  lui, 3,6 % des billes touchent et portent 4 % du LAD, soit à peu près rien de particulier.
+  Avec lui, 2,6 % touchent mais portent 7 %. Il tire vers le centre plus de billes qu'il n'en
+  pousse vers la paroi, et ce qu'il gagne est un **tri**, pas un remplissage.
+
+### Défauts trouvés, tous dans mon propre code
+
+Chaque nombre cité est celui mesuré au moment où le défaut a été trouvé, avec le solveur dans
+l'état où il était alors : ils disent l'ampleur de chaque défaut, ils ne se comparent pas entre
+eux.
+
+**1. Une poussée radiale au lieu d'un rappel.** Le biais LAD s'écrivait comme un déplacement
+vers l'extérieur appliqué à chaque pas. Il s'accumule : son effet dépend du nombre de pas et
+non du modèle. Mesuré, 500 pas d'une poussée même faible (gain 0,03) plaquaient toutes les
+billes LAD contre l'enveloppe et y formaient une croûte bloquée — chevauchement résiduel
+**21 %**, contre **5 %** sans poussée du tout. C'est exactement l'erreur corrigée en semaine 5
+sur la ségrégation A/B, refaite dans un module neuf. Un test de régression la ferme maintenant :
+la même cible doit sortir de 300 pas et de 3 000.
+
+**2. Deux corrections d'initialisation qui n'ont rien corrigé.** La marche persistante de pas
+`2r` reposait régulièrement une bille sur une précédente : chevauchement initial **99 %**, deux
+billes confondues, 56 512 paires. Première correction, rendre la marche auto-évitante : les
+paires tombent à 32 760, et le maximum reste à **99 %**. Deuxième correction, une grille de
+hachage commune aux 46 copies au lieu d'une par copie — les territoires se recouvrent, donc les
+collisions qui comptent sont celles entre chaînes différentes : 34 250 paires, maximum toujours
+à **99 %**.
+
+Les deux corrections sont justes et sont restées. Aucune ne résout le problème, parce que le
+problème n'était pas là : une marche gloutonne à cette densité finit toujours par se piéger, et
+une fois piégée, la « moins mauvaise » direction pose la bille sur sa voisine. Ce qui a résolu,
+c'est d'**arrêter d'exiger une configuration initiale valide** — faire croître les rayons
+pendant le recuit (Lubachevsky–Stillinger) plutôt que de partir à taille pleine. Une leçon de
+diagnostic : deux hypothèses plausibles, chacune vérifiée, chacune fausse sur la cause.
+
+**3. Un tube non étanche pendant l'inflation.** Le solveur fait croître les rayons pour éviter
+de partir d'un empilement impossible. Mais à l'échelle `s`, deux billes liées s'excluent au
+rayon `s·r` en restant séparées d'au plus `stretch · 2r` : une troisième bille passe entre elles
+dès que **`s ≤ stretch / 2`**. À `s = 0,50` avec `stretch = 1,15` (seuil 0,575), une liaison
+restait bloquée 20 % au-delà de sa limite avec 5 % de chevauchement, quand tout le reste était
+déjà à 0,04 %. Le défaut par défaut est écarté en restant au-dessus du seuil.
+
+**4. Une liaison bilatérale.** Une longueur de liaison *imposée* se bat contre le volume exclu
+dans les replis serrés, et c'est la liaison qui gagne : écart aux liaisons 0,3 %, chevauchement
+résiduel **6 %**. Or le volume exclu est la condition, la liaison ne fait qu'empêcher la chaîne
+de casser. Rendue unilatérale — une longueur *maximale* — la frustration disparaît.
+
+**5. Une projection de Jacobi à gain 1.** Elle stagne dès que les corrections demandées à une
+bille se compensent : plafond à **21 %** de chevauchement. La sur-relaxation à 1,6 passe.
+
+**6. Des cages octaédriques, et √2 comme signature.** Le polissage a des points fixes. Sur
+certaines graines il tournait ses 4 000 itérations pour rester à 5,1 % de chevauchement avec
+une liaison tendue à **+20,42 %** au-delà de sa limite, quand d'autres graines finissaient sous
+0,5 %. Le même **+20,42 %** est ressorti à l'identique sur cinq configurations et trois graines
+différentes — une constante exacte n'est jamais un accident local.
+
+En regardant la géométrie : six billes de chr3:a, toutes à **0,98 × contact** les unes des
+autres, et trois liaisons de la même copie mais éloignées le long de la chaîne (|i−j| = 30, 31,
+45, 75, 89) tendues à **1,3849 × contact**. Or 1,3849 / 0,98 = **1,4132 ≈ √2**.
+
+C'est un **octaèdre régulier**. Six billes en contact mutuel forment une cage rigide, et trois
+liaisons tombées sur ses trois diagonales ne peuvent plus se raccourcir : raccourcir une
+diagonale écarterait les quatre billes de l'équateur, ce que les deux autres liaisons
+interdisent. La cage se verrouille elle-même, les liaisons compriment les arêtes de 2 %, et le
+rapport diagonale/arête d'un octaèdre étant √2, la tension se fige à
+`√2 · 0,98 / 1,15 − 1 = 20,4 %` — d'où la constante.
+
+Ce qui ne marche pas : prolonger le polissage (c'est un point fixe), et réchauffer globalement.
+Quatre réchauffages à 0,10 sur la graine 3 faisaient tomber la corrélation LAD-rayon de +0,665
+à +0,596 **sans régler le problème** : on ne quitte pas une cage de contacts par agitation,
+parce que ce n'est pas un puits peu profond, c'est une structure rigide.
+
+Ce qui marche : une **secousse locale** d'amplitude comparable au rayon d'une bille, appliquée
+aux seules billes fautives et à leur voisinage immédiat, suivie d'un polissage. Elle casse la
+cage sans défaire le noyau.
+
+**7. Une part de volume normalisée par `R³`.** La coquille de contact est une part du volume
+accessible aux *centres*, c'est-à-dire de la boule de rayon `R − r`, pas de `R`. L'erreur
+sous-estimait la référence de 10 % et sortait un enrichissement de 1,10 sur des points pourtant
+tirés uniformément — trouvé par le test écrit exprès pour ça.
+
+### Une erreur de méthode, commise et corrigée
+
+Après avoir diagnostiqué le défaut n° 3, j'ai écrit dans le code que le défaut était
+« topologique et définitif » et fait **échouer** `build()` en dessous du seuil. C'était une
+généralisation à partir d'un seul réglage. Vérification faite, la même configuration à `s = 0,50`
+polie avec un plancher de bruit de 0,05 au lieu de 0,02 et un gain de liaison de 1,0 au lieu de
+0,5 retombe à **0,35 %**. Le passage crée un défaut *difficile* à défaire, pas indéfaisable.
+
+L'exception a donc été retirée : la condition est calculée, rapportée dans la sortie, et les
+valeurs par défaut restent au-dessus du seuil parce que c'est gratuit — mais rien n'interdit
+d'aller en dessous, puisque la mesure dit que ça peut marcher.
+
+### Ce que ça ne dit pas
+
+**Rien sur un vrai noyau.** Aucune donnée de conformation ne contraint ces positions : le noyau
+n'est pas ajusté sur du Hi-C, il est seulement admissible géométriquement. La piste LAD est
+**synthétique** — chaîne de Markov à deux états calibrée sur les statistiques publiées de taille
+et de couverture, pas un fichier DamID. Les longueurs de chromosomes viennent de la **table
+interne**, pas du `hg38.chrom.sizes` officiel, faute de réseau (§ `DATA_SOURCES.md` § 8). Tout
+ça est estampillé dans le `.json` frère de chaque structure écrite, et imprimé par la CLI.
+
+**La territorialité est une entrée**, redite ici parce que c'est le piège principal.
+
+**Ce qui n'est pas modélisé** : le nucléole et les bras courts acrocentriques (marqués dans les
+données, pas traités), les NADs, les corps nucléaires, la différence de repliement entre Xa et
+Xi — les deux X sont nommés séparément mais construits pareil. Et une seule structure n'est pas
+un ensemble : c'est le principe n° 1 du projet, et c'est le livrable de la semaine 7.
+
+### Reproduire
+
+```console
+$ make nucleus                       # noyau par défaut, ~30 s
+$ make nucleus N=250000              # 24 000 billes, échelle Rao
+$ cd pipeline && PYTHONPATH=. .venv/bin/python -m pytest tests/test_nucleus.py
+```
+
+---
+
 ## S5 — Contact → distance : l'exposant n'est pas une constante
 
 ### Le dispositif
@@ -58,8 +327,10 @@ Trois lectures :
    alpha, c'est là qu'il est le moins déterminé.**
 
 Conséquence pratique pour le projet : reprendre `alpha = 1/3` d'un article sans regarder sa
-profondeur de séquençage n'est pas une convention, c'est une approximation non chiffrée. La
-semaine 6 calibrera alpha sur les données qu'elle utilise, pas sur la littérature.
+profondeur de séquençage n'est pas une convention, c'est une approximation non chiffrée. Alpha
+devra donc être calibré sur les données effectivement utilisées, pas sur la littérature — ce
+qui n'a pas encore eu lieu : la semaine 6 construit un noyau **sans aucune contrainte Hi-C**,
+et cette calibration attend les données réelles.
 
 ### La complétion géodésique n'est pas un raffinement
 

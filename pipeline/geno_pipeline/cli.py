@@ -318,6 +318,101 @@ def cmd_recon(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_nucleus(args: argparse.Namespace) -> int:
+    """Construit un noyau diploïde entier et rend compte de ce qu'il vaut.
+
+    La semaine 5 reconstruisait une chaîne. Ici : 46 chaînes, deux mètres d'ADN
+    diploïde, une sphère de dix micromètres, et rien qui se traverse.
+    """
+    try:
+        import scipy  # noqa: F401
+    except ImportError:
+        print("scipy absent — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    from .nucleus import build, capacity_at, gm12878, save
+
+    karyotype = gm12878()
+    print(f"caryotype      {karyotype}")
+    if karyotype.provenance == "builtin":
+        print("               ↑ longueurs de la table interne : le fichier officiel n'a "
+              "jamais pu être récupéré (voir docs/DATA_SOURCES.md § 8)")
+
+    print(f"\n  La coquille de contact d'un modèle à billes ne tient qu'une monocouche, "
+          f"et\n  son volume suit le rayon des billes. Ce que « être à la lamina » peut "
+          f"vouloir\n  dire dépend donc de la résolution du modèle, à densité nucléaire "
+          f"fixée ({args.phi:.0%}) :\n")
+    print("  résolution     billes      rayon    densité uniforme   borne d'empilement")
+    print("  ----------   ---------   --------   ----------------   ------------------")
+    for bp in (3_000_000, args.bp_per_bead, 250_000, 100_000, 10_000):
+        n, r_nm, cap = capacity_at(
+            karyotype.total_bp, bp, nuclear_radius=args.nuclear_radius, phi=args.phi
+        )
+        # Part de volume exacte de la coquille de contact dans la boule
+        # accessible aux centres — pas son approximation 1,5·r/(R−r), pour que
+        # ce tableau et celui d'ARCHITECTURE.md § 10 donnent les mêmes chiffres.
+        free = (args.nuclear_radius - r_nm / 1000.0) ** 3
+        u = (free - (args.nuclear_radius - 1.5 * r_nm / 1000.0) ** 3) / free
+        print(f"  {bp // 1000:>6} kb    {n:>9,}   {r_nm:>6.1f} nm   {u:>15.1%}   {cap:>18.0%}")
+
+    t0 = time.perf_counter()
+    nucleus = build(
+        karyotype,
+        bp_per_bead=args.bp_per_bead,
+        nuclear_radius=args.nuclear_radius,
+        phi=args.phi,
+        outward_gain=args.lamina,
+        seed=args.seed,
+    )
+    elapsed = time.perf_counter() - t0
+    b = nucleus.beads
+
+    print(
+        f"\nnoyau          {b.n:,} billes · {int(np.median(b.end - b.start)) // 1000} kb "
+        f"chacune · rayon {b.radius.mean() * 1000:.0f} nm · phi {b.phi:.0%} · "
+        f"R = {b.nuclear_radius:.1f} µm\n"
+        f"               construit en {elapsed:.0f} s, graine {nucleus.seed}"
+    )
+
+    if not nucleus.sealed:
+        print(
+            "\n  ! le tube de chaîne n'est pas étanche pendant l'inflation "
+            "(inflate_from ≤ stretch/2) :\n"
+            "    une chaîne peut traverser une liaison, et le défaut est difficile à défaire."
+        )
+
+    print(f"\n  conditions          {nucleus.final}")
+    print(f"  territorialité      {nucleus.after}")
+    print(f"                      à l'initialisation {nucleus.before.index:.1f}× — "
+          f"le recuit en conserve {nucleus.after.index / nucleus.before.index:.0%}")
+    print(f"  périphérie          {nucleus.rim}")
+
+    if args.out:
+        print(f"\n  écrit               {save(nucleus, Path(args.out))}")
+
+    ok = nucleus.final.acceptable(args.tol) and 6_000 <= b.n <= 10_000
+    print(
+        f"\n  Critère semaine 6 : un noyau diploïde de 6 000 à 10 000 billes, sans\n"
+        f"  interpénétration. Les trois contraintes dures sont jugées à la même\n"
+        f"  tolérance relative, {args.tol:.0%} — une chaîne tendue au-delà de sa limite\n"
+        f"  viole une condition autant qu'un chevauchement.\n"
+        f"  {b.n:,} billes · chevauchement maximal {nucleus.final.max_overlap:.3%} sur "
+        f"{nucleus.final.n_overlapping:,} paires\n"
+        f"  en contact · liaison la plus tendue +{nucleus.final.bond_stretch:.2%} · "
+        f"{nucleus.final.outside} bille hors du noyau. "
+        f"{'Atteint.' if ok else 'NON ATTEINT.'}"
+    )
+    print(
+        f"\n  Ce que ça ne dit pas : la territorialité est *entrée* dans le modèle par\n"
+        f"  l'initialisation — une relaxation ne fait jamais se croiser deux chaînes.\n"
+        f"  Le seul énoncé honnête est que le recuit la conserve. Et la stratification\n"
+        f"  radiale vient d'un terme du modèle, pas d'une mesure : la piste LAD porte\n"
+        f"  la source « {b.lad_source} ». La confrontation au DamID publié est le\n"
+        f"  livrable de la semaine 7, et elle attend le réseau."
+    )
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -373,6 +468,19 @@ def main(argv: list[str] | None = None) -> int:
         default=[500_000, 2_000_000, 8_000_000, 40_000_000, 200_000_000],
     )
     rc.set_defaults(fn=cmd_recon)
+
+    nu = sub.add_parser("nucleus", help="construit un noyau diploïde complet de billes TAD")
+    nu.add_argument("--bp-per-bead", type=int, default=750_000,
+                    help="taille génomique d'une bille — 750 kb est l'échelle TAD de Dixon")
+    nu.add_argument("--nuclear-radius", type=float, default=5.0, metavar="µm")
+    nu.add_argument("--phi", type=float, default=0.30,
+                    help="fraction du volume nucléaire occupée par les billes")
+    nu.add_argument("--lamina", type=float, default=0.05,
+                    help="force du rappel radial vers la périphérie (0 = aucun)")
+    nu.add_argument("--tol", type=float, default=0.01, help="chevauchement maximal toléré")
+    nu.add_argument("--seed", type=int, default=0)
+    nu.add_argument("--out", default=str(ROOT / "data" / "nucleus" / "gm12878.npz"))
+    nu.set_defaults(fn=cmd_nucleus)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)
