@@ -429,6 +429,182 @@ def cmd_nucleus(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_ensemble(args: argparse.Namespace) -> int:
+    """Produit N repliements du même génome et rend compte de ce qu'ils ont en commun.
+
+    Le principe n° 1 du projet dit qu'une structure unique est un artefact
+    statistique. Ici il devient un nombre : quelle part de « la bille i est à
+    telle profondeur » est un énoncé sur la bille, et quelle part sur le tirage.
+    """
+    try:
+        import scipy  # noqa: F401
+        import zarr  # noqa: F401
+    except ImportError as exc:
+        print(f"dépendance absente ({exc.name}) — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    import numpy as np
+
+    from .ensemble import (
+        REGIMES,
+        contacts,
+        frame,
+        generate,
+        medoid,
+        pending,
+        radial_by_quartile,
+        read,
+        reproducibility,
+        self_consistency,
+    )
+
+    out = Path(args.out)
+    if not args.report_only:
+        def progress(k: int, total: int, elapsed: float, quality) -> None:
+            if k % args.every == 0 or k == total:
+                left = elapsed / k * (total - k)
+                print(
+                    f"  {k:>4}/{total}   {elapsed / 60:5.1f} min écoulées, "
+                    f"~{left / 60:4.1f} restantes   (dernière : {quality.max_overlap:.3%})",
+                    flush=True,
+                )
+
+        done = args.n - len(pending(out)) if (out / ".zgroup").exists() and not args.fresh else 0
+        print(
+            f"génération   {args.n} structures × {args.workers or 'tous les'} cœurs\n"
+            f"             génome figé par lad_seed={args.lad_seed}, "
+            f"conformations depuis {args.first_seed}"
+            + (f"\n             {done} déjà en magasin, on complète" if done else "")
+            + "\n"
+        )
+        generate(
+            out,
+            n_structures=args.n,
+            workers=args.workers,
+            lad_seed=args.lad_seed,
+            first_seed=args.first_seed,
+            fresh=args.fresh,
+            progress=progress,
+            bp_per_bead=args.bp_per_bead,
+        )
+
+    e = read(out)
+    b = e.beads
+    radial = e.radial()
+    bp = float(np.median(b.end - b.start))
+
+    print(f"\nensemble     {e}")
+    print(f"             {out}")
+    print(
+        f"\n  conditions          chevauchement max sur l'ensemble "
+        f"{e.max_overlap.max():.3%} · liaison la plus tendue +{e.bond_stretch.max():.2%} ·\n"
+        f"                      {int(e.outside.sum())} bille hors du noyau · "
+        f"{int(e.shakes.sum())} secousses au total, "
+        f"{int((e.shakes > 0).sum())} structures concernées"
+    )
+
+    print("\n  — Il n'y a pas de repère commun —")
+    print(f"  {frame(e.coords, b.nuclear_radius, pairs=args.frame_pairs)}")
+    print(
+        "  Deux noyaux recuits séparément ne partagent ni orientation ni placement des\n"
+        "  territoires. Une variance par bille en x, y, z serait donc un nombre sans objet ;\n"
+        "  tout ce qui suit ne manipule que des grandeurs invariantes par rotation."
+    )
+
+    rep = reproducibility(radial, b.nuclear_radius)
+    print("\n  — Ce qui se reproduit d'un tirage à l'autre —")
+    print(f"  {rep}")
+    print(
+        f"  Autrement dit, {rep.icc:.0%} de la variance de profondeur tient à la bille et\n"
+        f"  {1 - rep.icc:.0%} au tirage. Une structure isolée porte donc les deux, sans les\n"
+        f"  distinguer — c'est exactement ce que le principe n° 1 interdit d'afficher seul."
+    )
+
+    print("\n  — Distributions radiales par quartile de contenu LAD —")
+    print("  quartile          fraction LAD    rayon moyen    dispersion entre billes")
+    for k, (mean, sd, lo, hi) in enumerate(radial_by_quartile(radial, b.lad), start=1):
+        tag = {1: "le moins LAD", 4: "le plus LAD"}.get(k, "")
+        print(
+            f"  Q{k} {tag:<13} {lo:>6.2f}–{hi:<6.2f} {mean:>11.3f}    {sd:>10.3f}"
+        )
+    print(f"  auto-cohérence avec la piste LAD d'entrée : r = {self_consistency(radial, b.lad):+.3f}")
+    print(
+        "  Ce r ne valide rien : la piste LAD est ce qui a fixé les rayons visés. Il dit\n"
+        "  seulement que le solveur a fait ce qu'on lui demandait."
+    )
+
+    index, total = medoid(radial)
+    print("\n  — Structure médoïde —")
+    print(
+        f"  index {index}, graine {int(e.seeds[index])} · distance cumulée "
+        f"{total[index]:.1f} contre {total.max():.1f} pour la plus excentrée\n"
+        f"  Médoïde **pour la distance entre profils radiaux** : deux structures aux\n"
+        f"  territoires disposés tout autrement peuvent avoir le même profil."
+    )
+
+    print("\n  — Ce que l'ensemble prédit d'une expérience Hi-C —")
+    print("  seuil   contacts/structure     trans   homologues   plateau P(s)")
+    print("  -----   ------------------   -------   ----------   ------------")
+    main: object | None = None
+    for cut in args.cutoffs:
+        sub = e.coords if cut == args.cutoffs[0] else e.coords[: args.sweep]
+        c = contacts(sub, b.radius, b.copy_id, b.labels, bp, cutoff=cut)
+        main = c if main is None else main
+        mark = "" if cut == args.cutoffs[0] else f"  ({len(sub)} structures)"
+        print(
+            f"  {cut:>5.2f}   {c.per_structure:>18,.0f}   {c.trans_fraction:>6.1%}   "
+            f"{c.homolog / max(c.trans, 1):>9.1%}   {c.plateau:>12.4f}{mark}"
+        )
+    print(
+        f"\n  Un seuil sous {1.15:.2f} ne mesurerait rien : c'est l'allongement maximal d'une\n"
+        f"  liaison, donc en dessous même deux billes voisines de chaîne ne « se touchent »\n"
+        f"  pas et il ne reste que les chevauchements résiduels.\n"
+    )
+
+    print("  P(s) n'a pas une pente, elle en a trois :")
+    print("  régime                        domaine      pente")
+    print("  ------------------------   ------------   -------")
+    for (name, sl), (_, lo, hi) in zip(main.regimes, REGIMES):
+        print(f"  {name:<24}   {lo / 1e6:>4.1f}–{hi / 1e6:<5.0f} Mb   {sl:>+7.2f}")
+    print(
+        f"  puis un plateau à P = {main.plateau:.4f} au-delà de 15 Mb.\n\n"
+        f"  Aucune matrice de contacts n'a été montrée au modèle : P(s) sort de la seule\n"
+        f"  géométrie. C'est donc la seule grandeur de cet ensemble qu'une expérience Hi-C\n"
+        f"  puisse contredire — et elle la contredit. Le Hi-C réel décroît en ~s^-1 de façon\n"
+        f"  continue de la centaine de kb à la dizaine de Mb. Ce modèle s'en approche au\n"
+        f"  régime polymère, puis **s'aplatit** au-delà de 15 Mb au lieu de continuer à\n"
+        f"  décroître. Ses territoires sont trop bien mélangés à l'intérieur : il reproduit\n"
+        f"  le *fait* des territoires, pas leur organisation interne. C'est précisément ce\n"
+        f"  que la semaine 8 — extrusion de boucles, polymère fin — doit apporter.\n\n"
+        f"  Le hasard pur donnerait une fraction trans de {1 - 1 / len(b.labels):.0%} et des\n"
+        f"  homologues à {1 / (len(b.labels) - 1):.1%} des trans."
+    )
+
+    print("\n  — Position radiale contre DamID mesuré —")
+    if args.damid:
+        from .ensemble import damid, read_bedgraph
+
+        track, rows = read_bedgraph(args.damid)
+        d = damid(radial, b.start, b.end, b.copy_id, b.labels, track, str(args.damid))
+        print(f"  {rows:,} intervalles lus sur {len(track)} chromosomes")
+        print(f"  {d}")
+        if d.covered < 0.5 * d.total:
+            print(
+                "  ! moins de la moitié des billes sont couvertes : la corrélation porte sur\n"
+                "    un sous-ensemble, et il faut dire lequel avant de la citer."
+            )
+    else:
+        print(
+            "  La feuille de route demande la corrélation entre position radiale modélisée\n"
+            "  et LADs DamID **publiés**. Aucune entrée DamID du manifeste n'a pu être\n"
+            "  récupérée (docs/DATA_SOURCES.md § 8), et aucun fichier n'a été fourni.\n"
+            "  Le calcul est écrit, testé sur une piste construite exprès, et se lance par\n"
+            "  `make ensemble DAMID=chemin.bedGraph` — il lui faut un fichier, pas une\n"
+            "  ligne de code de plus."
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -497,6 +673,31 @@ def main(argv: list[str] | None = None) -> int:
     nu.add_argument("--seed", type=int, default=0)
     nu.add_argument("--out", default=str(ROOT / "data" / "nucleus" / "gm12878.npz"))
     nu.set_defaults(fn=cmd_nucleus)
+
+    en = sub.add_parser(
+        "ensemble", help="produit N repliements du même génome et les caractérise"
+    )
+    en.add_argument("--n", type=int, default=200, help="nombre de structures")
+    en.add_argument("--workers", type=int, default=0, help="0 = tous les cœurs")
+    en.add_argument("--lad-seed", type=int, default=0,
+                    help="graine du *génome* — fixe pour tout l'ensemble")
+    en.add_argument("--first-seed", type=int, default=1_000,
+                    help="première graine de *conformation*")
+    en.add_argument("--bp-per-bead", type=int, default=750_000)
+    en.add_argument("--fresh", action="store_true",
+                    help="efface un magasin existant et recommence ; par défaut on le complète")
+    en.add_argument("--report-only", action="store_true",
+                    help="ne produit rien, se contente de relire et rendre compte")
+    en.add_argument("--cutoffs", type=float, nargs="+", default=[1.5, 1.25, 2.0],
+                    help="seuils de contact ; le premier sert à l'ensemble entier")
+    en.add_argument("--sweep", type=int, default=50,
+                    help="structures utilisées pour les seuils secondaires")
+    en.add_argument("--frame-pairs", type=int, default=20)
+    en.add_argument("--every", type=int, default=10, help="cadence des lignes d'avancement")
+    en.add_argument("--damid", default=None, metavar="BEDGRAPH",
+                    help="piste DamID mesurée, pour la corrélation demandée par la semaine 7")
+    en.add_argument("--out", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
+    en.set_defaults(fn=cmd_ensemble)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

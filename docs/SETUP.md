@@ -18,10 +18,11 @@ doit pas traîner derrière lui scipy, h5py et une pile scientifique complète.
 
 ## Pile de conformation — cooler et cooltools
 
-Nécessaire pour le Hi-C (`make hic-validate`, `make recon`) et pour le modèle de noyau
-(`make nucleus`), qui n'a besoin que de numpy et de `scipy.spatial` mais vit dans le même
-niveau. Elle est dans `pipeline/.venv`, que les cibles `make` utilisent automatiquement si
-elle existe — sinon elles retombent sur `python3` et signalent proprement ce qui manque.
+Nécessaire pour le Hi-C (`make hic-validate`, `make recon`), pour le modèle de noyau
+(`make nucleus`) — qui n'a besoin que de numpy et de `scipy.spatial` — et pour les ensembles
+(`make ensemble`), qui y ajoutent zarr. Elle vit dans `pipeline/.venv`, que les cibles `make`
+utilisent automatiquement si elle existe ; sinon elles retombent sur `python3` et signalent
+proprement ce qui manque.
 
 ```console
 $ cd pipeline
@@ -29,16 +30,20 @@ $ python3 -m venv .venv
 $ .venv/bin/pip install --upgrade pip wheel
 $ .venv/bin/pip install "setuptools==59.8.0"
 $ .venv/bin/pip install --no-build-isolation asciitree
-$ .venv/bin/pip install cooler cooltools "pandas<3" pytest
+$ .venv/bin/pip install cooler cooltools "pandas<3" "zarr<3" pytest
 ```
 
-### Pourquoi ces deux lignes bizarres
+### Pourquoi ces épinglages
 
 **`setuptools==59.8.0` puis `asciitree --no-build-isolation`.** `asciitree` est une
 dépendance transitive de `cooler` qui utilise des API `setuptools` retirées depuis. Avec un
 setuptools moderne, sa construction échoue sur `AttributeError: install_layout`, et
 l'installation de cooler s'arrête là. On lui fournit donc un setuptools d'époque, une seule
 fois, dans le venv.
+
+**`zarr<3`.** zarr 3 a remplacé `create_dataset` par `create_array` et changé la sémantique
+de `open_group`. Le magasin d'ensembles (`make ensemble`) écrit en API 2 ; l'épinglage évite
+une rupture silencieuse au premier `pip install -U`.
 
 **`pandas<3`.** `cooltools` 0.7.1 appelle `.idxmin()` sur une colonne entièrement NA dans
 `api/dotfinder.py:977`. pandas 2 émet un `FutureWarning` ; **pandas 3 lève une

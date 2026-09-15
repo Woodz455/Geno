@@ -315,3 +315,50 @@ s'excluent au rayon `s·r` mais restent séparées d'au plus `stretch·2r`, donc
 bille passe entre elles dès que **`s ≤ stretch / 2`**. En dessous du seuil une chaîne traverse
 une liaison, et le défaut est difficile à défaire. Le défaut n'est pas construit : il est
 mesuré (`docs/VALIDATION.md` § S6).
+
+---
+
+## 11. Ensembles — `ensemble.zarr`
+
+Le principe n° 1 du projet dit qu'une structure Hi-C unique est un artefact statistique. Un
+ensemble en est la conséquence dans le format : **un génome, N repliements**.
+
+```
+ensemble.zarr/
+  .zattrs           caryotype, assemblage, provenance des longueurs, lad_source,
+                    lad_seed, first_seed, réglages de construction, avertissement
+  beads/            copy_id, start, end, radius, lad, acrocentric     ← écrits UNE fois
+  coords    (N, n, 3) float32, un chunk par structure
+  quality/          seed, max_overlap, bond_stretch, outside, shakes  (N,)
+  done      (N,) bool
+```
+
+Le découpage en billes et la piste LAD ne portent **pas** d'indice de structure. Ce n'est pas
+une économie de place — 200 copies du génome pèseraient 10 Mo — c'est ce qui rend l'objet
+interprétable : si chaque structure portait le sien, la variabilité mesurée mélangerait la
+variabilité de repliement et celle du génome, sans moyen de les séparer après coup. La
+génération le vérifie à chaque structure plutôt que de s'y fier (§ `ensemble/generate`).
+
+`done` est écrit **après** les coordonnées : une génération interrompue ne prétend jamais
+contenir une structure à moitié écrite, et `--resume` reprend où elle s'est arrêtée.
+
+### Ce qu'un ensemble permet de mesurer, et ce qu'il interdit
+
+Deux noyaux recuits séparément ne partagent **aucun repère** : ni orientation — rien ne
+distingue un axe dans une sphère — ni placement des territoires, puisque chr7:a atterrit
+ailleurs à chaque tirage. Une variance par bille en x, y, z est donc un nombre sans objet, et
+l'alignement de Procruste ne la sauve pas. C'est mesuré, pas supposé : après alignement
+optimal, **88 % de l'écart au hasard subsiste** ([`VALIDATION.md` § S7](VALIDATION.md)).
+
+Restent les grandeurs invariantes par rotation, et elles seules :
+
+| Grandeur | Ce qu'elle porte |
+|---|---|
+| position radiale par bille | profondeur nucléaire — la quantité comparable entre structures |
+| distances par paires | carte de contacts, P(s), fraction trans |
+| par copie | rayon de giration, profondeur du centroïde |
+
+Conséquence pour le viewer (semaine 10 et suivantes) : ce qui se streame d'un ensemble n'est
+pas « la » structure plus un nuage de points, c'est **le médoïde plus un scalaire de
+variabilité par bille** — et ce scalaire est une variabilité *de profondeur*, pas de position.
+L'interface doit dire laquelle.

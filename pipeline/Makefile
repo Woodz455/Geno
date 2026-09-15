@@ -5,7 +5,7 @@ LOCK  := $(HERE)/scripts/lock.sh
 PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
 GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble
 
 help:
 	@echo "Geno — pipeline de données"
@@ -35,6 +35,8 @@ help:
 	@echo "  make hic-validate    plante une structure Hi-C connue et valide les callers"
 	@echo "  make recon           balaie l'exposant contact vers distance"
 	@echo "  make nucleus [N=…]   construit un noyau diploïde complet"
+	@echo "  make ensemble [N=…]  N repliements du même génome (défaut 200, ~40 min)"
+	@echo "                       reprend un magasin existant ; DAMID=… ajoute la corrélation"
 
 data:           ; @TIERS="core annot" $(FETCH)
 data-core:      ; @TIERS="core" $(FETCH)
@@ -56,6 +58,7 @@ test:           ; @cd $(HERE) && PYTHONPATH=$(HERE) $(PY) -m pytest
 hic-validate:   ; @$(GENO) hic $(if $(N),--bins $(N),)
 recon:          ; @$(GENO) recon $(if $(N),--n $(N),)
 nucleus:        ; @$(GENO) nucleus $(if $(N),--bp-per-bead $(N),)
+ensemble:       ; @$(GENO) ensemble $(if $(N),--n $(N),) $(if $(DAMID),--damid $(DAMID),)
 
 query:
 	@test -n "$(Q)" || { echo "usage : make query Q=chr7:5,527,000-5,530,600" >&2; exit 2; }

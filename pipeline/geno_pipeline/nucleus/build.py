@@ -243,15 +243,22 @@ def build(
     territory_steps: int = 700,
     tol: float = 0.01,
     seed: int = 0,
+    lad_seed: int | None = None,
     trace_every: int = 0,
 ) -> Nucleus:
+    # `seed` tire la conformation ; `lad_seed` tire le génome — le découpage en
+    # billes et la piste LAD. Les séparer n'a d'intérêt que pour un ensemble, et
+    # là c'est indispensable : faire varier la seule graine ferait varier la piste
+    # LAD d'une structure à l'autre, et on mesurerait la variabilité de **deux**
+    # génomes différents au lieu de la variabilité de repliement d'un seul. Par
+    # défaut les deux coïncident, ce qui garde `build(seed=k)` reproductible.
     karyotype = karyotype or gm12878()
     beads = segment(
         karyotype,
         bp_per_bead=bp_per_bead,
         nuclear_radius=nuclear_radius,
         phi=phi,
-        seed=seed,
+        seed=seed if lad_seed is None else lad_seed,
     )
 
     centres, t_radius = _territories(
@@ -295,6 +302,10 @@ def build(
         bond_len=beads.bond_limits(bond_stretch),
         outward=beads.radial_targets(seed),
     )
+    # `radial_targets` prend la graine de *conformation*, pas celle du génome :
+    # départager deux billes de même contenu LAD est une indétermination du
+    # placement, pas une propriété de la séquence. L'ensemble doit donc en
+    # explorer les deux issues.
     final, trace = relax(
         sys,
         steps=steps,

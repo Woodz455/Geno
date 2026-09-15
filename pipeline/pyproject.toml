@@ -11,7 +11,17 @@ dev = ["pytest>=7.4"]
 # viewer ne doit pas traîner scipy et h5py derrière lui.
 # pandas<3 : cooltools 0.7.1 appelle .idxmin() sur une colonne toute-NA dans
 # api/dotfinder.py:977, ce qui lève sous pandas 3. Voir docs/SETUP.md.
-hic = ["cooler>=0.10", "cooltools>=0.7", "pandas>=2,<3", "scipy", "h5py", "bioframe"]
+# zarr<3 : zarr 3 a remplacé create_dataset par create_array et changé la
+# sémantique de open_group. Le magasin d'ensembles écrit en API 2. Voir docs/SETUP.md.
+hic = [
+    "cooler>=0.10",
+    "cooltools>=0.7",
+    "pandas>=2,<3",
+    "scipy",
+    "h5py",
+    "bioframe",
+    "zarr>=2.16,<3",
+]
 
 [project.scripts]
 geno = "geno_pipeline.cli:main"
