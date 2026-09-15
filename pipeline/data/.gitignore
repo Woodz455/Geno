@@ -1,0 +1,8 @@
+# Les données brutes ne sont jamais versionnées — seul le manifeste l'est.
+raw/
+# Artefacts reconstructibles : `make build-store`, `make bench`, `make nucleus`.
+store/
+bench/
+synthetic/
+nucleus/
+ensemble/

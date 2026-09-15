@@ -1,0 +1,40 @@
+# Geno — manifeste des données. Une ligne = un fichier source. Séparateur : TABULATION.
+#
+# status  ok          URL confirmée par un téléchargement réussi, empreinte verrouillée
+#         unverified  URL écrite depuis la documentation, jamais récupérée — à confirmer au premier fetch
+#         unresolved  accession pas encore figée ; `make data` REFUSE de deviner et échoue sur cette ligne
+#
+# sha256  PENDING tant qu'aucun téléchargement n'a eu lieu. `make data-lock` l'inscrit.
+#         Une fois inscrite, toute divergence fait échouer le fetch.
+#
+# tier    core seq annot hic nuclear clinical
+#
+id	tier	status	license	url	sha256	bytes	notes
+hg38.chrom.sizes	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes	PENDING	0	Tailles de chromosomes, référentiel primaire
+hg38.cytoband	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBandIdeo.txt.gz	PENDING	0	Bandes G pour l'idéogramme
+hg38.gap	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/gap.txt.gz	PENDING	0	Trous d'assemblage — délimite les regions non mesurables
+hs1.chrom.sizes	core	unverified	public-domain	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.chrom.sizes	PENDING	0	T2T-CHM13v2.0 sous son nom UCSC hs1
+chain.hg38.to.hs1	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHs1.over.chain.gz	PENDING	0	Conversion de coordonnées, sens hg38 vers T2T
+chain.hs1.to.hg38	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/liftOver/hs1ToHg38.over.chain.gz	PENDING	0	Conversion en sens inverse
+hg38.2bit	seq	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit	PENDING	0	Séquence de référence pour le niveau 6 (double hélice)
+hs1.2bit	seq	unverified	public-domain	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.2bit	PENDING	0	Séquence T2T — centromères et ADNr
+gencode.annotation.gtf	annot	unresolved	gencode-free	UNRESOLVED	PENDING	0	Numéro de release à figer. Base ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/
+encode.ccres	annot	unresolved	encode	UNRESOLVED	PENDING	0	cCREs SCREEN. Accession de fichier ENCODE à figer
+chromhmm.gm12878	annot	unresolved	encode	UNRESOLVED	PENDING	0	Segmentation 18 etats sur GM12878
+ctcf.peaks.gm12878	annot	unresolved	encode	UNRESOLVED	PENDING	0	ChIP-seq CTCF GM12878 — accession ENCSR a figer
+rad21.peaks.gm12878	annot	unresolved	encode	UNRESOLVED	PENDING	0	Cohesine, ancres de boucles
+ctcf.motif.orientation	annot	unresolved	jaspar-free	UNRESOLVED	PENDING	0	Scan du motif MA0139 sur hg38 — orientation indispensable a l'extrusion
+rao2014.gm12878.hic	hic	unverified	geo-free	https://ftp.ncbi.nlm.nih.gov/geo/series/GSE63nnn/GSE63525/suppl/GSE63525_GM12878_insitu_primary%2Breplicate_combined_30.hic	PENDING	0	Carte de reference. Nom de fichier a confirmer au premier fetch
+rao2014.gm12878.subcompartments	hic	unverified	geo-free	https://ftp.ncbi.nlm.nih.gov/geo/series/GSE63nnn/GSE63525/suppl/GSE63525_GM12878_subcompartments.bed.gz	PENDING	0	Sous-compartiments A1 A2 B1 B2 B3 B4 — verite terrain pour la semaine 3
+rao2014.gm12878.loops	hic	unverified	geo-free	https://ftp.ncbi.nlm.nih.gov/geo/series/GSE63nnn/GSE63525/suppl/GSE63525_GM12878_primary%2Breplicate_HiCCUPS_looplist.txt.gz	PENDING	0	Boucles publiees — cible de recoupement a 80 pourcent
+rao2014.gm12878.domains	hic	unverified	geo-free	https://ftp.ncbi.nlm.nih.gov/geo/series/GSE63nnn/GSE63525/suppl/GSE63525_GM12878_primary%2Breplicate_Arrowhead_domainlist.txt.gz	PENDING	0	Domaines Arrowhead
+4dn.gm12878.mcool	hic	unresolved	4dn	UNRESOLVED	PENDING	0	Accession 4DNFI a figer sur data.4dnucleome.org — format cooler multi-resolution
+4dn.microc.h1	hic	unresolved	4dn	UNRESOLVED	PENDING	0	Micro-C H1-hESC pour l'echelle fine
+4dn.microc.hff	hic	unresolved	4dn	UNRESOLVED	PENDING	0	Micro-C HFFc6 — second type cellulaire, controle
+lads.damid.lmnb1	nuclear	unresolved	4dn	UNRESOLVED	PENDING	0	Contrainte de peripherie — indispensable a la reconstruction S6
+tsaseq.son	nuclear	unresolved	4dn	UNRESOLVED	PENDING	0	Distance aux speckles nucleaires
+repliseq.gm12878	nuclear	unresolved	encode	UNRESOLVED	PENDING	0	Timing de replication
+clinvar.vcf	clinical	unverified	public-domain	https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz	PENDING	0	Variants et significations cliniques
+gwas.catalog	clinical	unverified	ebi-free	https://ftp.ebi.ac.uk/pub/databases/gwas/releases/latest/gwas-catalog-associations_ontology-annotated.tsv	PENDING	0	Associations genotype-phenotype
+gnomad.constraint	clinical	unresolved	gnomad-free	UNRESOLVED	PENDING	0	pLI et LOEUF, gnomAD v4 — chemin exact a figer
+mondo.obo	clinical	unverified	cc-by-4.0	http://purl.obolibrary.org/obo/mondo.obo	PENDING	0	Ontologie de maladies — remplace OMIM qui n'est pas redistribuable

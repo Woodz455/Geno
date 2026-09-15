@@ -1,0 +1,75 @@
+SHELL := /usr/bin/env bash
+HERE  := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+FETCH := $(HERE)/scripts/fetch.sh
+LOCK  := $(HERE)/scripts/lock.sh
+PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
+GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
+
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble
+
+help:
+	@echo "Geno — pipeline de données"
+	@echo
+	@echo "  make data            core + annot (les jeux légers, à faire en premier)"
+	@echo "  make data-core       tailles, bandes, trous, chaînes de conversion"
+	@echo "  make data-seq        génomes de référence en 2bit (~1,6 Go)"
+	@echo "  make data-annot      GENCODE, cCREs, ChromHMM, CTCF, cohésine"
+	@echo "  make data-hic        Hi-C et Micro-C (plusieurs dizaines de Go)"
+	@echo "  make data-nuclear    LADs, TSA-seq, Repli-seq"
+	@echo "  make data-clinical   ClinVar, GWAS, contrainte, ontologies"
+	@echo "  make data-all        tout"
+	@echo
+	@echo "  make data-lock       inscrit les empreintes des fichiers récupérés"
+	@echo "  make verify          recontrôle les empreintes déjà verrouillées"
+	@echo "  make selftest        prouve la vérification sans réseau"
+	@echo "  make status          état du manifeste"
+	@echo
+	@echo "Socle 1D"
+	@echo "  make build-store     construit le magasin d'intervalles depuis les fixtures"
+	@echo "  make query Q=…       interroge une région, ex. Q=chr7:5,527,000-5,530,600"
+	@echo "  make tracks          liste les pistes du magasin"
+	@echo "  make bench [N=…]     latence de requête à l'échelle réelle"
+	@echo "  make test            suite de tests"
+	@echo
+	@echo "Conformation"
+	@echo "  make hic-validate    plante une structure Hi-C connue et valide les callers"
+	@echo "  make recon           balaie l'exposant contact vers distance"
+	@echo "  make nucleus [N=…]   construit un noyau diploïde complet"
+	@echo "  make ensemble [N=…]  N repliements du même génome (défaut 200, ~40 min)"
+	@echo "                       reprend un magasin existant ; DAMID=… ajoute la corrélation"
+
+data:           ; @TIERS="core annot" $(FETCH)
+data-core:      ; @TIERS="core" $(FETCH)
+data-seq:       ; @TIERS="seq" $(FETCH)
+data-annot:     ; @TIERS="annot" $(FETCH)
+data-hic:       ; @TIERS="hic" $(FETCH)
+data-nuclear:   ; @TIERS="nuclear" $(FETCH)
+data-clinical:  ; @TIERS="clinical" $(FETCH)
+data-all:       ; @TIERS="all" $(FETCH)
+
+data-lock:      ; @$(LOCK)
+verify:         ; @TIERS="all" $(FETCH)
+selftest:       ; @$(HERE)/scripts/selftest.sh
+
+build-store:    ; @$(GENO) build
+tracks:         ; @$(GENO) tracks
+bench:          ; @$(GENO) bench $(if $(N),--n $(N),)
+test:           ; @cd $(HERE) && PYTHONPATH=$(HERE) $(PY) -m pytest
+hic-validate:   ; @$(GENO) hic $(if $(N),--bins $(N),)
+recon:          ; @$(GENO) recon $(if $(N),--n $(N),)
+nucleus:        ; @$(GENO) nucleus $(if $(N),--bp-per-bead $(N),)
+ensemble:       ; @$(GENO) ensemble $(if $(N),--n $(N),) $(if $(DAMID),--damid $(DAMID),)
+
+query:
+	@test -n "$(Q)" || { echo "usage : make query Q=chr7:5,527,000-5,530,600" >&2; exit 2; }
+	@$(GENO) query "$(Q)" --time
+
+status:
+	@awk -F'\t' '\
+	  /^#/ || $$1=="id" || NF<2 {next} \
+	  {n[$$3]++; t[$$2]++; total++} \
+	  END { \
+	    printf "%d entrées\n\n", total; \
+	    printf "  par statut\n"; for (k in n) printf "    %-12s %d\n", k, n[k]; \
+	    printf "\n  par tier\n";  for (k in t) printf "    %-12s %d\n", k, t[k]; \
+	  }' $(HERE)/data/manifest.tsv

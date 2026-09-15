@@ -1,0 +1,717 @@
+"""CLI `geno` — construire le magasin d'intervalles et l'interroger."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import random
+import statistics
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+from . import locus as locus_mod
+from .intervals import Store, Track, write_store
+from .locus import RegionError, render, report
+from .parsers import read_track
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_STORE = ROOT / "data" / "store"
+DEFAULT_TRACKS = ROOT / "fixtures" / "tracks.json"
+BENCH_STORE = ROOT / "data" / "bench"
+
+
+def cmd_build(args: argparse.Namespace) -> int:
+    spec_path = Path(args.tracks)
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    base = spec_path.parent
+    out = Path(args.out)
+
+    tracks = {t["name"]: read_track(t, base) for t in spec["tracks"]}
+    meta = {
+        "assembly": spec.get("assembly", "?"),
+        "source": spec.get("source", spec_path.name),
+        "built_from": str(spec_path),
+    }
+    index = write_store(out, tracks, meta)
+
+    print(f"magasin écrit en {out}")
+    print(f"  assemblage  {index['assembly']}   source  {index['source']}")
+    total = 0
+    for name, n in index["tracks"].items():
+        print(f"  {name:<14} {n:>9,} intervalles")
+        total += n
+    print(f"  {'total':<14} {total:>9,}")
+    return 0
+
+
+def cmd_query(args: argparse.Namespace) -> int:
+    store = Store(Path(args.store))
+    try:
+        t0 = time.perf_counter_ns()
+        rep = report(store, args.region, args.track or None, args.flank)
+        elapsed = (time.perf_counter_ns() - t0) / 1e6
+    except (RegionError, KeyError) as exc:
+        print(f"erreur : {exc}", file=sys.stderr)
+        return 2
+    finally:
+        pass
+
+    if args.json:
+        payload = rep.to_dict()
+        payload["elapsed_ms"] = round(elapsed, 4)
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(render(rep))
+        if args.time:
+            print(f"  {elapsed:.3f} ms")
+    store.close()
+    return 0 if not rep.is_empty() else 1
+
+
+def cmd_tracks(args: argparse.Namespace) -> int:
+    store = Store(Path(args.store))
+    print(f"{store.path}   assemblage {store.assembly}   source {store.source}")
+    for name, track in store.tracks.items():
+        chroms = ", ".join(track.chroms) if len(track.chroms) <= 6 else f"{len(track.chroms)} chromosomes"
+        print(f"  {name:<14} {len(track):>9,} intervalles   {chroms}")
+    store.close()
+    return 0
+
+
+def _synthetic(n: int, seed: int = 0):
+    """Intervalles synthétiques à l'échelle réelle, y compris quelques très longs.
+
+    Les gènes longs sont le cas qui casse un index naïf ; le benchmark serait
+    malhonnête sans eux.
+    """
+    rng = np.random.default_rng(seed)
+    sizes = {"chr1": 248_956_422, "chr2": 242_193_529, "chr7": 159_345_973, "chr17": 83_257_441}
+    per = n // len(sizes)
+    for chrom, size in sizes.items():
+        starts = rng.integers(0, size - 3_000_000, per)
+        lengths = rng.integers(200, 40_000, per)
+        # 0,2 % d'intervalles très longs : DMD fait 2,2 Mb, CNTNAP2 2,3 Mb.
+        long_ix = rng.choice(per, max(1, per // 500), replace=False)
+        lengths[long_ix] = rng.integers(500_000, 2_400_000, long_ix.size)
+        for s, ln in zip(starts.tolist(), lengths.tolist()):
+            yield chrom, s, s + ln, {"name": "syn"}
+
+
+def cmd_bench(args: argparse.Namespace) -> int:
+    out = Path(args.store)
+    stamp = out / ".n"
+    if not (out / "index.json").exists() or not stamp.exists() or stamp.read_text() != str(args.n):
+        print(f"construction d'un magasin synthétique de {args.n:,} intervalles…")
+        t0 = time.perf_counter()
+        write_store(
+            out,
+            {"syn": _synthetic(args.n)},
+            {"assembly": "synthetic", "source": "bench"},
+        )
+        stamp.write_text(str(args.n))
+        print(f"  construit en {time.perf_counter() - t0:.1f} s")
+
+    track = Track(out / "syn")
+    rng = random.Random(1)
+    chroms = track.chroms
+    sizes = {"chr1": 248_956_422, "chr2": 242_193_529, "chr7": 159_345_973, "chr17": 83_257_441}
+
+    # La latence suit le nombre de features ramenées, pas la taille du magasin.
+    # Un benchmark qui mélange les tailles de fenêtre masque exactement ça.
+    windows = [
+        (3_000, "un gène"),
+        (30_000, "un gène + flancs"),
+        (300_000, "un TAD"),
+        (3_000_000, "un compartiment"),
+    ]
+
+    print(f"\n  {len(track):,} intervalles · {args.queries} requêtes par ligne\n")
+    print(f"  {'fenêtre':<25} {'features':>7}   {'index seul':>22}   {'index + attributs':>22}")
+    print(f"  {'-' * 25} {'-' * 7}   {'-' * 22}   {'-' * 22}")
+
+    worst_interactive = 0.0
+    for width, label in windows:
+        queries = []
+        for _ in range(args.queries):
+            c = rng.choice(chroms)
+            s = rng.randrange(0, sizes[c] - width - 1)
+            queries.append((c, s, s + width))
+
+        cells, hits = [], 0
+        for is_query, fn in ((False, track.count), (True, track.query)):
+            for c, s, e in queries[:50]:  # chauffe
+                fn(c, s, e)
+            times = []
+            for c, s, e in queries:
+                t0 = time.perf_counter_ns()
+                r = fn(c, s, e)
+                times.append((time.perf_counter_ns() - t0) / 1e6)
+                hits += r if isinstance(r, int) else len(r)
+            times.sort()
+            p99 = times[min(len(times) - 1, int(len(times) * 0.99))]
+            cells.append(f"méd {statistics.median(times):6.3f}  p99 {p99:6.3f}")
+            if is_query and width <= 30_000:
+                worst_interactive = max(worst_interactive, p99)
+
+        n = hits // (2 * len(queries))
+        print(f"  {width // 1000:>4} kb  {label:<17} {n:>7,}   {cells[0]:>22}   {cells[1]:>22}")
+
+    track.close()
+    print(
+        f"\n  Cible semaine 2 : < 1 ms sur une requête de locus.\n"
+        f"  p99 à l'échelle d'un locus (≤ 30 kb), attributs compris : {worst_interactive:.3f} ms."
+    )
+    print(
+        "  Au-delà, le coût suit le nombre de features : ~3 µs chacune, dominés par le\n"
+        "  parsing JSON des attributs. Une requête qui ramène un compartiment entier est un\n"
+        "  export, pas une interaction — la fiche de la semaine 13 clique UNE bille."
+    )
+    return 0
+
+
+def cmd_hic(args: argparse.Namespace) -> int:
+    """Plante une structure connue, fait tourner les callers, mesure l'accord.
+
+    C'est la seule configuration où « le caller est correct » est vérifiable :
+    sur des données réelles, un désaccord avec Rao 2014 ne dit pas lequel des
+    deux a tort.
+    """
+    import logging as _logging
+    import warnings
+
+    _logging.disable(_logging.INFO)
+    # Bruit de cooltools 0.7 sur pandas 2 : `.idxmin()` sur colonne toute-NA.
+    # C'est exactement ce qui lève une ValueError sous pandas 3 — d'où l'épinglage.
+    warnings.simplefilter("ignore", FutureWarning)
+    try:
+        import cooler
+    except ImportError:
+        print(
+            "la pile Hi-C n'est pas installée dans cet interpréteur.\n"
+            "  → voir docs/SETUP.md ; make hic-validate utilise pipeline/.venv",
+            file=sys.stderr,
+        )
+        return 2
+
+    from .hic import (
+        balance,
+        compartments,
+        gc_track,
+        loops,
+        match_pairs,
+        match_positions,
+        plant,
+        tad_boundaries,
+        write_cool,
+    )
+
+    out = Path(args.out)
+    print(f"plantation  {args.bins:,} bins × {args.resolution // 1000} kb, graine {args.seed}")
+    bins, pixels, truth = plant(n_bins=args.bins, resolution=args.resolution, seed=args.seed)
+    write_cool(out, bins, pixels)
+    n_contacts = int(pixels["count"].sum())
+    print(
+        f"            {truth.span / 1e6:.1f} Mb · {n_contacts:,} contacts · "
+        f"{len(pixels):,} pixels · {len(truth.boundaries)} TADs · {len(truth.loops)} boucles"
+    )
+    print(f"            écrit en {out}\n")
+
+    clr = cooler.Cooler(str(out))
+    balance(clr)
+    clr = cooler.Cooler(str(out))
+
+    cv = lambda m: float(np.nanstd(np.nansum(m, 1)) / np.nanmean(np.nansum(m, 1)))  # noqa: E731
+    cv_raw, cv_bal = cv(clr.matrix(balance=False)[:]), cv(clr.matrix(balance=True)[:])
+    w = clr.bins()["weight"][:].to_numpy()
+    ok = np.isfinite(w)
+    r_bias = float(np.corrcoef(np.log(w[ok]), -np.log(truth.bias[ok]))[0, 1])
+    print(f"  équilibrage ICE     CV des marginales {cv_raw:.3f} → {cv_bal:.3f}"
+          f"   ·  poids vs biais planté r = {r_bias:+.3f}")
+
+    table = compartments(clr, phasing_track=gc_track(truth))
+    e1 = table["E1"].to_numpy()
+    ok = np.isfinite(e1)
+    acc = float((np.where(e1[ok] > 0, 1, -1) == truth.compartment[ok]).mean())
+    print(f"  compartiments A/B   accord {acc:.1%} sur {ok.sum():,} bins"
+          f"   ·  signe orienté par la piste GC")
+
+    ins = tad_boundaries(clr, args.window)
+    called = np.flatnonzero(ins["is_boundary"].fillna(False).to_numpy())
+    a = match_positions(called, truth.boundaries, tol=1)
+    print(f"  frontières de TAD   {a}   ·  fenêtre {args.window // 1000} kb, ±1 bin")
+
+    d = loops(clr)
+    pairs = np.c_[d["start1"].to_numpy() // clr.binsize, d["start2"].to_numpy() // clr.binsize]
+    b = match_pairs(pairs, truth.loops, tol=2)
+    print(f"  boucles             {b}   ·  ±2 bins")
+
+    worst = min(acc, a.f1, b.f1)
+    print(f"\n  Le plus faible des accords : {worst:.0%}. "
+          f"En dessous de 80 %, c'est un bug du caller, pas un mauvais jour.")
+    return 0 if worst >= 0.8 else 1
+
+
+def cmd_recon(args: argparse.Namespace) -> int:
+    """Balaie l'exposant de conversion contact → distance contre une géométrie connue.
+
+    Le Hi-C réel ne permet pas cette mesure : la structure 3D y est précisément
+    l'inconnue. Ici on fabrique la conformation, on en dérive les contacts par un
+    modèle direct d'exposant `gamma`, et on regarde quel `alpha` la restitue.
+    """
+    import logging as _logging
+    import warnings
+
+    _logging.disable(_logging.INFO)
+    warnings.simplefilter("ignore")
+    try:
+        import scipy  # noqa: F401
+    except ImportError:
+        print("scipy absent — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    from .hic.polymer import chain, contacts
+    from .hic.reconstruct import sweep
+
+    alphas = np.round(np.arange(args.lo, args.hi + 1e-9, args.step), 4)
+    inv = 1.0 / args.gamma
+
+    conf0 = chain(n=args.n, seed=0)
+    r = conf0.radial()
+    print(f"conformation   {args.n} billes, {args.conformations} tirages")
+    print(
+        f"               radial A {r[conf0.compartment == 1].mean():.3f} vs "
+        f"B {r[conf0.compartment == -1].mean():.3f}  "
+        f"— A central, B périphérique (Cremer & Cremer)"
+    )
+    print(f"modèle direct  f ∝ d^(-{args.gamma})   →   inversion exacte : alpha = {inv:.3f}\n")
+
+    print("  profondeur     densité   alpha* médian   étendue        nRMSD min   plateau +5%")
+    print("  ------------   -------   -------------   ------------   ---------   -----------")
+
+    for total in args.depths:
+        stars, mins, widths, dens = [], [], [], []
+        for s in range(args.conformations):
+            conf = chain(n=args.n, seed=s)
+            counts = contacts(conf, gamma=args.gamma, total=total, seed=100 + s)
+            dens.append((counts > 0).sum() / (counts.size - len(counts)))
+            nr = np.array([f.nrmsd for f in sweep(counts, conf.coords, alphas)])
+            stars.append(float(alphas[nr.argmin()]))
+            mins.append(float(nr.min()))
+            ok = alphas[nr <= nr.min() * 1.05]
+            widths.append(float(ok.max() - ok.min()))
+        print(
+            f"  {total:>12,}   {np.mean(dens):>6.0%}   {np.median(stars):>13.3f}   "
+            f"[{min(stars):.2f}–{max(stars):.2f}]{'':4}   {np.median(mins):>9.3f}   "
+            f"{np.median(widths):>11.3f}"
+        )
+
+    print(
+        f"\n  alpha* décroît vers {inv:.3f} avec la profondeur, sans jamais l'atteindre à\n"
+        f"  profondeur finie. Et le plateau s'élargit quand les données se creusent :\n"
+        f"  là où il faudrait le plus calibrer alpha, c'est là qu'il est le moins\n"
+        f"  déterminé. Reprendre alpha = 1/3 d'un article sans regarder sa profondeur\n"
+        f"  de séquençage n'est pas une convention, c'est une approximation non chiffrée."
+    )
+    return 0
+
+
+def cmd_nucleus(args: argparse.Namespace) -> int:
+    """Construit un noyau diploïde entier et rend compte de ce qu'il vaut.
+
+    La semaine 5 reconstruisait une chaîne. Ici : 46 chaînes, deux mètres d'ADN
+    diploïde, une sphère de dix micromètres, et rien qui se traverse.
+    """
+    try:
+        import scipy  # noqa: F401
+    except ImportError:
+        print("scipy absent — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    from .nucleus import build, capacity_at, gm12878, save
+
+    karyotype = gm12878()
+    print(f"caryotype      {karyotype}")
+    if karyotype.provenance == "builtin":
+        print("               ↑ longueurs de la table interne : le fichier officiel n'a "
+              "jamais pu être récupéré (voir docs/DATA_SOURCES.md § 8)")
+
+    print(f"\n  La coquille de contact d'un modèle à billes ne tient qu'une monocouche, "
+          f"et\n  son volume suit le rayon des billes. Ce que « être à la lamina » peut "
+          f"vouloir\n  dire dépend donc de la résolution du modèle, à densité nucléaire "
+          f"fixée ({args.phi:.0%}) :\n")
+    print("  résolution     billes      rayon    densité uniforme   borne d'empilement")
+    print("  ----------   ---------   --------   ----------------   ------------------")
+    for bp in (3_000_000, args.bp_per_bead, 250_000, 100_000, 10_000):
+        n, r_nm, cap = capacity_at(
+            karyotype.total_bp, bp, nuclear_radius=args.nuclear_radius, phi=args.phi
+        )
+        # Part de volume exacte de la coquille de contact dans la boule
+        # accessible aux centres — pas son approximation 1,5·r/(R−r), pour que
+        # ce tableau et celui d'ARCHITECTURE.md § 10 donnent les mêmes chiffres.
+        free = (args.nuclear_radius - r_nm / 1000.0) ** 3
+        u = (free - (args.nuclear_radius - 1.5 * r_nm / 1000.0) ** 3) / free
+        print(f"  {bp // 1000:>6} kb    {n:>9,}   {r_nm:>6.1f} nm   {u:>15.1%}   {cap:>18.0%}")
+
+    t0 = time.perf_counter()
+    nucleus = build(
+        karyotype,
+        bp_per_bead=args.bp_per_bead,
+        nuclear_radius=args.nuclear_radius,
+        phi=args.phi,
+        outward_gain=args.lamina,
+        seed=args.seed,
+    )
+    elapsed = time.perf_counter() - t0
+    b = nucleus.beads
+
+    print(
+        f"\nnoyau          {b.n:,} billes · {int(np.median(b.end - b.start)) // 1000} kb "
+        f"chacune · rayon {b.radius.mean() * 1000:.0f} nm · phi {b.phi:.0%} · "
+        f"R = {b.nuclear_radius:.1f} µm\n"
+        f"               construit en {elapsed:.0f} s, graine {nucleus.seed}"
+    )
+
+    if not nucleus.sealed:
+        print(
+            "\n  ! le tube de chaîne n'est pas étanche pendant l'inflation "
+            "(inflate_from ≤ stretch/2) :\n"
+            "    une chaîne peut traverser une liaison, et le défaut est difficile à défaire."
+        )
+
+    print(f"\n  conditions          {nucleus.final}")
+    print(f"  territorialité      {nucleus.after}")
+    print(f"                      à l'initialisation {nucleus.before.index:.1f}× — "
+          f"le recuit en conserve {nucleus.after.index / nucleus.before.index:.0%}")
+    print(f"  périphérie          {nucleus.rim}")
+
+    if args.out:
+        print(f"\n  écrit               {save(nucleus, Path(args.out))}")
+
+    # Deux verdicts distincts, et seul le premier décide du code de retour.
+    # Les conditions dures valent à toute résolution ; la fourchette de billes est
+    # une exigence de la *semaine 6*, pas une propriété d'un noyau valide. Les
+    # confondre faisait échouer `make nucleus N=250000`, qui produit pourtant un
+    # noyau irréprochable — simplement plus fin que ce que la feuille de route
+    # demandait cette semaine-là.
+    ok = nucleus.final.acceptable(args.tol)
+    print(
+        f"\n  Conditions dures, jugées à la même tolérance relative ({args.tol:.0%}) — une\n"
+        f"  chaîne tendue au-delà de sa limite viole une condition autant qu'un\n"
+        f"  chevauchement :\n"
+        f"  chevauchement maximal {nucleus.final.max_overlap:.3%} sur "
+        f"{nucleus.final.n_overlapping:,} paires en contact · liaison la plus\n"
+        f"  tendue +{nucleus.final.bond_stretch:.2%} · {nucleus.final.outside} bille "
+        f"hors du noyau. {'Tenues.' if ok else 'NON TENUES.'}"
+    )
+
+    if 6_000 <= b.n <= 10_000:
+        print(
+            f"\n  Critère semaine 6 — un noyau diploïde de 6 000 à 10 000 billes TAD, sans\n"
+            f"  interpénétration : {b.n:,} billes. {'Atteint.' if ok else 'NON ATTEINT.'}"
+        )
+    else:
+        print(
+            f"\n  {b.n:,} billes, hors de la fourchette 6 000–10 000 de la semaine 6 : c'est\n"
+            f"  une autre résolution, pas un échec. Le critère de la semaine ne s'y applique\n"
+            f"  pas ; les conditions dures ci-dessus, si."
+        )
+    print(
+        f"\n  Ce que ça ne dit pas : la territorialité est *entrée* dans le modèle par\n"
+        f"  l'initialisation — une relaxation ne fait jamais se croiser deux chaînes.\n"
+        f"  Le seul énoncé honnête est que le recuit la conserve. Et la stratification\n"
+        f"  radiale vient d'un terme du modèle, pas d'une mesure : la piste LAD porte\n"
+        f"  la source « {b.lad_source} ». La confrontation au DamID publié est le\n"
+        f"  livrable de la semaine 7, et elle attend le réseau."
+    )
+    return 0 if ok else 1
+
+
+def cmd_ensemble(args: argparse.Namespace) -> int:
+    """Produit N repliements du même génome et rend compte de ce qu'ils ont en commun.
+
+    Le principe n° 1 du projet dit qu'une structure unique est un artefact
+    statistique. Ici il devient un nombre : quelle part de « la bille i est à
+    telle profondeur » est un énoncé sur la bille, et quelle part sur le tirage.
+    """
+    try:
+        import scipy  # noqa: F401
+        import zarr  # noqa: F401
+    except ImportError as exc:
+        print(f"dépendance absente ({exc.name}) — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    import numpy as np
+
+    from .ensemble import (
+        REGIMES,
+        contacts,
+        frame,
+        generate,
+        medoid,
+        pending,
+        radial_by_quartile,
+        read,
+        reproducibility,
+        self_consistency,
+    )
+
+    out = Path(args.out)
+    if not args.report_only:
+        def progress(k: int, total: int, elapsed: float, quality) -> None:
+            if k % args.every == 0 or k == total:
+                left = elapsed / k * (total - k)
+                print(
+                    f"  {k:>4}/{total}   {elapsed / 60:5.1f} min écoulées, "
+                    f"~{left / 60:4.1f} restantes   (dernière : {quality.max_overlap:.3%})",
+                    flush=True,
+                )
+
+        done = args.n - len(pending(out)) if (out / ".zgroup").exists() and not args.fresh else 0
+        print(
+            f"génération   {args.n} structures × {args.workers or 'tous les'} cœurs\n"
+            f"             génome figé par lad_seed={args.lad_seed}, "
+            f"conformations depuis {args.first_seed}"
+            + (f"\n             {done} déjà en magasin, on complète" if done else "")
+            + "\n"
+        )
+        generate(
+            out,
+            n_structures=args.n,
+            workers=args.workers,
+            lad_seed=args.lad_seed,
+            first_seed=args.first_seed,
+            fresh=args.fresh,
+            progress=progress,
+            bp_per_bead=args.bp_per_bead,
+        )
+
+    e = read(out)
+    b = e.beads
+    radial = e.radial()
+    bp = float(np.median(b.end - b.start))
+
+    print(f"\nensemble     {e}")
+    print(f"             {out}")
+    print(
+        f"\n  conditions          chevauchement max sur l'ensemble "
+        f"{e.max_overlap.max():.3%} · liaison la plus tendue +{e.bond_stretch.max():.2%} ·\n"
+        f"                      {int(e.outside.sum())} bille hors du noyau · "
+        f"{int(e.shakes.sum())} secousses au total, "
+        f"{int((e.shakes > 0).sum())} structures concernées"
+    )
+
+    print("\n  — Il n'y a pas de repère commun —")
+    print(f"  {frame(e.coords, b.nuclear_radius, pairs=args.frame_pairs)}")
+    print(
+        "  Deux noyaux recuits séparément ne partagent ni orientation ni placement des\n"
+        "  territoires. Une variance par bille en x, y, z serait donc un nombre sans objet ;\n"
+        "  tout ce qui suit ne manipule que des grandeurs invariantes par rotation."
+    )
+
+    rep = reproducibility(radial, b.nuclear_radius)
+    print("\n  — Ce qui se reproduit d'un tirage à l'autre —")
+    print(f"  {rep}")
+    print(
+        f"  Autrement dit, {rep.icc:.0%} de la variance de profondeur tient à la bille et\n"
+        f"  {1 - rep.icc:.0%} au tirage. Une structure isolée porte donc les deux, sans les\n"
+        f"  distinguer — c'est exactement ce que le principe n° 1 interdit d'afficher seul."
+    )
+
+    print("\n  — Distributions radiales par quartile de contenu LAD —")
+    print("  quartile          fraction LAD    rayon moyen    dispersion entre billes")
+    for k, (mean, sd, lo, hi) in enumerate(radial_by_quartile(radial, b.lad), start=1):
+        tag = {1: "le moins LAD", 4: "le plus LAD"}.get(k, "")
+        print(
+            f"  Q{k} {tag:<13} {lo:>6.2f}–{hi:<6.2f} {mean:>11.3f}    {sd:>10.3f}"
+        )
+    print(f"  auto-cohérence avec la piste LAD d'entrée : r = {self_consistency(radial, b.lad):+.3f}")
+    print(
+        "  Ce r ne valide rien : la piste LAD est ce qui a fixé les rayons visés. Il dit\n"
+        "  seulement que le solveur a fait ce qu'on lui demandait."
+    )
+
+    index, total = medoid(radial)
+    print("\n  — Structure médoïde —")
+    print(
+        f"  index {index}, graine {int(e.seeds[index])} · distance cumulée "
+        f"{total[index]:.1f} contre {total.max():.1f} pour la plus excentrée\n"
+        f"  Médoïde **pour la distance entre profils radiaux** : deux structures aux\n"
+        f"  territoires disposés tout autrement peuvent avoir le même profil."
+    )
+
+    print("\n  — Ce que l'ensemble prédit d'une expérience Hi-C —")
+    print("  seuil   contacts/structure     trans   homologues   plateau P(s)")
+    print("  -----   ------------------   -------   ----------   ------------")
+    main: object | None = None
+    for cut in args.cutoffs:
+        sub = e.coords if cut == args.cutoffs[0] else e.coords[: args.sweep]
+        c = contacts(sub, b.radius, b.copy_id, b.labels, bp, cutoff=cut)
+        main = c if main is None else main
+        mark = "" if cut == args.cutoffs[0] else f"  ({len(sub)} structures)"
+        print(
+            f"  {cut:>5.2f}   {c.per_structure:>18,.0f}   {c.trans_fraction:>6.1%}   "
+            f"{c.homolog / max(c.trans, 1):>9.1%}   {c.plateau:>12.4f}{mark}"
+        )
+    print(
+        f"\n  Un seuil sous {1.15:.2f} ne mesurerait rien : c'est l'allongement maximal d'une\n"
+        f"  liaison, donc en dessous même deux billes voisines de chaîne ne « se touchent »\n"
+        f"  pas et il ne reste que les chevauchements résiduels.\n"
+    )
+
+    print("  P(s) n'a pas une pente, elle en a trois :")
+    print("  régime                        domaine      pente")
+    print("  ------------------------   ------------   -------")
+    for (name, sl), (_, lo, hi) in zip(main.regimes, REGIMES):
+        print(f"  {name:<24}   {lo / 1e6:>4.1f}–{hi / 1e6:<5.0f} Mb   {sl:>+7.2f}")
+    print(
+        f"  puis un plateau à P = {main.plateau:.4f} au-delà de 15 Mb.\n\n"
+        f"  Aucune matrice de contacts n'a été montrée au modèle : P(s) sort de la seule\n"
+        f"  géométrie. C'est donc la seule grandeur de cet ensemble qu'une expérience Hi-C\n"
+        f"  puisse contredire — et elle la contredit. Le Hi-C réel décroît en ~s^-1 de façon\n"
+        f"  continue de la centaine de kb à la dizaine de Mb. Ce modèle s'en approche au\n"
+        f"  régime polymère, puis **s'aplatit** au-delà de 15 Mb au lieu de continuer à\n"
+        f"  décroître. Ses territoires sont trop bien mélangés à l'intérieur : il reproduit\n"
+        f"  le *fait* des territoires, pas leur organisation interne. C'est précisément ce\n"
+        f"  que la semaine 8 — extrusion de boucles, polymère fin — doit apporter.\n\n"
+        f"  Le hasard pur donnerait une fraction trans de {1 - 1 / len(b.labels):.0%} et des\n"
+        f"  homologues à {1 / (len(b.labels) - 1):.1%} des trans."
+    )
+
+    print("\n  — Position radiale contre DamID mesuré —")
+    if args.damid:
+        from .ensemble import damid, read_bedgraph
+
+        track, rows = read_bedgraph(args.damid)
+        d = damid(radial, b.start, b.end, b.copy_id, b.labels, track, str(args.damid))
+        print(f"  {rows:,} intervalles lus sur {len(track)} chromosomes")
+        print(f"  {d}")
+        if d.covered < 0.5 * d.total:
+            print(
+                "  ! moins de la moitié des billes sont couvertes : la corrélation porte sur\n"
+                "    un sous-ensemble, et il faut dire lequel avant de la citer."
+            )
+    else:
+        print(
+            "  La feuille de route demande la corrélation entre position radiale modélisée\n"
+            "  et LADs DamID **publiés**. Aucune entrée DamID du manifeste n'a pu être\n"
+            "  récupérée (docs/DATA_SOURCES.md § 8), et aucun fichier n'a été fourni.\n"
+            "  Le calcul est écrit, testé sur une piste construite exprès, et se lance par\n"
+            "  `make ensemble DAMID=chemin.bedGraph` — il lui faut un fichier, pas une\n"
+            "  ligne de code de plus."
+        )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    b = sub.add_parser("build", help="construit le magasin depuis un tracks.json")
+    b.add_argument("--tracks", default=str(DEFAULT_TRACKS))
+    b.add_argument("--out", default=str(DEFAULT_STORE))
+    b.set_defaults(fn=cmd_build)
+
+    q = sub.add_parser("query", help="interroge une région (1-based, bornes incluses)")
+    q.add_argument("region", help="ex. chr7:5,527,000-5,530,600")
+    q.add_argument("--store", default=str(DEFAULT_STORE))
+    q.add_argument("--track", action="append", help="limiter à cette piste (répétable)")
+    q.add_argument(
+        "--flank",
+        type=int,
+        default=0,
+        metavar="PB",
+        help="élargit la fenêtre de PB de chaque côté — une boucle CTCF encadre son gène, "
+        "ses ancres sont donc hors des bornes",
+    )
+    q.add_argument("--json", action="store_true")
+    q.add_argument("--time", action="store_true", help="affiche la latence")
+    q.set_defaults(fn=cmd_query)
+
+    t = sub.add_parser("tracks", help="liste les pistes du magasin")
+    t.add_argument("--store", default=str(DEFAULT_STORE))
+    t.set_defaults(fn=cmd_tracks)
+
+    h = sub.add_parser(
+        "hic", help="plante une structure Hi-C connue et valide les callers dessus"
+    )
+    h.add_argument("--bins", type=int, default=1_000)
+    h.add_argument("--resolution", type=int, default=10_000)
+    h.add_argument("--window", type=int, default=100_000, help="fenêtre d'insulation")
+    h.add_argument("--seed", type=int, default=3)
+    h.add_argument("--out", default=str(ROOT / "data" / "synthetic" / "planted.cool"))
+    h.set_defaults(fn=cmd_hic)
+
+    rc = sub.add_parser(
+        "recon", help="balaie l'exposant contact → distance contre une géométrie connue"
+    )
+    rc.add_argument("--n", type=int, default=300, help="billes de la chaîne")
+    rc.add_argument("--gamma", type=float, default=3.0, help="exposant du modèle direct")
+    rc.add_argument("--conformations", type=int, default=3)
+    rc.add_argument("--lo", type=float, default=0.15)
+    rc.add_argument("--hi", type=float, default=0.80)
+    rc.add_argument("--step", type=float, default=0.025)
+    rc.add_argument(
+        "--depths",
+        type=int,
+        nargs="+",
+        default=[500_000, 2_000_000, 8_000_000, 40_000_000, 200_000_000],
+    )
+    rc.set_defaults(fn=cmd_recon)
+
+    nu = sub.add_parser("nucleus", help="construit un noyau diploïde complet de billes TAD")
+    nu.add_argument("--bp-per-bead", type=int, default=750_000,
+                    help="taille génomique d'une bille — 750 kb est l'échelle TAD de Dixon")
+    nu.add_argument("--nuclear-radius", type=float, default=5.0, metavar="µm")
+    nu.add_argument("--phi", type=float, default=0.30,
+                    help="fraction du volume nucléaire occupée par les billes")
+    nu.add_argument("--lamina", type=float, default=0.05,
+                    help="force du rappel radial vers la périphérie (0 = aucun)")
+    nu.add_argument("--tol", type=float, default=0.01, help="chevauchement maximal toléré")
+    nu.add_argument("--seed", type=int, default=0)
+    nu.add_argument("--out", default=str(ROOT / "data" / "nucleus" / "gm12878.npz"))
+    nu.set_defaults(fn=cmd_nucleus)
+
+    en = sub.add_parser(
+        "ensemble", help="produit N repliements du même génome et les caractérise"
+    )
+    en.add_argument("--n", type=int, default=200, help="nombre de structures")
+    en.add_argument("--workers", type=int, default=0, help="0 = tous les cœurs")
+    en.add_argument("--lad-seed", type=int, default=0,
+                    help="graine du *génome* — fixe pour tout l'ensemble")
+    en.add_argument("--first-seed", type=int, default=1_000,
+                    help="première graine de *conformation*")
+    en.add_argument("--bp-per-bead", type=int, default=750_000)
+    en.add_argument("--fresh", action="store_true",
+                    help="efface un magasin existant et recommence ; par défaut on le complète")
+    en.add_argument("--report-only", action="store_true",
+                    help="ne produit rien, se contente de relire et rendre compte")
+    en.add_argument("--cutoffs", type=float, nargs="+", default=[1.5, 1.25, 2.0],
+                    help="seuils de contact ; le premier sert à l'ensemble entier")
+    en.add_argument("--sweep", type=int, default=50,
+                    help="structures utilisées pour les seuils secondaires")
+    en.add_argument("--frame-pairs", type=int, default=20)
+    en.add_argument("--every", type=int, default=10, help="cadence des lignes d'avancement")
+    en.add_argument("--damid", default=None, metavar="BEDGRAPH",
+                    help="piste DamID mesurée, pour la corrélation demandée par la semaine 7")
+    en.add_argument("--out", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
+    en.set_defaults(fn=cmd_ensemble)
+
+    n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
+    n.add_argument("--n", type=int, default=1_000_000)
+    n.add_argument("--queries", type=int, default=2_000)
+    n.add_argument("--store", default=str(BENCH_STORE))
+    n.set_defaults(fn=cmd_bench)
+
+    args = ap.parse_args(argv)
+    try:
+        return args.fn(args)
+    except FileNotFoundError as exc:
+        print(f"erreur : {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
