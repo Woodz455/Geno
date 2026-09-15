@@ -113,6 +113,14 @@ Les deux sont **linéaires en r**, donc dépendent de la résolution du modèle 
 | 100 kb | 60 621 | 85,2 nm | 2,6 % | 20 % |
 | 10 kb | 606 208 | 39,5 nm | 1,2 % | 9 % |
 
+Ce ne sont pas que des formules : le noyau a été construit pour de bon à 250 kb par bille
+(`make nucleus N=250000`). **24 244 billes** — le tableau en annonce 24 248, la borne se
+calculant sur le total génomique là où le découpage réel arrondit chromosome par chromosome —
+chevauchement maximal 0,541 %, liaison la plus tendue +0,94 %, aucune bille hors du noyau. La
+part uniforme mesurée y vaut 3,5 %, la valeur du tableau, et le contenu LAD au contact tombe à
+**5 %** contre 7 % à 750 kb : le sens et l'ordre de grandeur annoncés. La corrélation LAD-rayon
+y monte même à +0,749, le modèle plus fin ayant plus de latitude pour trier.
+
 Trois conséquences.
 
 1. **Les deux phrases ne sont pas la même.** « 35 % du génome est en LAD » décrit une
@@ -272,7 +280,7 @@ un ensemble : c'est le principe n° 1 du projet, et c'est le livrable de la sema
 
 ```console
 $ make nucleus                       # noyau par défaut, ~30 s
-$ make nucleus N=250000              # 24 000 billes, échelle Rao
+$ make nucleus N=250000              # 24 244 billes, échelle des domaines de Rao
 $ cd pipeline && PYTHONPATH=. .venv/bin/python -m pytest tests/test_nucleus.py
 ```
 

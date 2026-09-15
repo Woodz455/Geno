@@ -390,18 +390,34 @@ def cmd_nucleus(args: argparse.Namespace) -> int:
     if args.out:
         print(f"\n  écrit               {save(nucleus, Path(args.out))}")
 
-    ok = nucleus.final.acceptable(args.tol) and 6_000 <= b.n <= 10_000
+    # Deux verdicts distincts, et seul le premier décide du code de retour.
+    # Les conditions dures valent à toute résolution ; la fourchette de billes est
+    # une exigence de la *semaine 6*, pas une propriété d'un noyau valide. Les
+    # confondre faisait échouer `make nucleus N=250000`, qui produit pourtant un
+    # noyau irréprochable — simplement plus fin que ce que la feuille de route
+    # demandait cette semaine-là.
+    ok = nucleus.final.acceptable(args.tol)
     print(
-        f"\n  Critère semaine 6 : un noyau diploïde de 6 000 à 10 000 billes, sans\n"
-        f"  interpénétration. Les trois contraintes dures sont jugées à la même\n"
-        f"  tolérance relative, {args.tol:.0%} — une chaîne tendue au-delà de sa limite\n"
-        f"  viole une condition autant qu'un chevauchement.\n"
-        f"  {b.n:,} billes · chevauchement maximal {nucleus.final.max_overlap:.3%} sur "
-        f"{nucleus.final.n_overlapping:,} paires\n"
-        f"  en contact · liaison la plus tendue +{nucleus.final.bond_stretch:.2%} · "
-        f"{nucleus.final.outside} bille hors du noyau. "
-        f"{'Atteint.' if ok else 'NON ATTEINT.'}"
+        f"\n  Conditions dures, jugées à la même tolérance relative ({args.tol:.0%}) — une\n"
+        f"  chaîne tendue au-delà de sa limite viole une condition autant qu'un\n"
+        f"  chevauchement :\n"
+        f"  chevauchement maximal {nucleus.final.max_overlap:.3%} sur "
+        f"{nucleus.final.n_overlapping:,} paires en contact · liaison la plus\n"
+        f"  tendue +{nucleus.final.bond_stretch:.2%} · {nucleus.final.outside} bille "
+        f"hors du noyau. {'Tenues.' if ok else 'NON TENUES.'}"
     )
+
+    if 6_000 <= b.n <= 10_000:
+        print(
+            f"\n  Critère semaine 6 — un noyau diploïde de 6 000 à 10 000 billes TAD, sans\n"
+            f"  interpénétration : {b.n:,} billes. {'Atteint.' if ok else 'NON ATTEINT.'}"
+        )
+    else:
+        print(
+            f"\n  {b.n:,} billes, hors de la fourchette 6 000–10 000 de la semaine 6 : c'est\n"
+            f"  une autre résolution, pas un échec. Le critère de la semaine ne s'y applique\n"
+            f"  pas ; les conditions dures ci-dessus, si."
+        )
     print(
         f"\n  Ce que ça ne dit pas : la territorialité est *entrée* dans le modèle par\n"
         f"  l'initialisation — une relaxation ne fait jamais se croiser deux chaînes.\n"
