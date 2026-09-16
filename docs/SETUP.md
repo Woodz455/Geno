@@ -19,8 +19,9 @@ doit pas traîner derrière lui scipy, h5py et une pile scientifique complète.
 ## Pile de conformation — cooler et cooltools
 
 Nécessaire pour le Hi-C (`make hic-validate`, `make recon`), pour le modèle de noyau
-(`make nucleus`) — qui n'a besoin que de numpy et de `scipy.spatial` — et pour les ensembles
-(`make ensemble`), qui y ajoutent zarr. Elle vit dans `pipeline/.venv`, que les cibles `make`
+(`make nucleus`) — qui n'a besoin que de numpy et de `scipy.spatial` —, pour les ensembles
+(`make ensemble`), qui y ajoutent zarr, et pour l'échelle fine (`make fine`), qui y ajoute
+OpenMM. Elle vit dans `pipeline/.venv`, que les cibles `make`
 utilisent automatiquement si elle existe ; sinon elles retombent sur `python3` et signalent
 proprement ce qui manque.
 
@@ -30,7 +31,7 @@ $ python3 -m venv .venv
 $ .venv/bin/pip install --upgrade pip wheel
 $ .venv/bin/pip install "setuptools==59.8.0"
 $ .venv/bin/pip install --no-build-isolation asciitree
-$ .venv/bin/pip install cooler cooltools "pandas<3" "zarr<3" pytest
+$ .venv/bin/pip install cooler cooltools "pandas<3" "zarr<3" openmm pytest
 ```
 
 ### Pourquoi ces épinglages
@@ -45,6 +46,20 @@ fois, dans le venv.
 de `open_group`. Le magasin d'ensembles (`make ensemble`) écrit en API 2 ; l'épinglage évite
 une rupture silencieuse au premier `pip install -U`.
 
+**`openmm`, et pas `polychrom`.** `polychrom` est le wrapper habituel pour les polymères de
+chromatine, mais il n'est pas publié sur PyPI et l'environnement de développement n'atteint
+pas GitHub. Les cinq termes du champ de force de la semaine 8 sont donc écrits directement
+sur l'API OpenMM — une quarantaine de lignes, avec l'avantage que chacun est lisible et
+testable séparément. OpenMM 8.6 s'installe en revanche depuis PyPI sans conda, ce qui n'a pas
+toujours été le cas.
+
+Une contrainte de son API a façonné le format des instantanés d'extrusion :
+`updateParametersInContext` modifie les longueurs et les raideurs d'une liaison, **jamais ses
+particules**. Déplacer une liaison de cohésine au fil de l'extrusion lève `The set of
+particles in a bond has changed`. D'où `fine/polymer.bond_catalogue`, qui déclare d'emblée
+toutes les paires du parcours à raideur nulle et n'allume que celles tenues à l'instant
+présent ([`ARCHITECTURE.md` § 12](ARCHITECTURE.md)).
+
 **`pandas<3`.** `cooltools` 0.7.1 appelle `.idxmin()` sur une colonne entièrement NA dans
 `api/dotfinder.py:977`. pandas 2 émet un `FutureWarning` ; **pandas 3 lève une
 `ValueError`** et la détection de boucles échoue avec le message peu parlant
@@ -54,7 +69,7 @@ ligne exacte.
 ## Vérifier
 
 ```console
-$ make test            # 55 tests (43 socle 1D + 12 conformation)
+$ make test            # 181 tests (43 socle 1D + 138 conformation)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

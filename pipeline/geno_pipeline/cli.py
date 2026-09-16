@@ -605,6 +605,363 @@ def cmd_ensemble(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fine(args: argparse.Namespace) -> int:
+    """Descend sous le TAD : extrusion de boucles sur une région, et le raccord au noyau.
+
+    La semaine 7 a laissé une P(s) plate au-delà de 15 Mb là où le Hi-C réel
+    décroît. Cette commande construit l'échelle où cette organisation naît, et
+    répond à trois questions que le noyau seul ne pouvait pas poser : les
+    barrières orientées produisent-elles des domaines, produisent-elles des
+    points d'angle **aux seules paires convergentes**, et la chaîne fine
+    tombe-t-elle sur la même `R(s)` que le noyau là où les deux se recouvrent ?
+    """
+    try:
+        import openmm  # noqa: F401
+        import scipy  # noqa: F401
+    except ImportError as exc:
+        print(f"dépendance absente ({exc.name}) — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    import numpy as np
+
+    from .fine import (
+        CONVERGENT,
+        HIC_REFERENCE,
+        KINDS,
+        REGIMES,
+        Region,
+        call_boundaries,
+        contact_map,
+        dots_by_kind,
+        insulation,
+        junction,
+        ps,
+        regime,
+        separation_curve,
+        stationarity,
+    )
+    from .fine.polymer import Field
+    from .fine.run import Setup, build, knockout, load, region_of, save
+    from .hic.features import match_positions
+
+    out = Path(args.out)
+    region = Region(args.chrom, args.start, args.end, args.bp_per_bead)
+    setup = Setup(
+        region=region,
+        separation=args.separation,
+        processivity=args.processivity,
+        release=args.release,
+        md_per_step=args.md_per_step,
+        relax=args.relax,
+        snapshots=args.snapshots,
+        stride=args.stride,
+        replicates=args.replicates,
+        cutoff=args.cutoff,
+        field=Field(trunc=args.trunc, stiffness=args.stiffness),
+    )
+
+    print(f"région       {region}")
+    print(
+        f"             confinement {setup.confine:.2f} sigma "
+        f"({setup.confine * setup.sigma_nm:.0f} nm de rayon) à phi = {setup.phi}\n"
+        f"             sigma = {setup.sigma_nm:.1f} nm — loi de la semaine 6, "
+        f"pas un réglage de la semaine 8"
+    )
+
+    if args.report_only:
+        coords, sites, truth, meta = load(str(out))
+        region = region_of(meta)
+        ko_coords = None
+        if Path(str(out).replace(".npz", "") + "-ko.npz").exists():
+            ko_coords, _, _, _ = load(str(out).replace(".npz", "") + "-ko.npz")
+        elapsed = meta.get("elapsed_s", 0.0)
+        occupancy = meta.get("lef_occupancy", float("nan"))
+    else:
+        def progress(k: int, total: int) -> None:
+            print(f"  réplicat {k}/{total}", flush=True)
+
+        given = None
+        if args.ctcf:
+            from .fine import read_ctcf
+
+            given = read_ctcf(args.ctcf, region)
+            print(f"\nsites CTCF   {given.k} motifs orientés lus dans {args.ctcf}")
+
+        print(f"\ngénération   {args.replicates} réplicats × {args.snapshots} instantanés")
+        fine = build(
+            setup,
+            sites=given,
+            site_seed=args.site_seed,
+            first_seed=args.first_seed,
+            workers=args.workers,
+            progress=progress,
+            **(
+                {}
+                if given is not None
+                else dict(
+                    mean_domain=args.mean_domain,
+                    min_domain=args.min_domain,
+                    control=args.control,
+                )
+            ),
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        save(fine, str(out))
+        coords, sites, truth = fine.coords, fine.sites, fine.truth
+        elapsed, occupancy = fine.elapsed, fine.lef_occupancy
+
+        ko_coords = None
+        if not args.no_knockout:
+            print("\ntémoin       les mêmes sites, tous inoccupés")
+            ko = knockout(
+                setup, sites, first_seed=args.first_seed, workers=args.workers,
+                progress=progress,
+            )
+            save(ko, str(out).replace(".npz", "") + "-ko.npz")
+            ko_coords = ko.coords
+            elapsed += ko.elapsed
+
+    print(
+        f"\n             {len(coords)} conformations en {elapsed / 60:.1f} min · "
+        f"cohésines chargées {occupancy:.0%} du temps\n             {out}"
+    )
+
+    binned = max(1, args.bin_kb * 1_000 // region.bp_per_bead)
+    cmap = contact_map(
+        coords, cutoff=args.cutoff, bin_beads=binned, bp_per_bead=region.bp_per_bead
+    )
+    print(
+        f"\ncarte        {cmap.m}×{cmap.m} casiers de {cmap.bp_per_bin // 1000} kb · "
+        f"seuil {cmap.cutoff} diamètre (convention de la semaine 7)"
+    )
+
+    # — Frontières —
+    window = max(2, args.insulation_kb * 1_000 // cmap.bp_per_bin)
+    ins = insulation(cmap, window)
+    called = call_boundaries(ins, prominence=args.prominence)
+    if truth is not None:
+        planted = cmap.bin_of(truth.boundary[truth.strong])
+        weak = cmap.bin_of(truth.boundary[~truth.strong])
+        print("\n  — Les barrières font-elles des domaines ? —")
+        print(
+            f"  fenêtre d'insulation {window} casiers "
+            f"({window * cmap.bp_per_bin // 1000} kb), tolérance ±1 casier"
+        )
+        print(
+            f"  frontières à deux sens bloqués ({len(planted)}/{len(truth.boundary)}) : "
+            f"{match_positions(called, planted, tol=1)}"
+        )
+        if len(weak):
+            found = match_positions(called, weak, tol=1)
+            print(
+                f"  frontières à un seul sens bloqué  ({len(weak)}/{len(truth.boundary)}) : "
+                f"{found.n_matched}/{found.n_true} retrouvées"
+            )
+        print(
+            "  Il n'existe pas de frontière non bloquante dans ce dispositif : elle porte\n"
+            "  deux ancres, et une ancre arrête toujours l'un des deux sens de marche. Ce qui\n"
+            "  les distingue est le nombre de sens arrêtés, pas l'existence d'une barrière."
+        )
+        if args.sweep and ko_coords is not None:
+            # Le seuil d'appel est un choix, et il se justifie sur le **témoin** : à
+            # seuil égal, ce que retrouve une carte sans aucun CTCF occupé est ce que
+            # le hasard du dispositif donne. Un réglage dont le témoin retrouve 42 %
+            # des frontières est disqualifié quel que soit son rappel.
+            ko_map = contact_map(
+                ko_coords, cutoff=args.cutoff, bin_beads=binned,
+                bp_per_bead=region.bp_per_bead,
+            )
+            print("\n  — Le seuil d'appel se choisit sur le témoin, pas sur le rappel —")
+            print(
+                f"  {'fenêtre':>8} {'proém.':>7} {'appelées':>9} {'rappel':>7} {'préc.':>7}"
+                f"   {'témoin app.':>12} {'témoin rap.':>12}"
+            )
+            all_planted = cmap.bin_of(truth.boundary)
+            for kb in (30, 50, 100, 200):
+                w = max(2, kb * 1_000 // cmap.bp_per_bin)
+                a_ins = insulation(cmap, w)
+                b_ins = insulation(ko_map, w)
+                for prom in (0.05, 0.08, 0.12, 0.18):
+                    a = match_positions(
+                        call_boundaries(a_ins, prominence=prom), all_planted, tol=1
+                    )
+                    b = match_positions(
+                        call_boundaries(b_ins, prominence=prom), all_planted, tol=1
+                    )
+                    print(
+                        f"  {kb:>6} kb {prom:>7.2f} {a.n_called:>9} {a.recall:>7.0%} "
+                        f"{a.precision:>7.0%}   {b.n_called:>12} {b.recall:>12.0%}"
+                    )
+
+    # — Points d'angle —
+    if truth is not None:
+        print("\n  — Les points d'angle sont-ils aux paires convergentes ? —")
+        dots = dots_by_kind(cmap, truth, inner=args.dot_inner, outer=args.dot_outer)
+        print(f"  {'classe':<12} {'n':>4} {'médiane':>9} {'moyenne':>9}")
+        for name, n, med, mean in dots.summary():
+            print(f"  {name:<12} {n:>4} {med:>9.2f} {mean:>9.2f}")
+        print(
+            f"  convergents / divergents : {dots.separation('divergent'):.2f}×   ·   "
+            f"convergents / hasard : {dots.separation('hasard'):.2f}×"
+        )
+        print(
+            "  Le témoin propre est **divergent** : aucune de ses deux ancres n'arrête la\n"
+            "  jambe qui l'atteint. Un domaine en tandem n'est témoin qu'à moitié — si le\n"
+            "  domaine suivant commence par un `−`, ce `−` se trouve à un monomère de son\n"
+            "  ancre droite et y ancre une vraie boucle, que la tolérance du score ramasse."
+        )
+        if ko_coords is not None:
+            ko_map = contact_map(
+                ko_coords, cutoff=args.cutoff, bin_beads=binned,
+                bp_per_bead=region.bp_per_bead,
+            )
+            ko_dots = dots_by_kind(ko_map, truth, inner=args.dot_inner, outer=args.dot_outer)
+            ko_ins = insulation(ko_map, window)
+            ko_called = call_boundaries(ko_ins, prominence=args.prominence)
+            print("\n  — Le témoin qui tranche : les mêmes sites, tous inoccupés —")
+            print(
+                f"  points d'angle aux convergents : "
+                f"{dots.median(KINDS[CONVERGENT]):.2f} → "
+                f"**{ko_dots.median(KINDS[CONVERGENT]):.2f}**"
+            )
+            print(f"  frontières : {match_positions(ko_called, planted, tol=1)}")
+            print(
+                "  Rien d'autre ne change entre les deux exécutions — mêmes graines, mêmes\n"
+                "  positions de sites, même champ de force. La différence est donc bien\n"
+                "  l'arrêt de l'extrusion par CTCF, et rien d'autre. Ce que le témoin retrouve\n"
+                "  encore de frontières mesure le hasard du dispositif, et il faut le soustraire\n"
+                "  mentalement du rappel ci-dessus."
+            )
+
+    # — P(s) —
+    s, p = ps(cmap)
+    print("\n  — P(s) sous le TAD —")
+    print(f"  {'régime':<14} {'fenêtre':<20} {'pente':>7}")
+    for name, lo, hi in REGIMES:
+        print(f"  {name:<14} {lo / 1e3:,.0f}–{hi / 1e3:,.0f} kb{'':<6} {regime(s, p, lo, hi):>+7.2f}")
+    print(
+        "  Seul le régime « domaine » est comparable au Hi-C publié : Lieberman-Aiden 2009\n"
+        f"  rapporte s^{HIC_REFERENCE:.2f} sur 500 kb–7 Mb — une fenêtre qu'une région de 4 Mb ne\n"
+        "  couvre pas, donc les deux nombres se ressemblent sans être mesurés pareil.\n"
+        "  Au-delà d'environ 1,5 Mb, une région\n"
+        "  de 4 Mb confinée dans sa propre sphère mesure la sphère — c'est un artefact de la\n"
+        "  taille de région, pas un résultat, et le nommer évite de republier la P(s) plate de\n"
+        "  la semaine 7 (−0,10 au-delà de 15 Mb) comme si c'en était une prédiction."
+    )
+
+    # — Raccord —
+    if args.nucleus and Path(args.nucleus).exists():
+        from .ensemble import read as read_ensemble
+
+        e = read_ensemble(args.nucleus)
+        take = min(args.nucleus_structures, e.n_structures)
+        coarse_bp = int(np.median(e.beads.end - e.beads.start))
+        try:
+            j = junction(
+                coords,
+                region,
+                e.coords[:take],
+                coarse_copy_id=e.beads.copy_id,
+                coarse_bp_per_bead=coarse_bp,
+                sigma_nm=setup.sigma_nm,
+            )
+        except ValueError as exc:
+            j = None
+            print(f"\n  — Raccord non mesurable —\n  {exc}")
+        if j is not None:
+            print(f"\n  — Le raccord avec le noyau entier ({take} structures) —")
+            print(
+                f"  {'séparation':>12} {'fin (nm)':>10} {'noyau (nm)':>12} "
+                f"{'rapport':>9} {'paires/conf.':>13}"
+            )
+            for bp, f, c, r, np_, thin in zip(
+                j.bp, j.fine_nm, j.coarse_nm, j.ratio, j.fine_pairs, j.thin
+            ):
+                mark = " ·" if thin else ""
+                print(f"  {bp / 1e6:>9.2f} Mb {f:>10.0f} {c:>12.0f} {r:>9.2f} {np_:>13,}{mark}")
+            if j.thin.any():
+                print(
+                    "  · peu de paires : à la séparation s il n'en reste que n − s,\n"
+                    "    donc le dernier point de recouvrement est le plus fragile."
+                )
+            print(
+                f"\n  Aucun paramètre n'a été réglé sur l'autre modèle : le rayon d'un monomère\n"
+                f"  sort de la loi de la semaine 6, `phi` est le même, et la semaine 8 n'a rien\n"
+                f"  ajusté. Écart le plus grand {j.worst:.2f}× — "
+                + ("le raccord tient." if j.holds(args.junction_tol) else
+                   f"au-delà du facteur {args.junction_tol} admis.")
+            )
+            fine_e, coarse_e = j.exponents()
+            print(
+                f"\n  Ce que le tableau dit vraiment est une différence de **pente** :\n"
+                f"  R(s) ∝ s^{fine_e:.2f} pour le modèle fin, s^{coarse_e:.2f} pour le noyau.\n"
+                f"  Repères : 0,50 pour une marche aléatoire idéale, 0,59 pour une marche\n"
+                f"  auto-évitante gonflée, 0,25 à 0,33 pour ce que le traçage de chromatine\n"
+                f"  mesure au-dessus du mégabase. Les deux modèles encadrent la mesure au lieu\n"
+                f"  de la reproduire, et ils l'encadrent par les deux bouts."
+            )
+            print(
+                f"\n  Une réserve, et elle porte sur le haut du tableau : le confinement du\n"
+                f"  modèle fin est la sphère que la loi de volume de la semaine 6 alloue à\n"
+                f"  {region.n * region.bp_per_bead / 1e6:.0f} Mb, soit {setup.confine * setup.sigma_nm:.0f} nm de rayon. "
+                f"Au-delà d'environ 1 Mb, `R(s)` y sature\n"
+                f"  donc contre une paroi dont la taille vient du modèle grossier lui-même, et\n"
+                f"  l'accord y devient partiellement circulaire. Les lignes informatives sont\n"
+                f"  celles nettement sous cette échelle."
+            )
+    elif args.nucleus:
+        print(
+            f"\n  — Raccord non mesuré —\n"
+            f"  {args.nucleus} n'existe pas. `make ensemble` d'abord, puis `make fine`."
+        )
+
+    # — Stationnarité : la trajectoire a-t-elle oublié son point de départ ? —
+    st = stationarity(
+        coords,
+        per_replicate=max(1, len(coords) // max(1, args.replicates)),
+        bp_per_bead=region.bp_per_bead,
+        unit_nm=setup.sigma_nm,
+        seps=np.array([10, 100, 400, 1000, int(0.9 * region.n)]),
+    )
+    print("\n  — La trajectoire a-t-elle oublié sa conformation initiale ? —")
+    print(f"  {'séparation':>12} {'1re moitié':>12} {'2e moitié':>12} {'dérive':>8}")
+    for bp, a, b, d in zip(st.bp, st.first_nm, st.second_nm, st.drift):
+        unit = f"{bp / 1e6:.2f} Mb" if bp >= 1e6 else f"{bp / 1e3:.0f} kb"
+        print(f"  {unit:>12} {a:>9.0f} nm {b:>9.0f} nm {d:>+8.1%}")
+    print(
+        f"  Dérive la plus forte {st.worst:.1%} — "
+        + ("stationnaire sur la fenêtre d'échantillonnage."
+           if st.holds() else
+           "la conformation initiale décide encore ; `--relax` est trop court.")
+    )
+    print(
+        "  C'est `R(s)` aux grandes séparations qu'il faut regarder, pas `Rg` : une\n"
+        "  conformation initiale comprimée a déjà le bon `Rg` par construction."
+    )
+
+    # — R(s) de la chaîne fine seule, pour mémoire —
+    bp, mean, sd = separation_curve(
+        coords, bp_per_bead=region.bp_per_bead, unit_nm=setup.sigma_nm
+    )
+    print("\n  — R(s) de la chaîne fine —")
+    print(f"  {'séparation':>12} {'moyenne':>9} {'écart-type':>11}")
+    for x, m, d in list(zip(bp, mean, sd))[::4]:
+        unit = f"{x / 1e6:.2f} Mb" if x >= 1e6 else f"{x / 1e3:.0f} kb"
+        print(f"  {unit:>12} {m:>7.0f} nm {d:>9.0f} nm")
+
+    print(
+        "\n  Sites CTCF : "
+        + (
+            f"**plantés** ({sites.source}) — aucune piste publiée n'est lisible ici,\n"
+            "  le réseau est fermé. Comme à la semaine 3, la vérité plantée valide la\n"
+            "  méthode et rien de biologique. `make fine CTCF=motifs.bed` attend un fichier."
+            if sites.source.startswith("planted")
+            else sites.source
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -698,6 +1055,73 @@ def main(argv: list[str] | None = None) -> int:
                     help="piste DamID mesurée, pour la corrélation demandée par la semaine 7")
     en.add_argument("--out", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
     en.set_defaults(fn=cmd_ensemble)
+
+    fi = sub.add_parser(
+        "fine", help="extrusion de boucles sur une région, et son raccord au noyau"
+    )
+    # La région par défaut encadre ACTB (chr7:5,527,151-5,530,601), le gène que
+    # `make query` affiche depuis la semaine 2 : le modèle fin et la fiche de
+    # locus regardent alors le même endroit du génome.
+    fi.add_argument("--chrom", default="chr7")
+    fi.add_argument("--start", type=int, default=4_000_000)
+    fi.add_argument("--end", type=int, default=8_000_000)
+    fi.add_argument("--bp-per-bead", type=int, default=2_000,
+                    help="résolution du modèle fin, 1–5 kb")
+    fi.add_argument("--separation", type=int, default=200_000, help="pb par cohésine")
+    fi.add_argument("--processivity", type=int, default=200_000,
+                    help="taille de boucle sans obstacle, en pb")
+    fi.add_argument("--release", type=float, default=0.003,
+                    help="probabilité par pas qu'une jambe quitte un site CTCF")
+    fi.add_argument("--replicates", type=int, default=4)
+    fi.add_argument("--snapshots", type=int, default=120)
+    fi.add_argument("--stride", type=int, default=4, help="pas d'extrusion entre instantanés")
+    fi.add_argument("--md-per-step", type=int, default=200)
+    fi.add_argument("--relax", type=int, default=150_000,
+                    help="pas de mise en place avant le premier instantané")
+    fi.add_argument("--trunc", type=float, default=3.0,
+                    help="coût kT d'un recouvrement complet — au-delà, les chaînes ne se croisent plus")
+    fi.add_argument("--stiffness", type=float, default=1.5, help="terme angulaire, en kT")
+    fi.add_argument("--cutoff", type=float, default=1.5,
+                    help="seuil de contact en diamètres — convention de la semaine 7")
+    fi.add_argument("--bin-kb", type=int, default=10, help="casier de la carte de contacts")
+    # La semaine 3 avait montré qu'une fenêtre **trop large** tue le rappel : sur
+    # des TADs de 450 kb, 100 % à une fenêtre de 100 kb contre 42 % à 600 kb. J'en
+    # avais déduit un rapport de ~0,22 et posé 50 kb pour des domaines de 200 kb.
+    # Le balayage mesuré dit l'inverse à ce bout-là : à 100 kb (rapport 0,5), le
+    # rappel monte à 89 % pour 94 % de précision, contre 95 %/56 % à 50 kb, et
+    # surtout le témoin CTCF inoccupé tombe de 42 % à 5 %. Une fenêtre étroite
+    # moyenne moins de pixels et appelle du bruit. La contrainte de la semaine 3
+    # tient — rester sous l'échelle des domaines — mais son optimum n'était pas
+    # transposable tel quel. Voir VALIDATION.md § S8.
+    fi.add_argument("--insulation-kb", type=int, default=100,
+                    help="fenêtre d'insulation ; sous l'échelle des domaines, mais pas trop")
+    fi.add_argument("--prominence", type=float, default=0.05,
+                    help="seuil choisi sur l'écart au témoin, pas sur le rappel")
+    fi.add_argument("--dot-inner", type=int, default=1)
+    fi.add_argument("--dot-outer", type=int, default=6)
+    fi.add_argument("--mean-domain", type=int, default=200_000,
+                    help="taille moyenne des domaines plantés — médiane Rao 2014")
+    fi.add_argument("--min-domain", type=int, default=80_000)
+    fi.add_argument("--control", type=float, default=0.35,
+                    help="fraction de domaines témoins, divergents ou en tandem")
+    fi.add_argument("--ctcf", default=None, metavar="BED",
+                    help="motifs CTCF orientés mesurés ; à défaut on plante une vérité connue")
+    fi.add_argument("--site-seed", type=int, default=1,
+                    help="graine des *sites* — commune à tous les réplicats")
+    fi.add_argument("--first-seed", type=int, default=4_000,
+                    help="première graine de *conformation*")
+    fi.add_argument("--workers", type=int, default=0)
+    fi.add_argument("--no-knockout", action="store_true",
+                    help="saute le témoin à CTCF inoccupé — il double le temps de calcul")
+    fi.add_argument("--nucleus", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"),
+                    help="ensemble de la semaine 7, pour le raccord R(s)")
+    fi.add_argument("--nucleus-structures", type=int, default=25)
+    fi.add_argument("--junction-tol", type=float, default=1.25)
+    fi.add_argument("--sweep", action="store_true",
+                    help="balaye fenêtre × proéminence contre le témoin CTCF inoccupé")
+    fi.add_argument("--report-only", action="store_true")
+    fi.add_argument("--out", default=str(ROOT / "data" / "fine" / "actb.npz"))
+    fi.set_defaults(fn=cmd_fine)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

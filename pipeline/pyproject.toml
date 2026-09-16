@@ -13,9 +13,14 @@ dev = ["pytest>=7.4"]
 # api/dotfinder.py:977, ce qui lève sous pandas 3. Voir docs/SETUP.md.
 # zarr<3 : zarr 3 a remplacé create_dataset par create_array et changé la
 # sémantique de open_group. Le magasin d'ensembles écrit en API 2. Voir docs/SETUP.md.
+# openmm : moteur de dynamique moléculaire de la semaine 8. `polychrom`, le
+# wrapper habituel pour les polymères de chromatine, n'est pas sur PyPI ; les
+# cinq termes du champ de force sont donc écrits directement, ce qui a
+# l'avantage de les rendre lisibles et testables un par un.
 hic = [
     "cooler>=0.10",
     "cooltools>=0.7",
+    "openmm>=8.1",
     "pandas>=2,<3",
     "scipy",
     "h5py",

@@ -362,3 +362,93 @@ Conséquence pour le viewer (semaine 10 et suivantes) : ce qui se streame d'un e
 pas « la » structure plus un nuage de points, c'est **le médoïde plus un scalaire de
 variabilité par bille** — et ce scalaire est une variabilité *de profondeur*, pas de position.
 L'interface doit dire laquelle.
+
+## 12. Échelle fine — extrusion de boucles sous le TAD
+
+La semaine 6 descend jusqu'à la bille de 750 kb, et pas plus bas. En dessous, le modèle de
+noyau n'a rien à dire : ses billes sont des sphères sans intérieur. La semaine 8 ouvre cet
+intérieur sur une région de quelques mégabases, et le fait avec un mécanisme plutôt qu'une
+interpolation — **l'extrusion de boucles** (Fudenberg 2016), qui est à ce jour la seule
+hypothèse qui explique d'un coup les domaines, les points d'angle et la règle de convergence
+des motifs CTCF.
+
+```
+geno_pipeline/fine/
+  region.py      la région, ses monomères, ses sites CTCF orientés, la vérité plantée
+  extrusion.py   modèle 1D : où sont les pieds des cohésines
+  polymer.py     dynamique de Langevin (OpenMM), liaisons pilotées par l'extrusion
+  observe.py     carte de contacts, insulation, points d'angle, P(s), raccord R(s)
+  run.py         assemblage, réplicats parallèles, sauvegarde `.npz` + sidecar JSON
+```
+
+### La règle de convergence, traduite en deux tableaux
+
+Tout le pouvoir explicatif du modèle tient dans une asymétrie :
+
+| Motif | Arrête une jambe qui va… |
+|---|---|
+| **forward (+)** | vers la **gauche** |
+| **reverse (−)** | vers la **droite** |
+
+Un cohésine chargé entre un `+` en `i` et un `−` en `j > i` bloque donc ses deux jambes, et la
+paire `(i, j)` accumule des contacts : c'est un point d'angle. Une paire **divergente** (`−`
+puis `+`) n'arrête rien. Inverser ces deux lignes produirait des boucles exactement là où Rao
+2014 n'en voit pas — c'est une prédiction binaire, et c'est ce qui rend le modèle réfutable.
+
+### Le rayon d'un monomère n'est pas un paramètre de la semaine 8
+
+Il sort de la loi de la semaine 6 (§ 10) : volume de chromatine proportionnel aux paires de
+bases, constante fixée par la fraction volumique `phi`. À 2 kb par monomère, `r = 23,1 nm`,
+donc `sigma = 46,2 nm` de diamètre. Le confinement suit : `n` monomères occupent la sphère de
+rayon `R = r·(n/phi)^(1/3)`, c'est-à-dire **exactement le volume que le modèle de noyau alloue
+à cette quantité de chromatine**.
+
+C'est ce qui rend le raccord falsifiable. Si la semaine 8 avait le droit de choisir la taille
+de ses monomères, on pourrait toujours faire coïncider les deux modèles et la coïncidence ne
+dirait rien.
+
+### Champ de force, et ce que chaque terme coûte
+
+| Terme | Forme | Valeur | Pourquoi |
+|---|---|---|---|
+| squelette | harmonique | `wiggle` 0,05 σ | la chaîne ne casse pas |
+| rigidité | `k(1 − cos θ)` | 1,5 kT | longueur de persistance de quelques monomères |
+| volume exclu | `trunc·(1 − r/σ)²` | 3 kT | **franchissable** — voir ci-dessous |
+| confinement | mur linéaire lissé | 30 kT/σ | densité du noyau, pas une forme |
+| cohésines | harmonique | `wiggle` 0,2 σ | plus molle que le squelette, pour encaisser les mises à jour |
+
+Le volume exclu est volontairement mou : à l'échelle de temps de l'extrusion, la
+topoisomérase II laisse passer les brins, et un volume exclu dur figerait des enlacements que
+la cellule défait. Le prix est explicite — **la topologie de la région n'est pas une
+prédiction du modèle**.
+
+### Une sphère, pas une boîte périodique
+
+Une boîte périodique n'a pas de paroi, ce qui serait préférable, mais elle remplace
+l'environnement du segment par ses propres images : `R(s)` y sature à la taille de la boîte.
+Pour 2 000 monomères à `phi = 0,30`, la boîte fait 13,8 σ de côté pour un blob de 9,4 σ de
+rayon — l'artefact tombe en plein dans la fenêtre où le raccord se mesure. La sphère a une
+paroi, c'est un défaut qu'on énonce, mais elle fixe le bon volume.
+
+### OpenMM ne déplace pas une liaison
+
+`updateParametersInContext` change les longueurs et les raideurs, jamais les particules d'une
+liaison. Une liaison par cohésine, qu'on déplacerait au fil de l'extrusion, lève « The set of
+particles in a bond has changed ». D'où `bond_catalogue` : **toutes** les paires du parcours
+sont déclarées d'emblée à raideur nulle, et seules celles tenues à l'instant présent sont
+allumées. Quelques milliers de liaisons éteintes ne pèsent rien devant les termes non liés.
+
+Corollaire de format : les instantanés d'extrusion gardent **un emplacement par cohésine**,
+`-1` quand elle est décrochée, au lieu de la liste compacte des seules cohésines chargées. Si
+l'identité des emplacements changeait d'un instantané à l'autre, une liaison sauterait d'une
+paire à une autre sans rapport et la dynamique encaisserait un choc là où l'extrusion n'avance
+que d'un cran.
+
+### Le raccord avec le noyau entier
+
+Les deux modèles se recouvrent entre 750 kb — une bille de la semaine 6 — et l'étendue de la
+région fine, **strictement exclue** : sur `n` monomères, la séparation `n` n'existe pas. Sur
+cette fenêtre les deux prétendent à la même grandeur, `R(s)`, la distance spatiale moyenne
+entre deux morceaux de chromatine séparés de `s` paires de bases, et ils ne partagent aucun
+paramètre ajusté. Le rapport des deux courbes est le critère de fin de semaine
+([`VALIDATION.md` § S8](VALIDATION.md)).
