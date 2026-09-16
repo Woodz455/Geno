@@ -9,12 +9,12 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 7.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 8.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
-entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration — et un **ensemble de
-200 repliements** du même génome.
+entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration —, un **ensemble de
+200 repliements** du même génome, et une **descente sous le TAD** par extrusion de boucles.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -75,6 +75,23 @@ d'appariement des homologues, et une **P(s) qui s'aplatit au-delà de 15 Mb** qu
 continue de décroître. C'est un désaccord, et c'est le résultat le plus utile de la semaine : le
 modèle a le *fait* des territoires, pas leur organisation interne. La semaine 8 est là pour ça.
 
+`make fine` descend enfin sous la bille : 4 Mb autour d'ACTB, 2 000 monomères de 2 kb, des
+cohésines qui extrudent et des sites CTCF orientés qui les arrêtent. Le mécanisme fait ce qu'on
+lui demande — **12 frontières sur 13** retrouvées dans la carte de contacts, contre **0 sur 13**
+quand les mêmes sites sont inoccupés ; des points d'angle **2,57×** au-dessus du fond aux paires
+convergentes, qui retombent à 1,06 sans CTCF. Rien dans le modèle ne mentionne le mot
+« domaine » : les domaines sortent de la règle d'orientation.
+
+Le raccord avec le noyau entier, lui, **ne tient pas**, et c'est le résultat de la semaine. Les
+deux modèles ne partagent aucun paramètre ajusté — le rayon d'un monomère sort de la loi de la
+semaine 6 — et ils divergent d'un facteur **2,42** sur la fenêtre où ils se recouvrent. La
+lecture utile est une pente : `R(s) ∝ s^0,68` pour le noyau, `s^−0,02` pour le modèle fin, quand
+le traçage de chromatine donne 0,25–0,33. **Les deux encadrent la mesure par les deux bouts.**
+Le noyau gonfle comme une marche auto-évitante parce que ses billes ne sont liées que par une
+longueur *maximale* et que rien ne les retient ensuite — et c'est exactement la cause du plateau
+de P(s) de la semaine 7, vu de l'autre côté. Une chaîne qui gonfle trop vite remplit son
+territoire trop tôt, et la probabilité de contact cesse de décroître.
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
@@ -93,8 +110,10 @@ TADs, boucles CTCF, fibre de chromatine, double hélice. Le modèle de noyau et 
 d'échelle sont dans [`ARCHITECTURE.md` § 10](docs/ARCHITECTURE.md#10-modèle-de-noyau--billes-tad-territoires-périphérie).
 
 Les niveaux macro viennent de **mesures** (Hi-C, Micro-C, DamID, TSA-seq). L'échelle fine
-vient d'une **simulation contrainte par les mesures**. Le niveau séquence est de la
-**géométrie déterministe**. L'interface dit toujours laquelle des trois on regarde.
+vient d'une **simulation contrainte par les mesures** — extrusion de boucles sous OpenMM,
+détaillée dans [`ARCHITECTURE.md` § 12](docs/ARCHITECTURE.md#12-échelle-fine--extrusion-de-boucles-sous-le-tad).
+Le niveau séquence est de la **géométrie déterministe**. L'interface dit toujours laquelle des
+trois on regarde.
 
 Deux modes servis par un seul moteur :
 
@@ -139,6 +158,7 @@ make hic-validate    plante une structure Hi-C connue et valide les callers
 make recon           balaie l'exposant contact → distance contre une géométrie connue
 make nucleus         construit un noyau diploïde complet de billes TAD
 make ensemble        200 repliements du même génome, et ce qui s'y reproduit
+make fine            extrusion de boucles sous le TAD, et son raccord au noyau
 make test            suite de tests
 ```
 

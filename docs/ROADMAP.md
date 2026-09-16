@@ -177,6 +177,22 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
 - **Travaux** : sur une région choisie de 2–4 Mb, simulation polymère d'extrusion de boucles
   (polychrom/OpenMM) conditionnée par les sites CTCF orientés et le Micro-C. Résolution 1–5 kb.
 - **Fait quand** : le segment fin se raccorde géométriquement au modèle de noyau entier.
+- **Écart au plan, dit d'emblée.** `polychrom` n'est pas sur PyPI et l'environnement n'atteint
+  pas GitHub : les cinq termes du champ de force sont écrits directement sur OpenMM, qui
+  s'installe depuis PyPI. Et **aucun Micro-C ni aucune piste CTCF publiée n'est lisible** —
+  même mur réseau qu'aux semaines 1 à 7. Les sites orientés sont donc **plantés**, avec
+  témoins divergents et en tandem, comme la semaine 3 plantait une structure Hi-C : ça valide
+  la méthode, pas la biologie. `make fine CTCF=motifs.bed` attend un fichier.
+- **Fait, et le critère n'est pas atteint — c'est le résultat.** `make fine` — 4 Mb autour
+  d'ACTB, 2 000 monomères de 2 kb, 1 200 conformations en 14 min. Le mécanisme marche : 12
+  frontières sur 13 retrouvées contre **0 sur 13** quand les mêmes sites sont inoccupés, et des
+  points d'angle 2,57× au-dessus du fond aux paires convergentes, qui retombent à 1,06 sans
+  CTCF. Mais le raccord **échoue à 2,42×**, et sa lecture utile est une pente : `R(s) ∝ s^0,68`
+  pour le noyau de la semaine 6 contre `s^−0,02` pour le modèle fin, quand le traçage de
+  chromatine donne 0,25–0,33. Les deux modèles encadrent la mesure par les deux bouts. Le noyau
+  gonfle comme une marche auto-évitante parce que ses billes ne sont liées que par une longueur
+  *maximale* — **c'est la même cause que le plateau de P(s) de la semaine 7**, vu de l'autre
+  côté ([`VALIDATION.md` § S8](VALIDATION.md)).
 
 ---
 

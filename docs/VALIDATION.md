@@ -9,6 +9,369 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S8 — Échelle fine : les boucles sortent du mécanisme, le raccord ne tient pas
+
+### Le dispositif
+
+La semaine 7 s'est arrêtée sur un désaccord chiffré : au-delà de 15 Mb, la P(s) du noyau
+entier s'aplatit à 0,0253 quand le Hi-C réel continue de décroître. Le modèle avait le *fait*
+des territoires sans leur organisation interne. La semaine 8 descend là où cette organisation
+naît — entre le kilobase et le mégabase — et y met un **mécanisme** plutôt qu'une
+interpolation.
+
+Le mécanisme est l'extrusion de boucles (Fudenberg 2016), en cinq règles dont aucune ne
+mentionne le mot « domaine » :
+
+1. un complexe se charge au hasard sur deux monomères voisins ;
+2. ses deux jambes s'écartent, une vers la gauche, une vers la droite ;
+3. elles ne se dépassent pas entre complexes ;
+4. un motif CTCF **qui leur fait face** les arrête, avec sa probabilité d'occupation ;
+5. le complexe se décroche au bout d'une durée de vie exponentielle.
+
+Les domaines et les points d'angle sont censés *sortir* de la règle 4. C'est ce que la
+validation mesure.
+
+**La règle de convergence, écrite comme une asymétrie.** Un motif *forward* arrête une jambe
+qui va vers la gauche ; un motif *reverse* arrête une jambe qui va vers la droite. Un cohésine
+chargé entre un `+` en `i` et un `−` en `j > i` bloque donc ses deux jambes et la paire
+accumule des contacts. Une paire **divergente** n'arrête rien. Inverser ces deux lignes
+produirait des boucles exactement là où Rao 2014 n'en voit pas.
+
+`make fine` — chr7:4 000 000–8 000 000 (la fenêtre qui contient ACTB, le gène que `make query`
+affiche depuis la semaine 2), **2 000 monomères de 2 kb**, 20 cohésines de processivité 200 kb,
+8 réplicats × 150 instantanés = **1 200 conformations**, 14,2 minutes sur quatre cœurs pour
+l'exécution *et* son témoin. Moteur OpenMM, cinq termes, aucun ajusté après coup.
+
+### Rien n'est réglé sur le modèle de noyau, et c'est ce qui rend le raccord falsifiable
+
+Le rayon d'un monomère ne se choisit pas cette semaine : il sort de la loi de la semaine 6 —
+volume de chromatine proportionnel aux paires de bases, constante fixée par la fraction
+volumique `phi` de ChromEMT — et c'est littéralement la même fonction qui le calcule. À 2 kb,
+**23,1 nm**, donc `sigma = 46,3 nm`. Le confinement suit : 2 000 monomères occupent la sphère
+de **435 nm** de rayon, c'est-à-dire exactement le volume que le modèle de noyau alloue à 4 Mb
+de chromatine.
+
+Si la semaine 8 avait le droit de choisir la taille de ses monomères, on pourrait toujours
+faire coïncider les deux modèles, et la coïncidence ne dirait rien.
+
+### Le témoin fait partie du dispositif, pas du commentaire
+
+Poser des barrières et constater qu'il en sort des domaines ne mesure rien : c'est vrai par
+construction. Quatre témoins séparent ce qui est expliqué de ce qui est posé.
+
+| Témoin | Ce qu'il retire | n |
+|---|---|---:|
+| domaines **divergents** | rien — mêmes barrières, orientation inversée | 3 |
+| domaines **en tandem** | rien — deux `+` | 3 |
+| paires **au hasard**, à distances appariées | l'emplacement | 400 |
+| **CTCF inoccupé** | l'arrêt lui-même, positions conservées | tout |
+
+Les trois classes de domaines partagent la même distribution de longueurs : un score plus élevé
+aux convergents ne peut donc pas venir de la distance génomique. Le tirage plante 20 domaines —
+14 convergents, 3 divergents, 3 tandem — et 19 frontières.
+
+### Les barrières font des domaines
+
+Score d'insulation, fenêtre 100 kb, tolérance ±1 casier de 10 kb :
+
+| | appelées | rappel | précision |
+|---|---:|---:|---:|
+| frontières à deux sens bloqués (13/19) | 18 | **92 %** (12/13) | 67 % |
+| frontières à un seul sens bloqué (6/19) | — | 5/6 | — |
+| **témoin CTCF inoccupé** | 9 | **0 %** (0/13) | 0 % |
+
+Douze frontières sur treize avec CTCF, **zéro sans**, alors que rien d'autre n'a changé entre
+les deux exécutions — mêmes graines, mêmes positions de sites, même champ de force. Les
+domaines viennent bien de l'arrêt de l'extrusion.
+
+### Les points d'angle sont aux paires convergentes
+
+Score de coin sur carte O/E, fond local en anneau, croix exclue :
+
+| classe | n | médiane | moyenne |
+|---|---:|---:|---:|
+| **convergent** | 13 | **2,56** | 2,41 |
+| divergent | 2 | 1,61 | 1,61 |
+| tandem | 3 | 1,89 | 2,21 |
+| hasard, distances appariées | 400 | **1,00** | 1,05 |
+| **convergent, CTCF inoccupé** | 13 | **1,06** | — |
+
+Convergents contre hasard : **2,57×**. Contre divergents : 1,59×. Et contre eux-mêmes sans
+CTCF : 2,56 → **1,06**, c'est-à-dire le fond.
+
+Le fond au hasard tombant exactement sur 1,00 est la vérification que le score ne fabrique
+rien : sur une carte normalisée O/E avec fond local, une paire quelconque doit valoir 1.
+
+### Un témoin qui n'en est qu'à moitié un, et pourquoi
+
+Les scores domaine par domaine :
+
+```
+convergent   3,27  3,22  2,97  2,85  2,65  2,61  2,56  2,48  2,42  2,03  1,69  1,66  0,97
+divergent    1,73  1,48
+tandem       3,27  1,89  1,47
+```
+
+**Un domaine en tandem marque 3,27, autant que le meilleur convergent.** Ce n'est pas du bruit,
+et ce n'est pas un défaut du modèle : c'est un défaut du témoin. Un domaine en tandem
+(`+ +`) voit bien sa jambe gauche bloquée par son ancre gauche ; sa jambe droite, elle,
+traverse son ancre droite — mais si le domaine **suivant** commence par un `−`, ce `−` se
+trouve à un monomère de là et l'arrête. La boucle existe, ancrée un cran plus loin, et la
+tolérance du score la ramasse.
+
+Le seul témoin propre est donc **divergent**, où aucune des deux ancres n'arrête la jambe qui
+l'atteint. Le rapport publié est celui-là, et le fond au hasard sert de référence à grand
+effectif.
+
+### Une erreur dans ma propre vérité, sortie par les résultats
+
+La première version étiquetait une frontière comme « bloquante » si l'ancre à sa gauche était
+`−` **ou** celle à sa droite `+`. Ça rate les deux autres cas, et le rapport annonçait
+18 frontières bloquantes sur 19 — puis imprimait fièrement que la dix-neuvième, le « témoin
+non bloquant », avait elle aussi été retrouvée. Un témoin qui contredit son propre énoncé n'en
+est pas un.
+
+En réalité **aucune frontière n'est non bloquante** dans ce dispositif : elle porte deux
+ancres, et une ancre arrête toujours l'un des deux sens — un `+` les jambes qui vont à gauche,
+un `−` celles qui vont à droite. Ce qui distingue deux frontières est leur **force** : 2 quand
+les deux ancres sont de sens opposés, donc les deux sens arrêtés ; 1 sinon. 13 sur 19 ici.
+
+### La fenêtre d'insulation : la semaine 3 avait raison, son optimum non
+
+La semaine 3 avait mesuré qu'une fenêtre trop large tue le rappel (100 % à 100 kb contre 42 % à
+600 kb sur des TADs de 450 kb) et j'en avais déduit un rapport de ~0,22, donc 50 kb pour des
+domaines de 200 kb. Le balayage dit l'inverse à ce bout-là, et la colonne qui tranche est celle
+du témoin :
+
+| fenêtre | proéminence | appelées | rappel | précision | témoin : appelées | témoin : rappel |
+|---:|---:|---:|---:|---:|---:|---:|
+| 30 kb | 0,12 | 28 | 74 % | 50 % | 20 | 11 % |
+| 50 kb | 0,05 | 32 | 95 % | 56 % | 33 | 42 % |
+| 50 kb | 0,12 | 21 | 95 % | 86 % | 12 | 21 % |
+| **100 kb** | **0,05** | **18** | **89 %** | **94 %** | **9** | **5 %** |
+| 100 kb | 0,08 | 15 | 79 % | 100 % | 5 | 5 % |
+| 100 kb | 0,18 | 2 | 11 % | 100 % | 0 | 0 % |
+| 200 kb | 0,05 | 9 | 47 % | 100 % | 0 | 0 % |
+
+Deux bornes, et l'optimum est **entre les deux**. Vers le bas, une fenêtre étroite moyenne
+moins de pixels et appelle du bruit : à 50 kb, le témoin **sans aucun CTCF** retrouve encore
+42 % des frontières, ce qui disqualifie le réglage quel que soit son rappel. Vers le haut, à
+200 kb — l'échelle des domaines elle-même — le rappel s'effondre à 47 %, exactement ce que la
+semaine 3 avait mesuré.
+
+La contrainte de la semaine 3 tient donc, mais son optimum ne se transposait pas : ici le
+rapport qui marche est 0,5 de la taille des domaines, pas 0,22.
+
+Le seuil est donc choisi **en regardant ce tableau**, ce qui est une sélection ; ce qui la rend
+légitime est qu'elle s'appuie sur une référence indépendante — le témoin sans CTCF — et pas sur
+le rappel. Le tableau entier est publié, pas seulement sa ligne retenue.
+
+### P(s), et pourquoi il ne faut pas se réjouir de −1,08
+
+| régime | fenêtre | pente |
+|---|---|---:|
+| boucle | 20–150 kb | −0,69 |
+| **domaine** | 150–800 kb | **−1,08** |
+| confinement | 1–3 Mb | +0,26 |
+
+Lieberman-Aiden 2009 rapporte `s^−1,08` — le même nombre. Il ne faut rien en conclure, pour
+deux raisons qu'il vaut mieux écrire que taire.
+
+D'abord la fenêtre : la pente publiée est ajustée sur **500 kb–7 Mb**, qu'une région de 4 Mb ne
+peut pas couvrir. Les deux nombres se ressemblent sans être mesurés pareil, et la semaine 7 a
+déjà payé une fois le prix d'une fenêtre d'ajustement prise pour acquise.
+
+Ensuite la convergence : la pente **bouge encore** avec le nombre de réplicats (−0,95 à un
+réplicat, −1,08 à huit, cf. ci-dessous). Ce qu'on peut dire honnêtement est qu'elle est entre
+−0,9 et −1,1 dans le régime des domaines, ce qui est le bon ordre de grandeur. Pas qu'elle
+vaut −1,08.
+
+Le régime « confinement » à +0,26 n'a aucun sens physique — une probabilité de contact ne croît
+pas avec la distance. Il mesure la paroi de la sphère et le petit nombre de paires disponibles
+au-delà de 1 Mb sur 2 000 monomères. Il est nommé pour ça.
+
+### Le raccord ne tient pas, et c'est le résultat de la semaine
+
+| séparation | modèle fin | noyau | rapport | paires/conf. |
+|---:|---:|---:|---:|---:|
+| 0,75 Mb | 453 nm | 365 nm | **1,24** | 1 625 |
+| 1,50 Mb | 448 nm | 612 nm | 0,73 | 1 250 |
+| 2,25 Mb | 450 nm | 806 nm | 0,56 | 875 |
+| 3,00 Mb | 430 nm | 958 nm | 0,45 | 500 |
+| 3,75 Mb | 444 nm | 1 077 nm | 0,41 | 125 |
+
+Écart le plus grand **2,42×**, contre un facteur 1,25 admis. **Le critère de la semaine 8 n'est
+pas atteint.**
+
+Ce que le tableau dit vraiment est une différence de pente, et elle est plus instructive qu'un
+rapport :
+
+| | `R(s) ∝ s^ν` |
+|---|---:|
+| modèle fin (2 kb, extrusion, confiné) | **−0,02** |
+| noyau entier (750 kb, semaine 6) | **+0,68** |
+| marche aléatoire idéale | 0,50 |
+| marche auto-évitante gonflée | 0,59 |
+| traçage de chromatine, au-dessus du Mb (Wang 2016, Bintu 2018, Su 2020) | **0,25 – 0,33** |
+
+**Les deux modèles encadrent la mesure, et ils l'encadrent par les deux bouts.** Le noyau de la
+semaine 6 gonfle comme une marche auto-évitante : ses billes ne sont liées que par une longueur
+*maximale*, et rien ne les retient ensemble au-delà. Le modèle fin, lui, sature complètement,
+parce qu'on lui a dit que 4 Mb tiennent dans 435 nm.
+
+Ce dernier point est une réserve sérieuse et elle porte sur le haut du tableau : le confinement
+du modèle fin vient de la loi de volume de la semaine 6, donc au-delà d'environ 1 Mb l'accord —
+ou le désaccord — devient partiellement circulaire. **La ligne informative est la première** :
+à 750 kb, l'échelle d'une seule bille grossière, les deux modèles s'accordent à 1,24×. Ils
+divergent ensuite, et la divergence est dans le terme de chaîne, pas dans la taille des billes.
+
+### Ce que ça dit du modèle de noyau, et c'est la même chose que la semaine 7
+
+Une chaîne qui gonfle en `s^0,68` atteint la taille de son territoire beaucoup trop vite.
+Passé ce point, tout est à portée de tout, et la probabilité de contact cesse de décroître —
+exactement le plateau à 0,0253 au-delà de 15 Mb que la semaine 7 avait mesuré sans savoir d'où
+il venait. Les deux observations sont la même : **le terme de chaîne de la semaine 6 n'a aucun
+mécanisme de compaction à l'échelle du mégabase.**
+
+C'est une prescription, pas seulement un constat. Il manque au modèle de noyau ce que le modèle
+fin a et qu'il n'a pas : quelque chose qui tienne une chaîne compacte sans la confiner à la
+main.
+
+### Huit réplicats, est-ce assez ? Non pour tout
+
+| réplicats | conformations | rappel | précision | convergents | divergents | conv./hasard | p. boucle | p. domaine |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 150 | 54 % | 28 % | 2,40 | 1,91 | 2,45× | −0,78 | −0,95 |
+| 2 | 300 | 77 % | 40 % | 2,37 | 1,58 | 2,42× | −0,74 | −0,89 |
+| 4 | 600 | 85 % | 50 % | 2,58 | 1,44 | 2,57× | −0,72 | −1,04 |
+| 8 | 1 200 | 92 % | 67 % | 2,56 | 1,61 | 2,57× | −0,69 | −1,08 |
+
+Le score de coin et le rapport au hasard sont posés dès quatre réplicats. **Le rappel des
+frontières et les pentes de P(s), non** : le premier monte encore de 85 à 92 %, les secondes
+dérivent régulièrement. Les conclusions qui portent sur les points d'angle sont donc solides ;
+celles qui portent sur un chiffre de pente ne le sont pas, et c'est pour ça que la section P(s)
+ne cite pas −1,08 comme un résultat.
+
+### La trajectoire a-t-elle oublié son point de départ ?
+
+Comparaison de `R(s)` entre la première et la seconde moitié des instantanés, **à l'intérieur de
+chaque réplicat** — couper l'ensemble empilé en deux comparerait des réplicats entre eux, ce
+qui est une autre question.
+
+| séparation | 1re moitié | 2e moitié | dérive |
+|---:|---:|---:|---:|
+| 20 kb | 192 nm | 190 nm | −1,0 % |
+| 200 kb | 364 nm | 347 nm | −4,6 % |
+| 800 kb | 449 nm | 460 nm | +2,6 % |
+| 2,00 Mb | 456 nm | 461 nm | +1,3 % |
+| 3,60 Mb | 446 nm | 456 nm | +2,5 % |
+
+Dérive maximale 4,6 % : stationnaire sur la fenêtre d'échantillonnage. C'est `R(s)` aux grandes
+séparations qu'il faut regarder, jamais `Rg` — voir le défaut ci-dessous.
+
+### `R(s)` du modèle fin, pour mémoire
+
+| séparation | moyenne | écart-type |
+|---:|---:|---:|
+| 2 kb | 46 nm | 2 nm |
+| 10 kb | 136 nm | 41 nm |
+| 34 kb | 236 nm | 93 nm |
+| 102 kb | 314 nm | 134 nm |
+| 318 kb | 395 nm | 151 nm |
+| 978 kb | 449 nm | 152 nm |
+| 3,02 Mb | 429 nm | 151 nm |
+
+Les 46 nm à 2 kb sont `sigma` : deux monomères liés sont au contact, par construction. L'ordre
+de grandeur aux échelles intermédiaires — ~315 nm à 100 kb, ~395 nm à 320 kb — est celui que
+le traçage de chromatine rapporte, mais rien ici ne le compare à une mesure : il n'y en a
+aucune dans le dépôt, le réseau est fermé.
+
+### Défauts et erreurs de méthode
+
+**`Rg` est aveugle à la structure interne, et il m'a presque eu.** La première conformation de
+départ était une marche aléatoire libre **comprimée** jusqu'à tenir dans la sphère. La courbe
+de mise en place était alors parfaitement plate — `Rg` = 7,02 σ au pas 2 000, 7,05 σ au pas
+40 000 — et la conclusion évidente était « l'équilibrage est immédiat ». Elle est fausse : une
+compression divise **toutes** les distances par le même facteur, donc elle écrase la structure
+interne exactement autant que la structure globale, et `Rg` ne peut pas voir la différence.
+Mesuré sur `R(s)` à la place, le mode lent apparaît : `R(10)` et `R(100)` se stabilisent en
+quelques dizaines de milliers de pas, `R(1000)` dérivait encore à 80 000. La conformation de
+départ est maintenant une marche **réfléchie** sur la paroi, qui garde des pas de longueur
+unité à toutes les échelles, et un test l'exige.
+
+**Une étude d'équilibrage abandonnée au profit d'une mesure sur les données publiées.** La
+première version mesurait la convergence dans une exécution séparée. C'est deux fois moins
+bon : ça coûte le double et ça porte sur une trajectoire qu'on ne publie pas. La stationnarité
+est maintenant mesurée sur les instantanés de production eux-mêmes (tableau ci-dessus).
+
+**OpenMM ne déplace pas une liaison.** `updateParametersInContext` modifie longueurs et
+raideurs, jamais les particules : une liaison par cohésine qu'on ferait suivre l'extrusion lève
+`The set of particles in a bond has changed`. Découvert en le faisant. La parade — déclarer
+d'emblée toutes les paires du parcours à raideur nulle et n'allumer que celles tenues — a une
+conséquence de format : les instantanés d'extrusion gardent un emplacement par cohésine, `-1`
+quand elle est décrochée, pour qu'une liaison ne saute jamais d'une paire à une paire sans
+rapport.
+
+**J'avais écrit l'inverse de la vraie raison d'exclure la croix.** Le commentaire de
+`dot_score` disait qu'elle évite qu'une bande de la carte soit comptée comme un point. C'est
+faux, et c'est un test qui l'a montré : une bande seule donne 1,00 à côté d'elle, exclusion ou
+pas. La vraie raison est l'inverse — une ancre de boucle *émet* une bande, l'anneau de fond
+tomberait dedans, le fond serait surestimé et le point réel **masqué**. C'est pour ça que
+HiCCUPS retire la croix.
+
+**Une troncature silencieuse dans le raccord.** La fenêtre de recouvrement était tronquée à la
+plus courte des deux courbes. Sur 1 500 monomères, la séparation 1 500 n'existe pas — aucune
+paire à cette distance — et le quatrième point disparaissait sans que rien ne le dise. La
+fenêtre est maintenant calculée, et une région trop courte pour un seul point lève.
+
+**Des témoins tirés à pile ou face ne sont pas des témoins.** Sur une vingtaine de domaines, un
+tirage indépendant donnait couramment 1 divergent contre 5 tandem. Les deux classes alternent
+désormais.
+
+**Un fond tiré hors de la zone mesurable.** Les paires au hasard étaient tirées n'importe où, y
+compris à moins de six casiers d'un bord où le score rend `NaN`. Sur une petite carte avec de
+longues portées, le fond entier pouvait sortir vide. Les tirages sont maintenant contraints à
+la zone scorable, et un test le vérifie.
+
+**Une fausse alerte, et d'où elle venait.** Le chemin multiprocessus semblait cassé
+(`FileNotFoundError: .../<stdin>`). C'est un artefact de `python - <<EOF` : `spawn` réimporte
+`__main__` depuis son chemin, et `<stdin>` n'en a pas. Depuis un vrai fichier, il marche. Rien
+à corriger dans le code, tout à corriger dans la façon de le tester.
+
+### Ce que ça ne dit pas
+
+**Rien de biologique.** Les sites CTCF sont **plantés**, pas lus : aucune piste publiée n'est
+accessible, même mur réseau qu'aux semaines 1 à 7. Ce qui est validé est la méthode — le
+mécanisme produit bien des domaines et des points d'angle, et seulement là où l'orientation le
+prévoit. `make fine CTCF=motifs.bed` attend un fichier ; le lecteur est écrit, testé, et refuse
+un site sans brin plutôt que d'en inventer un.
+
+**Rien sur la topologie.** La répulsion est volontairement franchissable à 3 kT, parce que la
+topoisomérase II laisse passer les brins à l'échelle de temps de l'extrusion. Le nombre
+d'enlacements de la région n'est donc pas une prédiction du modèle.
+
+**Rien au-delà du mégabase.** Le confinement sphérique impose la saturation de `R(s)`, et la
+région de 4 Mb ne permet aucune mesure au-delà. Les deux dernières lignes du raccord reposent
+sur 500 et 125 paires par conformation.
+
+**Rien sur la vitesse réelle des cohésines.** Un pas d'extrusion est un monomère, pas une
+seconde. Toutes les quantités rapportées sont des moyennes d'état stationnaire ; aucune ne
+demande de convertir ces pas en temps.
+
+### Reproduire
+
+```console
+$ cd pipeline && make fine                       # 8 réplicats + témoin, ~15 min sur 4 cœurs
+$ make fine CTCF=motifs.bed                      # avec des motifs mesurés, quand il y en aura
+$ .venv/bin/python -m geno_pipeline fine --report-only           # relit, sans recalculer
+$ .venv/bin/python -m geno_pipeline fine --report-only --sweep   # le tableau fenêtre × seuil
+```
+
+Le balayage est dans la commande et pas dans un script à côté, précisément parce que c'est lui
+qui justifie le réglage retenu : un tableau qu'on ne peut pas refaire ne justifie rien.
+
+---
+
 ## S7 — Ensembles : ce qui est une propriété du génome, ce qui est un tirage
 
 ### Le dispositif
