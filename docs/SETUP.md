@@ -66,10 +66,20 @@ présent ([`ARCHITECTURE.md` § 12](ARCHITECTURE.md)).
 `Encountered all NA values`. Diagnostiqué, pas deviné : le warning de pandas 2 pointe la
 ligne exacte.
 
+## Format `.g3d` — aucune dépendance nouvelle
+
+L'écriture n'utilise que numpy, déjà là, et `zlib` et `hashlib` de la bibliothèque standard. La lecture,
+côté navigateur comme côté Node 22, n'utilise que des API natives : `DecompressionStream
+('deflate-raw')` pour décompresser, `crypto.subtle` pour vérifier les empreintes, `fetch` pour
+les requêtes Range. La mesure de temps pilote Chromium par le protocole DevTools sur le
+`WebSocket` natif de Node 22, sans Playwright ni Puppeteer. Le dépôt garde donc ses deux seules
+dépendances JavaScript, esbuild et TypeScript ; le test de lecture croisée déclare les deux
+symboles Node dont il a besoin plutôt que d'ajouter `@types/node`.
+
 ## Vérifier
 
 ```console
-$ make test            # 181 tests (43 socle 1D + 138 conformation)
+$ make test            # 218 tests (43 socle 1D + 138 conformation + 37 format .g3d)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

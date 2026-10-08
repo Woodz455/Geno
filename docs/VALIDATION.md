@@ -9,6 +9,202 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S9 — Format et streaming : 1,41 s en Slow 4G, et une marge que TLS mangerait
+
+### Le critère, et ce qu'il veut dire
+
+La feuille de route demande : **niveau noyau < 500 ko, premier rendu < 1,5 s en 4G**. Le
+premier chiffre est tenu de très loin. Le second dépend de ce qu'on appelle 4G, et la réponse
+change le verdict. Les préréglages de DevTools en donnent deux :
+
+| Profil | Latence par requête | Débit descendant |
+|---|---:|---:|
+| Fast 4G | 165 ms | 1 012,5 ko/s |
+| Slow 4G | 562,5 ms | 180 ko/s |
+
+`tools/loadtime.mjs` passe ces valeurs explicitement à `Network.emulateNetworkConditions` :
+ce sont **ces nombres-là**, et non le nom du profil, qui définissent la mesure. En Slow 4G, les deux allers-retours incompressibles — la page, puis les données —
+coûtent **1 125 ms avant le premier octet utile**. Il reste 375 ms pour transférer, décoder et
+dessiner, soit ~34 ko sur le fil. Tout le format en découle : le premier rendu doit tenir en
+**une** requête Range, et tout préfixe du fichier doit être utile.
+
+### Ce qui est dans le fichier
+
+`make g3d` écrit `data/g3d/gm12878.g3d` : **56 881 octets**, trois niveaux, toutes empreintes
+vérifiées à la relecture.
+
+| Niveau | Billes | Source | Erreur max | Rôle |
+|---|---:|---|---:|---|
+| aperçu, 3 Mb | 2 032 | médoïde S7, quatre billes fusionnées | 2,57 nm | premier rendu |
+| noyau, 750 kb | 8 082 | médoïde S7 sur 200 structures | 2,80 nm | — |
+| fin, 2 kb | 2 000 | médoïde S8 sur 1 200 conformations | 0,83 nm | chr7:4–8 Mb |
+
+Le niveau noyau entier pèse **35 ko** contre 500 ko admis. Son premier rendu — copie et
+positions — tient en 26,4 ko.
+
+### La précision stockée suit l'incertitude, et c'est là que sont les octets
+
+La première version quantifiait les positions sur toute la plage de 16 bits : pas de 0,14 nm,
+**40,6 ko** de positions pour le noyau, à peine moins que les 48,5 ko bruts. Les positions sont
+la colonne chère parce qu'à ce pas l'écart entre billes voisines porte de nombreux bits par axe
+— des bits que le modèle n'a pas : la profondeur d'une bille varie de 276 nm (médiane) d'un
+tirage à l'autre (S7). La règle retenue fixe l'erreur maximale à **1 % de
+l'incertitude médiane du niveau** :
+
+| Erreur max | Pas | Positions du noyau | Fraction de l'incertitude médiane |
+|---:|---:|---:|---:|
+| 0,07 nm | 0,14 nm | 40 642 o | 0,03 % |
+| 0,50 nm | 1,00 nm | 32 528 o | 0,18 % |
+| 1,00 nm | 2,00 nm | 28 960 o | 0,36 % |
+| **2,76 nm** | **5,52 nm** | **26 387 o** | **0,99 %** |
+| 5,00 nm | 10,0 nm | 23 872 o | 1,78 % |
+| 10,0 nm | 20,0 nm | 20 938 o | 3,57 % |
+
+La courbe est logarithmique : chaque moitié de précision rend environ un bit par axe. La règle
+a été choisie **après** avoir vu la courbe, ce qu'il faut dire : 1 % n'est pas réglé sur un
+budget d'octets, c'est le seuil usuel du négligeable devant une incertitude.
+
+Le reste se compresse presque à rien, parce que le delta modulaire par plan transforme des
+suites régulières en zéros : `start` et `end` passent de 32 ko à 0,7 ko chacun, l'index des
+identifiants de 32 ko à 51 octets.
+
+### Le premier rendu, mesuré
+
+Chromium headless, page servie en gzip, `.g3d` servi brut avec Range, cache désactivé, dix
+passages par case. Chaque temps est compté depuis l'origine de navigation, et **chaque
+passage vérifie son rendu** — au moins 5 % des pixels couverts par une bille, et un picking au
+centre qui tombe sur une bille — avant de publier son chiffre.
+
+| Variante | Profil | Requêtes .g3d | Octets .g3d | Document | Données | **Premier rendu** | p90 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| noyau, préfixe 16 Kio | Fast 4G | 2 | 42 792 | 179 ms | 579 ms | 819 ms | 837 ms |
+| noyau, préfixe 16 Kio | Slow 4G | 2 | 42 792 | 607 ms | 1 999 ms | **2 253 ms** | 2 302 ms |
+| noyau, préfixe 64 Kio | Fast 4G | 1 | 44 627 | 176 ms | 406 ms | 654 ms | 668 ms |
+| noyau, préfixe 64 Kio | Slow 4G | 1 | 44 627 | 606 ms | 1 433 ms | **1 685 ms** | 1 750 ms |
+| noyau, préfixe ajusté | Fast 4G | 1 | 29 153 | 177 ms | 393 ms | 637 ms | 674 ms |
+| noyau, préfixe ajusté | Slow 4G | 1 | 29 153 | 607 ms | 1 353 ms | **1 602 ms** | 1 627 ms |
+| aperçu, préfixe 16 Kio | Fast 4G | 1 | 16 384 | 178 ms | 380 ms | 521 ms | 558 ms |
+| aperçu, préfixe 16 Kio | Slow 4G | 1 | 16 384 | 606 ms | 1 282 ms | **1 412 ms** | 1 428 ms |
+| aperçu, préfixe 64 Kio | Fast 4G | 1 | 56 881 | 177 ms | 421 ms | 550 ms | 554 ms |
+| aperçu, préfixe 64 Kio | Slow 4G | 1 | 56 881 | 606 ms | 1 508 ms | **1 646 ms** | 1 671 ms |
+| aperçu, préfixe ajusté | Fast 4G | 1 | 11 149 | 177 ms | 374 ms | 512 ms | 574 ms |
+| aperçu, préfixe ajusté | Slow 4G | 1 | 11 149 | 606 ms | 1 249 ms | **1 381 ms** | 1 389 ms |
+
+Sans bridage, toutes les variantes rendent entre 164 et 294 ms. « Préfixe ajusté » : le
+préfixe vaut exactement la fin du premier rendu, que donne le préambule ; une page déployée
+avec son fichier connaît ce nombre, un client générique non.
+
+**En Fast 4G, tout passe**, de 512 à 819 ms. **En Slow 4G, seul l'aperçu passe** : 1 381 ms
+avec un préfixe ajusté, **1 412 ms avec un simple préfixe de 16 Kio** — c'est donc ce que fait
+la page par défaut, sans rien savoir du fichier.
+
+Trois lectures du tableau :
+
+- **Une requête de trop coûte plus que tout le reste.** Le noyau lu avec un préfixe de 16 Kio,
+  trop court, demande une seconde requête : +651 ms sur le préfixe ajusté. Une latence de
+  562,5 ms ne se compense par aucun gain d'octets.
+- **Un préfixe trop long se paie aussi.** 64 Kio sur un fichier de 57 ko, c'est télécharger
+  tout le fichier pour en dessiner 11 ko : 1 646 ms au lieu de 1 381.
+- **Le noyau n'échoue pas sur le réseau.** Ses données sont là à 1 353 ms, sous la barre ; ce
+  sont les ~250 ms de dessin par SwiftShader qui le font passer au-dessus. Sur un vrai GPU, ce
+  dessin coûterait probablement quelques dizaines de millisecondes — mais ce n'est pas mesuré
+  ici, donc ce n'est pas revendiqué.
+
+### La règle fixée d'avance, appliquée
+
+Avant la mesure, le plan disait : l'aperçu n'entre dans le fichier par défaut que s'il fait
+passer un profil nommé sous 1,5 s. Il fait passer Slow 4G et le noyau seul non : il est donc le
+niveau du premier rendu par défaut, et `gm12878-noyau.g3d`, sans lui, reste écrit pour
+comparaison. Il coûte 12 ko de fichier, qui ne sont lus que par qui les demande.
+
+### La marge est de 88 ms, et voici ce qui la mangerait
+
+Le bridage de DevTools agit **par requête** : il n'émule ni la poignée de main TCP, ni TLS,
+ni le démarrage lent de TCP. Un vrai réseau Slow 4G en HTTPS ajoute au moins un aller-retour
+de TLS 1.3 pour la connexion à l'origine — 562,5 ms à cette latence. **Avec lui, aucune
+variante ne passerait sous 1,5 s.** Le chiffre mesuré est une **borne basse** côté réseau,
+quand SwiftShader en fait une **borne haute** côté rendu ; les deux erreurs vont en sens
+contraires et ne s'annulent pas forcément.
+
+Le verdict honnête est donc : **critère tenu sous le profil Slow 4G de DevTools tel qu'il est
+défini, avec 88 ms de marge ; tenu largement en Fast 4G ; non tenu sur un vrai Slow 4G en
+HTTPS**, où il faudrait gagner un aller-retour — par exemple en servant le préfixe du premier
+rendu dans la page elle-même, ce qui couple page et données et n'est pas fait ici.
+
+### Le budget du § 4, en octets écrits
+
+`make g3d-bench` remplace l'arithmétique sur float32 par des octets écrits, attributs compris :
+
+| Bille | Billes | Structure | Chunks | Premier rendu | Niveau entier | o/bille |
+|---:|---:|---|---:|---:|---:|---:|
+| 1 Mb | 6 058 | noyau S6 réel | 1 | 19,6 Kio | 27,8 Kio | 4,69 |
+| 250 kb | 24 244 | noyau S6 réel | 8 | 76,1 Kio | 109,6 Kio | 4,63 |
+| 100 kb | 60 618 | noyau S6 réel | 8 | 173,5 Kio | 224,0 Kio | 3,78 |
+| 25 kb | 242 472 | raffinement synthétique | 64 | 677,1 Kio | 929,6 Kio | 3,93 |
+| 10 kb | 606 180 | raffinement synthétique | 190 | 1 610 Kio | 2 218 Kio | 3,75 |
+
+Entre 3,8 et 4,7 octets par bille à toutes les échelles, contre 12 pour les seules positions en
+float32. Sous 100 kb, les structures sont un **raffinement synthétique** du noyau à 100 kb —
+chaque bille découpée en filles le long d'un pont brownien — qui suffit à compter des octets et
+ne dit rien de la biologie.
+
+### Le niveau fin, posé, et ce que la pose mesure
+
+Le médoïde de la semaine 8 est posé dans le repère du noyau par Kabsch, réflexion permise,
+**sans échelle**, sur six billes de chr7:a qu'il couvre à moitié au moins.
+
+| | |
+|---|---:|
+| RMSD de la pose rigide | **394,7 nm** |
+| échelle qui serait optimale | ×1,58 |
+| RMSD si on l'appliquait | 382,5 nm |
+
+Le chiffre important est le dernier : **une échelle ne rattrape presque rien**. L'écart entre
+les deux modèles n'est pas une affaire de taille mais de **forme** — le modèle fin est une
+pelote confinée dans 435 nm de rayon, le noyau de la semaine 6 une chaîne qui gonfle avec la
+distance génomique. C'est la différence de pente de `R(s)` mesurée en semaine 8 (s^0,68 contre
+s^−0,02), vue autrement. La pose ne corrige pas le raccord ; elle le **mesure**, et le fichier
+transporte ce bilan avec la transformation. Poser sur chr7:a plutôt que chr7:b est arbitraire —
+le modèle fin n'a pas d'haplotype — et le fichier le dit aussi.
+
+### Défauts trouvés
+
+**Une précision que le modèle n'a pas.** Le format initial quantifiait sur toute la plage de
+16 bits ; c'était l'habitude du float32 sous une autre forme. Mesuré, ça coûtait 14 ko sur
+les 34 que Slow 4G laisse au premier rendu.
+
+**Une origine arrondie qui dépassait l'erreur annoncée.** L'en-tête arrondissait l'origine de
+quantification au 1e-4 nm, assez pour que l'erreur relue dépasse l'erreur annoncée de
+3·10⁻⁵ nm. Invisible à l'œil, vu par un test exact.
+
+**Trois lectures au lieu de deux.** Avec un préfixe trop court pour l'en-tête, le lecteur
+complétait l'en-tête, puis relisait les colonnes du premier rendu — alors que le préambule
+donne déjà où elles finissent. Trouvé par la lecture croisée ; la lecture qui complète
+l'en-tête va désormais jusqu'à la fin du premier rendu.
+
+**Deux variantes de mesure confondues avec le banc.** La grille de temps a d'abord été lancée
+pendant que le banc construisait un noyau à 100 kb ; les deux se disputaient le processeur, et
+SwiftShader rend sur le processeur. La grille a été arrêtée et relancée seule.
+
+### Ce que ça ne dit pas
+
+**Rien sur un vrai GPU.** Les temps de dessin sont ceux de SwiftShader. **Rien sur TLS ni TCP.**
+Le bridage est par requête. **Rien sur des données réelles** : les trois niveaux sont simulés
+(S6–S8), et le fichier le dit dans son en-tête comme dans chaque niveau. **Rien au-delà du
+premier rendu** : le chargement par octant visible des niveaux fins est écrit dans le lecteur
+(`visibleChunks`) et testé, mais aucune navigation n'est encore mesurée — c'est la semaine 10.
+
+### Reproduire
+
+```console
+$ cd pipeline && make g3d               # gm12878.g3d (avec aperçu) et gm12878-noyau.g3d
+$ make g3d-bench                        # le budget en octets écrits (~10 min la première fois)
+$ cd .. && node tools/test-g3d.mjs      # lecture croisée Python → TypeScript, HTTP compris
+$ pnpm build && node tools/loadtime.mjs 10    # la grille de temps (~6 min)
+```
+
+---
+
 ## S8 — Échelle fine : les boucles sortent du mécanisme, le raccord ne tient pas
 
 ### Le dispositif

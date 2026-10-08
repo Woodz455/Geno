@@ -15,7 +15,9 @@ import { createTargets, ImpostorRenderer, NO_HIT, perspective, Picker } from "@g
 
 const q = new URLSearchParams(location.search);
 const file = q.get("f") ?? "data/gm12878.g3d";
-const prefix = Number(q.get("prefix") ?? 64 * 1024);
+// 16 Kio : mesuré, il couvre le premier rendu du fichier par défaut (11 ko) en une
+// requête et passe sous 1,5 s en Slow 4G (1 412 ms médian). VALIDATION.md § S9.
+const prefix = Number(q.get("prefix") ?? 16 * 1024);
 const W = 960;
 const H = 540;
 const FOV = (45 * Math.PI) / 180;

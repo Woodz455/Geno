@@ -204,6 +204,18 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   provenance) + tableaux de positions par LOD + index d'intervalles. Découpage octree,
   requêtes HTTP Range.
 - **Fait quand** : niveau noyau < 500 ko, premier rendu < 1,5 s en 4G.
+- **Fait — tenu sous le profil Slow 4G de DevTools, avec 88 ms de marge.** `make g3d` écrit un
+  fichier de **57 ko** à trois niveaux (aperçu 3 Mb, noyau 750 kb, région fine 2 kb posée dans
+  le repère du noyau) ; le niveau noyau entier pèse **35 ko** contre 500 admis. La précision
+  stockée suit l'incertitude (erreur max = 1 % de la dispersion médiane, 2,8 nm) au lieu de
+  l'habitude du float32 : 3,8 à 4,7 octets par bille à toutes les échelles. Premier rendu
+  mesuré dans Chromium, rendu vérifié à chaque passage : **512 à 819 ms en Fast 4G**, toutes
+  variantes ; **1 412 ms en Slow 4G** avec l'aperçu et un préfixe de 16 Kio — le noyau seul
+  échoue à 1 602 ms, une seconde requête coûte 650 ms. La règle fixée avant la mesure a donc
+  fait de l'aperçu le niveau du premier rendu. Limite dite avec le chiffre : le bridage est par
+  requête, sans TCP ni TLS ; un vrai Slow 4G en HTTPS ajouterait un aller-retour et ferait
+  échouer toutes les variantes ([`VALIDATION.md` § S9](VALIDATION.md)). Aucune dépendance
+  nouvelle : `DecompressionStream`, `crypto.subtle`, `fetch` et `WebSocket` sont natifs.
 
 #### Semaine 10 — Niveaux macro
 - Noyau, territoires, compartiments. Imposteurs de sphères, occlusion ambiante écran-espace

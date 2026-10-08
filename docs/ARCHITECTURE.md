@@ -125,26 +125,34 @@ dans tous les navigateurs récents et dans Node 22. Le lecteur n'importe rien.
 
 ## 4. Budget de niveaux de détail
 
-Génome diploïde = 6,2 Gb. Positions = 3 × float32 = 12 octets par bille.
+Ce paragraphe était de l'arithmétique sur des float32 : 12 octets par bille pour les seules
+positions. Depuis la semaine 9, ce sont des **octets écrits** par le format réel (§ 3),
+compressés, attributs compris — `make g3d-bench`.
 
-| Niveau | Taille de bin | Billes (diploïde) | Positions | Chargement |
-|--------|---------------|-------------------|-----------|-----------|
-| Noyau | 1 Mb | 6 200 | 74 ko | global, immédiat |
-| Territoire | 250 kb | 24 800 | 298 ko | global |
-| Compartiment | 100 kb | 62 000 | 744 ko | global |
-| TAD | 25 kb | 248 000 | 3,0 Mo | par octant visible |
-| Boucle | 10 kb | 620 000 | 7,4 Mo | par octant visible |
-| Fibre | 1 kb | 6,2 M | — | fenêtre visible seulement |
-| Séquence | 1 pb | — | — | géométrie procédurale |
+| Niveau | Bille | Billes (diploïde) | Structure mesurée | Chunks | Premier rendu | Niveau entier | o/bille |
+|--------|------:|------------------:|-------------------|-------:|--------------:|--------------:|--------:|
+| Aperçu | 3 Mb | 2 032 | médoïde S7 fusionné | 1 | 7,6 Kio | 11,3 Kio | 5,71 |
+| Noyau | 1 Mb | 6 058 | noyau S6 réel | 1 | 19,6 Kio | 27,8 Kio | 4,69 |
+| Territoire | 250 kb | 24 244 | noyau S6 réel | 8 | 76,1 Kio | 109,6 Kio | 4,63 |
+| Compartiment | 100 kb | 60 618 | noyau S6 réel | 8 | 173,5 Kio | 224,0 Kio | 3,78 |
+| TAD | 25 kb | 242 472 | raffinement synthétique | 64 | 677,1 Kio | 929,6 Kio | 3,93 |
+| Boucle | 10 kb | 606 180 | raffinement synthétique | 190 | 1 610 Kio | 2 218 Kio | 3,75 |
+| Fibre | 1 kb | 6,2 M | — | — | — | — | fenêtre visible seulement |
+| Séquence | 1 pb | — | — | — | — | — | géométrie procédurale |
 
-Ce tableau est de l'**arithmétique d'octets, vérifiée**. Ce n'est pas encore une mesure de
-rendu : la colonne qui manque est le temps par frame à chaque palier, sur trois cibles
-matérielles. Le spike de la semaine 4 est écrit et sa correction est prouvée
-([`VALIDATION.md` § S4](VALIDATION.md)), mais l'environnement de développement ne rend que via
-SwiftShader, un rasteriseur logiciel — ses images par seconde ne disent rien d'un GPU.
+**Entre 3,8 et 4,7 octets par bille de 1 Mb à 10 kb** (5,7 pour l’aperçu : ses billes sont plus espacées, donc ses deltas plus grands, à un pas de quantification presque égal), positions, variabilité,
+coordonnées génomiques et index compris, contre 12 octets pour les seules positions en float32.
+Le niveau Boucle tient en 2,2 Mio là où l'arithmétique initiale donnait 7,4 Mo de positions
+seules. Deux réserves : en dessous de 100 kb, les structures sont un **raffinement synthétique**
+du noyau à 100 kb (pont brownien sous chaque bille), suffisant pour compter des octets et rien
+d'autre ; et la règle de précision est celle du noyau, 1 % de l'incertitude médiane.
 
-`pnpm build` produit `dist/spike.html` ; l'ouvrir sur GPU desktop, iGPU portable et téléphone
-rend les trois tableaux qui manquent. Le go/no-go de la semaine 4 attend ces chiffres.
+Ce n'est toujours pas une mesure de **rendu** : la colonne qui manque est le temps par frame à
+chaque palier, sur trois cibles matérielles. Le spike de la semaine 4 est écrit et sa correction
+est prouvée ([`VALIDATION.md` § S4](VALIDATION.md)), mais l'environnement de développement ne
+rend que via SwiftShader. `pnpm build` produit `dist/spike.html` ; l'ouvrir sur GPU desktop,
+iGPU portable et téléphone rend les trois tableaux qui manquent. Le go/no-go de la semaine 4
+attend ces chiffres.
 
 Une fois le budget arrêté, il est **tenu par des tests de non-régression** : un commit qui le
 fait dépasser casse la CI.

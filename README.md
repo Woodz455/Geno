@@ -9,12 +9,13 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 8.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 9.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
 entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration —, un **ensemble de
-200 repliements** du même génome, et une **descente sous le TAD** par extrusion de boucles.
+200 repliements** du même génome, une **descente sous le TAD** par extrusion de boucles, et un **format de fichier** qui
+les sert par morceaux.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -92,6 +93,16 @@ longueur *maximale* et que rien ne les retient ensuite — et c'est exactement l
 de P(s) de la semaine 7, vu de l'autre côté. Une chaîne qui gonfle trop vite remplit son
 territoire trop tôt, et la probabilité de contact cesse de décroître.
 
+`make g3d` met tout cela dans un fichier `.g3d` de **57 ko** — un aperçu à 3 Mb, le noyau à
+750 kb, la région fine posée dans le repère du noyau avec l'écart de la pose — que le
+navigateur lit par requêtes HTTP Range, sans jamais télécharger ce qu'il ne dessine pas. La
+précision stockée est dictée par l'incertitude mesurée et non par l'habitude du float32 :
+**1 % de la dispersion** médiane, soit 2,8 nm, et 3,8 à 4,7 octets par bille à toutes les
+échelles. Le premier rendu, mesuré dans Chromium avec le rendu vérifié à chaque passage, arrive
+en **0,5 à 0,8 s en Fast 4G** et en **1,41 s en Slow 4G** — sous la barre de 1,5 s avec 88 ms de
+marge, que le TLS d'un vrai réseau mangerait ; c'est dit avec le chiffre
+([`docs/VALIDATION.md` § S9](docs/VALIDATION.md)).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
@@ -159,6 +170,8 @@ make recon           balaie l'exposant contact → distance contre une géométr
 make nucleus         construit un noyau diploïde complet de billes TAD
 make ensemble        200 repliements du même génome, et ce qui s'y reproduit
 make fine            extrusion de boucles sous le TAD, et son raccord au noyau
+make g3d             écrit le fichier .g3d multi-niveaux et le relit
+make g3d-bench       octets écrits par bille, de 1 Mb à 10 kb
 make test            suite de tests
 ```
 
@@ -167,5 +180,7 @@ Côté rendu (Node 22, pnpm) :
 ```
 pnpm verify          16 assertions sur les imposteurs, dans un vrai Chromium
 pnpm typecheck       TypeScript strict
-pnpm build           produit dist/spike.html — la page de mesure à ouvrir sur du matériel
+pnpm build           produit dist/spike.html et dist/first.html — les pages de mesure
+node tools/test-g3d.mjs   lecture croisée du .g3d, Python → TypeScript, HTTP Range compris
+node tools/loadtime.mjs   premier rendu sous bridage Fast 4G / Slow 4G, dans Chromium
 ```
