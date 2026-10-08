@@ -1,0 +1,15 @@
+{
+  "name": "geno",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "spike:verify": "node tools/verify.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify": "node tools/build.mjs && node tools/verify.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

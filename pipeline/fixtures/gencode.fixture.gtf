@@ -1,0 +1,23 @@
+##description: FIXTURE — pas du GENCODE. Voir fixtures/README.md
+##format: gtf
+##provenance: bornes de gènes réelles (GRCh38), structures d'exons fabriquées
+#seqname	source	feature	start	end	score	strand	frame	attribute
+chr7	FIXTURE	gene	5527151	5530601	.	-	.	gene_id "ENSG00000075624.17"; gene_type "protein_coding"; gene_name "ACTB";
+chr7	FIXTURE	exon	5530502	5530601	.	-	.	gene_id "ENSG00000075624.17"; gene_name "ACTB"; exon_number "1";
+chr7	FIXTURE	exon	5529535	5529693	.	-	.	gene_id "ENSG00000075624.17"; gene_name "ACTB"; exon_number "2";
+chr7	FIXTURE	exon	5529161	5529400	.	-	.	gene_id "ENSG00000075624.17"; gene_name "ACTB"; exon_number "3";
+chr7	FIXTURE	exon	5528281	5528719	.	-	.	gene_id "ENSG00000075624.17"; gene_name "ACTB"; exon_number "4";
+chr7	FIXTURE	exon	5527892	5528184	.	-	.	gene_id "ENSG00000075624.17"; gene_name "ACTB"; exon_number "5";
+chr7	FIXTURE	exon	5527151	5527891	.	-	.	gene_id "ENSG00000075624.17"; gene_name "ACTB"; exon_number "6";
+chr11	FIXTURE	gene	5225464	5229395	.	-	.	gene_id "ENSG00000244734.4"; gene_type "protein_coding"; gene_name "HBB";
+chr11	FIXTURE	exon	5229253	5229395	.	-	.	gene_id "ENSG00000244734.4"; gene_name "HBB"; exon_number "1";
+chr11	FIXTURE	exon	5228632	5228854	.	-	.	gene_id "ENSG00000244734.4"; gene_name "HBB"; exon_number "2";
+chr11	FIXTURE	exon	5225464	5225725	.	-	.	gene_id "ENSG00000244734.4"; gene_name "HBB"; exon_number "3";
+chr17	FIXTURE	gene	7668402	7687550	.	-	.	gene_id "ENSG00000141510.18"; gene_type "protein_coding"; gene_name "TP53";
+chr17	FIXTURE	exon	7687377	7687550	.	-	.	gene_id "ENSG00000141510.18"; gene_name "TP53"; exon_number "1";
+chr17	FIXTURE	exon	7676521	7676622	.	-	.	gene_id "ENSG00000141510.18"; gene_name "TP53"; exon_number "2";
+chr17	FIXTURE	exon	7668402	7669690	.	-	.	gene_id "ENSG00000141510.18"; gene_name "TP53"; exon_number "3";
+chr17	FIXTURE	gene	43044295	43170245	.	-	.	gene_id "ENSG00000012048.23"; gene_type "protein_coding"; gene_name "BRCA1";
+chr17	FIXTURE	exon	43170125	43170245	.	-	.	gene_id "ENSG00000012048.23"; gene_name "BRCA1"; exon_number "1";
+chr17	FIXTURE	exon	43124017	43124115	.	-	.	gene_id "ENSG00000012048.23"; gene_name "BRCA1"; exon_number "2";
+chr17	FIXTURE	exon	43044295	43045802	.	-	.	gene_id "ENSG00000012048.23"; gene_name "BRCA1"; exon_number "3";
