@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -15,8 +19,18 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@geno/viewer": ["packages/viewer/src/index.ts"]
+      "@geno/viewer": [
+        "packages/viewer/src/index.ts"
+      ],
+      "@geno/g3d": [
+        "packages/g3d/src/index.ts"
+      ]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "apps/*/**/*.ts"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/**/*.ts",
+    "packages/*/test/**/*.d.ts"
+  ]
 }

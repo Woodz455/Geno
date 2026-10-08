@@ -5,7 +5,7 @@ LOCK  := $(HERE)/scripts/lock.sh
 PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
 GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine g3d g3d-bench
 
 help:
 	@echo "Geno — pipeline de données"
@@ -39,6 +39,10 @@ help:
 	@echo "                       reprend un magasin existant ; DAMID=… ajoute la corrélation"
 	@echo "  make fine            extrusion de boucles sous le TAD, et son raccord au noyau"
 	@echo "                       CTCF=motifs.bed utilise des sites mesurés au lieu de plantés"
+	@echo
+	@echo "Format et streaming"
+	@echo "  make g3d             écrit data/g3d/gm12878.g3d depuis les ensembles S7 et S8"
+	@echo "  make g3d-bench       octets écrits de 6 000 à 600 000 billes (cache des noyaux)"
 
 data:           ; @TIERS="core annot" $(FETCH)
 data-core:      ; @TIERS="core" $(FETCH)
@@ -61,6 +65,8 @@ hic-validate:   ; @$(GENO) hic $(if $(N),--bins $(N),)
 recon:          ; @$(GENO) recon $(if $(N),--n $(N),)
 nucleus:        ; @$(GENO) nucleus $(if $(N),--bp-per-bead $(N),)
 ensemble:       ; @$(GENO) ensemble $(if $(N),--n $(N),) $(if $(DAMID),--damid $(DAMID),)
+g3d:            ; @$(GENO) g3d build $(if $(PREVIEW),--preview,) && $(GENO) g3d inspect
+g3d-bench:      ; @$(GENO) g3d bench
 fine:           ; @$(GENO) fine $(if $(N),--bp-per-bead $(N),) $(if $(CTCF),--ctcf $(CTCF),)
 
 query:

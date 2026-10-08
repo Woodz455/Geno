@@ -51,30 +51,75 @@ connaître le mode, c'est que l'abstraction est fausse.
 
 ## 3. Format `.g3d`
 
-Binaire, multi-résolution, pensé pour la requête HTTP Range. Un fichier = une structure (ou
-un médoïde d'ensemble) pour une lignée cellulaire et un assemblage.
+Binaire, multi-résolution, **disposé pour la requête HTTP Range**. Un fichier = le médoïde d'un
+ensemble pour une lignée et un assemblage, à plusieurs résolutions. Écrit par
+`pipeline/geno_pipeline/export/g3d.py`, relu par `packages/g3d` ; les deux sont tenus
+d'accord par une lecture croisée sur un fichier commun (`node tools/test-g3d.mjs`).
 
 ```
-┌─ header (JSON, longueur préfixée) ───────────────────────────┐
-│  assembly: "GRCh38" | "CHM13v2.0"                            │
-│  cell_type, ploidy, n_structures                             │
-│  levels: [{ bin_size, n_beads, offset, length, octree_off }] │
-│  provenance: { accessions[], pipeline_version, sha256 }      │
-│  evidence: "measured"|"simulated"|"deterministic"|"predicted" │
-└──────────────────────────────────────────────────────────────┘
-┌─ par niveau ─────────────────────────────────────────────────┐
-│  positions   Float32Array  [x,y,z] × n_beads                 │
-│  variability Float32Array  écart-type sur l'ensemble          │
-│  chrom_index Uint32Array   bille → (chrom, start, haplotype)  │
-│  octree      nœuds → plages d'octets                         │
-└──────────────────────────────────────────────────────────────┘
+┌─ préambule, 64 o ────────────────────────────────────────────────────────────┐
+│  signature \x89G3D\r\n\x1a\n · version u32 · longueur de l'en-tête u32         │
+│  fin du premier rendu u32 (octet absolu) · réservé u32 · sha256 de l'en-tête  │
+├─ en-tête : JSON compressé deflate-raw ───────────────────────────────────────┤
+│  assembly, cell_type, karyotype, provenance {pipeline, sources[] + sha256},   │
+│  warnings[], first (niveau du premier rendu), levels[] :                      │
+│    name, bp_per_bead, n_beads, evidence, copies[], radius_nm[],               │
+│    frame {transform 4×4 vers le noyau, fit {méthode, ancres, RMSD, échelle}}, │
+│    quant {origin, step, max_error_nm, rule}, variability {kind, step, …},    │
+│    chunks[] {first, n, bbox, sphere, columns{nom → offset, length, dtype,     │
+│              planes, filters[], sha256}},  index {copy_offsets, columns}      │
+├─ colonnes du premier rendu du niveau `first`, tous chunks, contiguës ────────┤
+│  copy u8 · position u16 × 3 plans                                           │
+├─ le reste : colonnes paresseuses, index, autres niveaux ─────────────────────┤
+│  variability u16 · start u32 · end u32 · index ids/starts/ends u32           │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Tout préfixe est utile.** Le préambule dit où finit le premier rendu ; si le client lit ce
+préfixe en une requête, il a de quoi dessiner sans aller-retour de plus. S'il a lu trop court,
+la requête qui complète l'en-tête va **jusqu'à la fin du premier rendu** — deux requêtes au
+plus, jamais trois. C'est la seule disposition compatible avec un réseau où chaque requête coûte
+une demi-seconde.
+
+**Positions quantifiées sur 16 bits, au pas que l'incertitude autorise.** L'erreur maximale
+admise vaut **1 % de l'incertitude médiane du niveau** — 2,8 nm pour le noyau, dont la
+profondeur varie de 280 nm d'un tirage à l'autre ([`VALIDATION.md` § S7](VALIDATION.md)). La
+règle est écrite dans l'en-tête. Le float32 du projet initial stockait sept chiffres
+significatifs que le modèle n'a pas, et ils se payaient : 40,6 ko de positions au lieu de 26,4.
+
+**Des colonnes, compressées une à une.** Chaque colonne essaie quatre chaînes de filtres —
+`deflate`, `shuffle` puis `deflate`, `delta` puis `deflate`, et les trois — et garde la plus
+courte ; le choix est écrit, le lecteur ne devine rien. Le `delta` est **modulaire** et
+**par plan** (x, y, z séparés). Compression par bloc, jamais `Content-Encoding` HTTP : une
+plage d'un flux compressé à la volée ne désigne rien d'utile (même choix que PMTiles et COPC).
+
+**Octree adaptatif.** Un nœud se coupe en huit tant qu'il porte plus de 16 384 billes ; chaque
+feuille est un chunk, l'unité de lecture, avec sa sphère englobante pour le *frustum culling*.
+À l'intérieur d'un chunk, les billes sont triées par (copie, début) pour que le delta suive la
+chaîne. Le noyau à 750 kb tient en un seul chunk : l'octree sert à partir de 250 kb.
+
+**Index génomique.** Par niveau, les identifiants de billes dans l'ordre (copie, début), avec
+les débuts et fins. Les billes d'une copie ne se chevauchent pas, donc une dichotomie suffit —
+le maximum de fin par bloc du § 8 servait des gènes, qui se chevauchent. Une requête rend
+**toutes les copies** du chromosome, étiquetées (§ 6).
+
+**Un repère par niveau.** Chaque niveau vit dans son repère et porte la transformation vers
+celui du noyau, **avec le bilan de l'ajustement**. Le niveau fin de la semaine 8 est posé par
+Kabsch sur six billes de chr7:a ; le RMSD restant — 395 nm — est l'échec du raccord de la
+semaine 8, et le fichier le transporte au lieu de le cacher.
+
+**Intégrité par bloc.** Un sha256 (tronqué à 128 bits) par colonne, vérifié par le client à
+chaque lecture via `crypto.subtle` ; un sha256 complet de l'en-tête dans le préambule. Une
+empreinte du fichier entier ne servirait à rien à qui n'en lit que des morceaux.
 
 Le champ `evidence` est structurel, pas cosmétique : c'est lui qui pilote le code couleur
 exigé par le principe n°2 de la feuille de route. `predicted` est réservé aux positions issues
 d'un modèle séquence → contact (Akita, Orca, C.Origami) — hors périmètre v1, mais le champ le
 prévoit pour qu'une telle position ne puisse jamais se faire passer pour une mesure.
 Voir [`DATA_SOURCES.md` § 7](DATA_SOURCES.md).
+
+**Zéro dépendance de lecture.** `DecompressionStream("deflate-raw")` et `crypto.subtle` sont
+dans tous les navigateurs récents et dans Node 22. Le lecteur n'importe rien.
 
 ---
 

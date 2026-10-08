@@ -962,6 +962,97 @@ def cmd_fine(args: argparse.Namespace) -> int:
     return 0
 
 
+def _g3d_levels(args: argparse.Namespace):
+    from .export import build
+
+    nuc, src_n, ens = build.nucleus(args.ensemble)
+    levels = [nuc]
+    sources = [src_n]
+    if args.preview:
+        levels.insert(0, build.coarsen(nuc, ens, k=4))
+    if args.fine and Path(args.fine).exists():
+        fin, src_f = build.fine(args.fine, nuc)
+        levels.append(fin)
+        sources.append(src_f)
+    return levels, build.header(sources, warnings=build.WARNINGS)
+
+
+def _print_g3d_report(rep: dict) -> None:
+    print(f"\n{rep['path']}")
+    print(
+        f"  {rep['bytes']:,} o au total · en-tête {rep['header']:,} o · "
+        f"premier rendu complet à l'octet {rep['first_frame_end']:,}"
+    )
+    for name, cols in rep["columns"].items():
+        print(f"\n  niveau « {name} »  ({rep['chunks'][name]} chunk(s))")
+        print(f"    {'colonne':<14} {'brut':>9} {'stocké':>9}   filtres essayés")
+        for cname, c in cols.items():
+            tried = "  ".join(f"{k} {v:,}" for k, v in c["chains"].items())
+            print(f"    {cname:<14} {c['raw']:>9,} {c['stored']:>9,}   {tried}")
+
+
+def cmd_g3d(args: argparse.Namespace) -> int:
+    """Écrit, inspecte ou mesure le format `.g3d` — la seule interface pipeline → navigateur."""
+    try:
+        import scipy  # noqa: F401
+        import zarr  # noqa: F401
+    except ImportError as exc:
+        print(f"dépendance absente ({exc.name}) — voir docs/SETUP.md", file=sys.stderr)
+        return 2
+
+    from .export import read, read_header, write
+
+    if args.action == "build":
+        levels, header = _g3d_levels(args)
+        first = levels[0].name
+        rep = write(args.out, levels, first=first, header=header, fraction=args.fraction)
+        _print_g3d_report(rep)
+        for lv in levels:
+            if lv.fit:
+                f = lv.fit
+                print(
+                    f"\n  pose du niveau « {lv.name} » : RMSD {f['rmsd_nm']} nm sur "
+                    f"{len(f['anchors'])} ancres ; une échelle ×{f['scale_if_allowed']} "
+                    f"ne le ramènerait qu'à {f['rmsd_if_scaled_nm']} nm."
+                )
+                print(
+                    "  L'écart n'est donc pas une affaire de taille mais de forme : c'est "
+                    "l'échec du\n  raccord de la semaine 8, que le fichier transporte au "
+                    "lieu de le cacher."
+                )
+        return 0
+
+    if args.action == "inspect":
+        blob = Path(args.out).read_bytes()
+        hdr, base, first_end = read_header(blob)
+        print(f"{args.out}  ·  {len(blob):,} o  ·  données à partir de {base:,}  ·  "
+              f"premier rendu jusqu'à {first_end:,}")
+        print(f"  {hdr.get('assembly')} · {hdr.get('cell_type')} · {hdr.get('karyotype')} · "
+              f"pipeline {hdr.get('provenance', {}).get('pipeline')}")
+        for lv in hdr["levels"]:
+            q = lv["quant"]
+            print(f"\n  « {lv['name']} »  {lv['n_beads']:,} billes de "
+                  f"{lv['bp_per_bead']:,} pb  ·  {lv['evidence']}  ·  "
+                  f"{len(lv['chunks'])} chunk(s)  ·  erreur max {q['max_error_nm']:.2f} nm")
+            for note in lv["notes"]:
+                print(f"    · {note}")
+            if lv["frame"]["fit"]:
+                print(f"    pose : {json.dumps(lv['frame']['fit'], ensure_ascii=False)}")
+        for w in hdr.get("warnings", []):
+            print(f"\n  ⚠ {w}")
+        read(args.out)                       # relit tout et vérifie chaque empreinte
+        print("\n  toutes les empreintes vérifiées")
+        return 0
+
+    # bench : octets et chunks aux tailles du budget de ARCHITECTURE.md § 4.
+    from .export.bench import scaling
+
+    for row in scaling(cache=Path(args.cache), fraction=args.fraction,
+                       sizes=args.sizes):
+        print(row)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1122,6 +1213,20 @@ def main(argv: list[str] | None = None) -> int:
     fi.add_argument("--report-only", action="store_true")
     fi.add_argument("--out", default=str(ROOT / "data" / "fine" / "actb.npz"))
     fi.set_defaults(fn=cmd_fine)
+
+    g3 = sub.add_parser("g3d", help="écrit, inspecte ou mesure le format .g3d")
+    g3.add_argument("action", choices=["build", "inspect", "bench"])
+    g3.add_argument("--ensemble", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
+    g3.add_argument("--fine", default=str(ROOT / "data" / "fine" / "actb.npz"))
+    g3.add_argument("--preview", action="store_true",
+                    help="ajoute un aperçu à 3 Mb et en fait le niveau du premier rendu")
+    g3.add_argument("--fraction", type=float, default=0.01,
+                    help="erreur de quantification max, en fraction de l'incertitude médiane")
+    g3.add_argument("--sizes", default="1000000,250000,100000,25000,10000",
+                    help="résolutions du banc, en pb par bille")
+    g3.add_argument("--cache", default=str(ROOT / "data" / "g3d" / "bench"))
+    g3.add_argument("--out", default=str(ROOT / "data" / "g3d" / "gm12878.g3d"))
+    g3.set_defaults(fn=cmd_g3d)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

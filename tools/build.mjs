@@ -22,13 +22,14 @@ const page = (title, script, body = "") => `<!doctype html>
   #results { white-space:pre-wrap; word-break:break-all; padding:12px }
 </style></head><body>${body}<script>${script}</script></body></html>`;
 
-async function bundle(entry) {
+async function bundle(entry, minify = false) {
   const out = await build({
     entryPoints: [resolve(ROOT, entry)],
     bundle: true,
     format: "iife",
     target: "es2022",
     write: false,
+    minify,
     logLevel: "warning",
   });
   return out.outputFiles[0].text;
@@ -37,11 +38,14 @@ async function bundle(entry) {
 const targets = [
   { entry: "packages/viewer/test/headless.ts", out: "dist/headless.html", title: "Geno — correction des imposteurs" },
   { entry: "apps/spike/main.ts", out: "dist/spike.html", title: "Geno — spike de rendu" },
+  // Minifiée : sous Slow 4G, chaque kilo-octet de la page coûte ~6 ms avant la première
+  // requête de données. Les deux autres pages sont des outils, celle-ci est mesurée.
+  { entry: "apps/first/main.ts", out: "dist/first.html", title: "Geno", minify: true },
 ];
 
 await mkdir(resolve(ROOT, "dist"), { recursive: true });
 for (const t of targets) {
-  const js = await bundle(t.entry);
+  const js = await bundle(t.entry, t.minify);
   await writeFile(resolve(ROOT, t.out), page(t.title, js));
   console.log(`  ${t.out}  ${(js.length / 1024).toFixed(1)} ko`);
 }

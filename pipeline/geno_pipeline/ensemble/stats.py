@@ -68,14 +68,23 @@ class Frame:
             f"que les rayons on en retrouve {self.radial_explains:.0%}"
         )
 
-def _kabsch(a: np.ndarray, b: np.ndarray) -> float:
-    """RMSD de `b` sur `a` après la rotation optimale. La réflexion est permise —
-    une matrice de distances ne détermine la structure qu'à une isométrie près,
-    et la semaine 5 avait déjà tranché ce point."""
+def kabsch(a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, float]:
+    """Rotation optimale de `b` sur `a`, et le RMSD qui reste.
+
+    Rend `R` tel que `(b - b̄) @ R ≈ a - ā`. La réflexion est permise — une matrice
+    de distances ne détermine la structure qu'à une isométrie près, et la semaine 5
+    avait déjà tranché ce point.
+    """
     a = a - a.mean(axis=0)
     b = b - b.mean(axis=0)
     u, _, vt = np.linalg.svd(b.T @ a)
-    return float(np.sqrt((((b @ (u @ vt)) - a) ** 2).sum(axis=1).mean()))
+    rot = u @ vt
+    return rot, float(np.sqrt((((b @ rot) - a) ** 2).sum(axis=1).mean()))
+
+
+def _kabsch(a: np.ndarray, b: np.ndarray) -> float:
+    """RMSD de `b` sur `a` après la rotation optimale (cf. `kabsch`)."""
+    return kabsch(a, b)[1]
 
 
 def _shuffle_within_shells(
