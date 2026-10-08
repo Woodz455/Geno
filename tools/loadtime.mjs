@@ -40,11 +40,12 @@ const PROFILES = {
 // « ajusté » : le préfixe vaut exactement `fin du premier rendu`, lue dans le préambule.
 // Une page déployée avec son fichier connaît ce nombre ; un client générique, non.
 const VARIANTS = [
-  { name: "noyau, préfixe 16 Kio", file: "gm12878.g3d", prefix: 16384 },
-  { name: "noyau, préfixe 64 Kio", file: "gm12878.g3d", prefix: 65536 },
-  { name: "noyau, préfixe ajusté", file: "gm12878.g3d", prefix: "ajusté" },
-  { name: "aperçu 3 Mb, préfixe 64 Kio", file: "gm12878-apercu.g3d", prefix: 65536 },
-  { name: "aperçu 3 Mb, préfixe ajusté", file: "gm12878-apercu.g3d", prefix: "ajusté" },
+  { name: "noyau, préfixe 16 Kio", file: "gm12878-noyau.g3d", prefix: 16384 },
+  { name: "noyau, préfixe 64 Kio", file: "gm12878-noyau.g3d", prefix: 65536 },
+  { name: "noyau, préfixe ajusté", file: "gm12878-noyau.g3d", prefix: "ajusté" },
+  { name: "aperçu 3 Mb, préfixe 16 Kio", file: "gm12878.g3d", prefix: 16384 },
+  { name: "aperçu 3 Mb, préfixe 64 Kio", file: "gm12878.g3d", prefix: 65536 },
+  { name: "aperçu 3 Mb, préfixe ajusté", file: "gm12878.g3d", prefix: "ajusté" },
 ];
 
 function firstFrameEnd(file) {
@@ -159,7 +160,7 @@ let bad = 0;
 try {
   for (const v of VARIANTS) {
     if (!existsSync(resolve(ROOT, "pipeline/data/g3d", v.file))) {
-      console.log(`  ${v.name.padEnd(30)} — fichier absent (make g3d${v.file.includes("apercu") ? " PREVIEW=1 …" : ""})`);
+      console.log(`  ${v.name.padEnd(30)} — fichier absent (make g3d)`);
       continue;
     }
     const prefix = v.prefix === "ajusté" ? firstFrameEnd(v.file) : v.prefix;

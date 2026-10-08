@@ -2,4 +2,4 @@
 .PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine g3d g3d-bench
 
 help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine g3d g3d-bench:
-	@$(MAKE) --no-print-directory -C pipeline $@ Q="$(Q)" N="$(N)" DAMID="$(DAMID)" CTCF="$(CTCF)" PREVIEW="$(PREVIEW)"
+	@$(MAKE) --no-print-directory -C pipeline $@ Q="$(Q)" N="$(N)" DAMID="$(DAMID)" CTCF="$(CTCF)"

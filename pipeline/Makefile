@@ -42,6 +42,7 @@ help:
 	@echo
 	@echo "Format et streaming"
 	@echo "  make g3d             écrit data/g3d/gm12878.g3d depuis les ensembles S7 et S8"
+	@echo "                       (et gm12878-noyau.g3d, sans aperçu, pour comparaison)"
 	@echo "  make g3d-bench       octets écrits de 6 000 à 600 000 billes (cache des noyaux)"
 
 data:           ; @TIERS="core annot" $(FETCH)
@@ -65,7 +66,7 @@ hic-validate:   ; @$(GENO) hic $(if $(N),--bins $(N),)
 recon:          ; @$(GENO) recon $(if $(N),--n $(N),)
 nucleus:        ; @$(GENO) nucleus $(if $(N),--bp-per-bead $(N),)
 ensemble:       ; @$(GENO) ensemble $(if $(N),--n $(N),) $(if $(DAMID),--damid $(DAMID),)
-g3d:            ; @$(GENO) g3d build $(if $(PREVIEW),--preview,) && $(GENO) g3d inspect
+g3d:            ; @$(GENO) g3d build && $(GENO) g3d build --no-preview --out $(HERE)/data/g3d/gm12878-noyau.g3d >/dev/null && $(GENO) g3d inspect
 g3d-bench:      ; @$(GENO) g3d bench
 fine:           ; @$(GENO) fine $(if $(N),--bp-per-bead $(N),) $(if $(CTCF),--ctcf $(CTCF),)
 

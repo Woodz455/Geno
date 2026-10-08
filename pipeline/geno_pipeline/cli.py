@@ -968,7 +968,7 @@ def _g3d_levels(args: argparse.Namespace):
     nuc, src_n, ens = build.nucleus(args.ensemble)
     levels = [nuc]
     sources = [src_n]
-    if args.preview:
+    if not args.no_preview:
         levels.insert(0, build.coarsen(nuc, ens, k=4))
     if args.fine and Path(args.fine).exists():
         fin, src_f = build.fine(args.fine, nuc)
@@ -1218,8 +1218,11 @@ def main(argv: list[str] | None = None) -> int:
     g3.add_argument("action", choices=["build", "inspect", "bench"])
     g3.add_argument("--ensemble", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
     g3.add_argument("--fine", default=str(ROOT / "data" / "fine" / "actb.npz"))
-    g3.add_argument("--preview", action="store_true",
-                    help="ajoute un aperçu à 3 Mb et en fait le niveau du premier rendu")
+    # L'aperçu est inclus par défaut en vertu d'une règle fixée avant la mesure : il
+    # n'entre que s'il fait passer un profil réseau nommé sous 1,5 s. Il fait passer
+    # Slow 4G (1 378 ms médian, contre 1 617 ms pour le noyau). VALIDATION.md § S9.
+    g3.add_argument("--no-preview", action="store_true",
+                    help="sans aperçu à 3 Mb : le noyau devient le niveau du premier rendu")
     g3.add_argument("--fraction", type=float, default=0.01,
                     help="erreur de quantification max, en fraction de l'incertitude médiane")
     g3.add_argument("--sizes", default="1000000,250000,100000,25000,10000",
