@@ -25,8 +25,12 @@ def toy(planted: bool, n_struct: int = 24, seed: int = 0):
     donc A touche A et B touche B. Témoin : tout est mélangé dans une même sphère."""
     labels = ("chr1:a", "chr1:b", "chr2:a", "chr2:b", "chrX:Xa", "chrX:Xi")
     copy_id = np.repeat(np.arange(len(labels)), PER_COPY)
-    start = np.tile(np.arange(PER_COPY) * 1000, len(labels))
-    end = start + 1000
+    # Comme le vrai génome : billes égales dans un chromosome, pas d'un chromosome à l'autre.
+    # La première version du test avait des billes toutes égales et a laissé passer le refus
+    # de cooltools (« mismatch between track and cooler bin size ») sur les vraies données.
+    size = np.array([1000, 1000, 1013, 1013, 994, 994])[np.repeat(np.arange(len(labels)), PER_COPY)]
+    start = np.tile(np.arange(PER_COPY), len(labels)) * size
+    end = start + size
     is_b = (np.tile(np.arange(PER_COPY), len(labels)) // BLOCK) % 2 == 1
     lad = np.where(is_b, 0.9, 0.1)
     rng = np.random.default_rng(seed)

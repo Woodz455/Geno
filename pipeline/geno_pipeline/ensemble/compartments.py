@@ -106,17 +106,34 @@ def count_contacts(coords: np.ndarray, radius: np.ndarray, bin_of: np.ndarray,
                          "count": counts.astype(np.int64)})
 
 
-def _call(bins: pd.DataFrame, pixels: pd.DataFrame, phasing: pd.DataFrame, workdir: Path):
+def _nominal(bins: pd.DataFrame, size: int) -> pd.DataFrame:
+    """Bins en espace d'indices : le k-ième bin d'un chromosome va de k·size à (k+1)·size.
+
+    Les billes du modèle ont la même longueur à l'intérieur d'un chromosome (sa longueur
+    divisée par leur nombre), mais pas d'un chromosome à l'autre — 747 à 753 kb. cooltools
+    exige une taille de bin unique et refuse sinon (« mismatch between track and cooler bin
+    size »). Le Hi-C indexe de toute façon par bin : on écrit donc un cooler indexé par
+    bille, aux coordonnées nominales, et on revient aux billes par l'indice, jamais par la
+    coordonnée. Les coordonnées de ce fichier intermédiaire ne désignent aucune séquence.
+    """
+    k = bins.groupby("chrom", sort=False).cumcount().to_numpy()
+    return pd.DataFrame({"chrom": bins["chrom"].to_numpy(), "start": k * size, "end": (k + 1) * size})
+
+
+def _call(bins: pd.DataFrame, pixels: pd.DataFrame, phasing: pd.DataFrame, workdir: Path,
+          size: int = 750_000):
     """E1 et matrices cis équilibrées, par les appelants de la semaine 3."""
     import cooler
 
     from ..hic.features import balance, compartments
     from ..hic.synthetic import write_cool
 
-    path = write_cool(workdir / "modele.cool", bins, pixels)
+    nominal = _nominal(bins, size)
+    path = write_cool(workdir / "modele.cool", nominal, pixels)
     clr = cooler.Cooler(str(path))
     balance(clr)
-    e1 = compartments(clr, phasing_track=phasing)["E1"].to_numpy()
+    track = nominal.assign(value=phasing.iloc[:, 3].to_numpy())
+    e1 = compartments(clr, phasing_track=track)["E1"].to_numpy()
     return e1, clr
 
 
