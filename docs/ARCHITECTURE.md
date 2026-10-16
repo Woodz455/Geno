@@ -124,7 +124,9 @@ premier est `compartment`, l'E1 des compartiments A/B. Colonne `attr.<nom>` par 
 16 bits au pas `(max − min) / 65 534`, le code 65 535 réservé à « absente » (l'X inactif n'a
 pas de compartiment, et le dire vaut mieux qu'un zéro). L'en-tête porte ce que la valeur est
 et d'où elle vient (`evidence`, `source`, mesures de qualité). Les attributs sont **paresseux** :
-le premier rendu de la semaine 9 n'en lit pas un octet, et un test le garde. Un fichier sans
+aucune de leurs colonnes n'est lue au premier rendu, et un test le garde ; seul l'en-tête,
+qui fait partie de la première requête, grandit de leurs métadonnées : le premier rendu du
+fichier par défaut finit à l'octet 11 619 au lieu de 11 149. Un fichier sans
 attribut se lit comme avant ; un lecteur qui ne les connaît pas les ignore.
 
 **Zéro dépendance de lecture.** `DecompressionStream("deflate-raw")` et `crypto.subtle` sont

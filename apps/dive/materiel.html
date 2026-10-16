@@ -43,10 +43,10 @@
   .scene canvas { display: block; width: 100%; height: 100%; }
   .scene .cap { position: absolute; left: 10px; bottom: 8px; font: 12px var(--mono); color: #aeb9c7; }
   .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
-  label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+  label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); width: min(320px, 100%); }
   input {
     font: 0.95rem var(--sans); color: var(--fg); background: var(--panel); border: 1px solid var(--line);
-    border-radius: 6px; padding: 7px 10px; min-width: 0; width: min(320px, 100%);
+    border-radius: 6px; padding: 7px 10px; min-width: 0; width: 100%; box-sizing: border-box;
   }
   button {
     font: 600 0.95rem var(--sans); color: #fff; background: var(--accent); border: 0; border-radius: 6px;
@@ -75,7 +75,7 @@
 <main>
   <header style="display:grid;gap:6px">
     <h1>Banc matériel Geno</h1>
-    <p class="lede">Ce banc joue une plongée du noyau de GM12878 jusqu'aux compartiments de chr7 : 8 082 billes en imposteurs,
+    <p class="lede">Ce banc joue une plongée du noyau de GM12878 jusqu'aux compartiments de chr7 : 8&nbsp;082 billes en imposteurs,
       fondu tramé entre deux niveaux, occlusion ambiante. Le critère de la semaine 10 est de tenir 60 images par seconde
       sur un appareil moyen. Le serveur de développement ne rend qu'en logiciel, donc ce chiffre ne peut venir que d'ici.</p>
   </header>

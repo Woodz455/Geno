@@ -4,7 +4,7 @@
  *  réel : les trois dessinent exactement la même chose, au pixel près.
  */
 
-import { type Frame, G3D, HttpSource } from "@geno/g3d";
+import { type Frame, G3D, HttpSource, type Source } from "@geno/g3d";
 import {
   createTargets,
   distanceFor,
@@ -87,7 +87,7 @@ export interface OpenOptions {
   prefix?: number;
 }
 
-export async function openDive(canvas: HTMLCanvasElement, file: string, opts: OpenOptions = {}): Promise<DiveScene> {
+export async function openDive(canvas: HTMLCanvasElement, file: string | Source, opts: OpenOptions = {}): Promise<DiveScene> {
   const t0 = performance.now();
   const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" });
   if (!gl) throw new Error("WebGL2 indisponible sur cet appareil");
@@ -100,7 +100,8 @@ export async function openDive(canvas: HTMLCanvasElement, file: string, opts: Op
   let ssao = new Ssao(gl, targets);
   let picker = new Picker(gl, targets);
 
-  const g3d = await G3D.open(new HttpSource(file), { prefix: opts.prefix ?? 16 * 1024 });
+  const source = typeof file === "string" ? new HttpSource(file) : file;
+  const g3d = await G3D.open(source, { prefix: opts.prefix ?? 16 * 1024 });
   const firstName = g3d.header.first;
   const preview = layer(gl, await g3d.firstFrame(firstName), await g3d.attribute(firstName, "compartment"), PREVIEW_IDS);
   const copies = preview.frame.level.copies;

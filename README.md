@@ -9,13 +9,13 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 9.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 10.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
 entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration —, un **ensemble de
-200 repliements** du même génome, une **descente sous le TAD** par extrusion de boucles, et un **format de fichier** qui
-les sert par morceaux.
+200 repliements** du même génome, une **descente sous le TAD** par extrusion de boucles, un **format de fichier** qui
+les sert par morceaux, et une **plongée continue** du noyau aux compartiments.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -79,7 +79,8 @@ modèle a le *fait* des territoires, pas leur organisation interne. La semaine 8
 `make fine` descend enfin sous la bille : 4 Mb autour d'ACTB, 2 000 monomères de 2 kb, des
 cohésines qui extrudent et des sites CTCF orientés qui les arrêtent. Le mécanisme fait ce qu'on
 lui demande — **12 frontières sur 13** retrouvées dans la carte de contacts, contre **0 sur 13**
-quand les mêmes sites sont inoccupés ; des points d'angle **2,57×** au-dessus du fond aux paires
+quand les mêmes sites sont inoccupés (2 sur 13 à une seconde exécution : OpenMM n'est
+reproductible qu'en statistique) ; des points d'angle **2,57×** au-dessus du fond aux paires
 convergentes, qui retombent à 1,06 sans CTCF. Rien dans le modèle ne mentionne le mot
 « domaine » : les domaines sortent de la règle d'orientation.
 
@@ -102,6 +103,17 @@ précision stockée est dictée par l'incertitude mesurée et non par l'habitude
 en **0,5 à 0,8 s en Fast 4G** et en **1,41 s en Slow 4G** — sous la barre de 1,5 s avec 88 ms de
 marge, que le TLS d'un vrai réseau mangerait ; c'est dit avec le chiffre
 ([`docs/VALIDATION.md` § S9](docs/VALIDATION.md)).
+
+`dist/dive.html` plonge du noyau entier jusqu'à ACTB sur chr7:a : l'aperçu cède la place au
+noyau, les 45 autres chromosomes s'effacent, les couleurs de territoire deviennent celles des
+compartiments A/B — par fondu tramé, sans tri ni trou, avec une occlusion ambiante qui rend le
+volume lisible. Mesurée image par image, la plongée n'a **aucun saut** : chaque transition change
+l'écran autant que le mouvement de caméra seul, quand les mêmes transitions en marches sèches
+font 1,7 à 3,8 fois plus. Les compartiments sont **ceux du modèle**, appelés sur sa propre carte
+de contacts comme on le ferait sur du Hi-C : un damier fort et reproductible, qui suit la
+position radiale — une prédiction à confronter à Rao 2014, pas une mesure. Les 60 images par
+seconde, elles, ne se mesurent pas ici ; une page de banc matériel les attend
+([`docs/VALIDATION.md` § S10](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
@@ -170,7 +182,8 @@ make recon           balaie l'exposant contact → distance contre une géométr
 make nucleus         construit un noyau diploïde complet de billes TAD
 make ensemble        200 repliements du même génome, et ce qui s'y reproduit
 make fine            extrusion de boucles sous le TAD, et son raccord au noyau
-make g3d             écrit le fichier .g3d multi-niveaux et le relit
+make g3d             écrit le fichier .g3d multi-niveaux, compartiments compris, et le relit
+                     COMPARTMENTS=e1.bedGraph affiche un E1 mesuré à la place de celui du modèle
 make g3d-bench       octets écrits par bille, de 1 Mb à 10 kb
 make test            suite de tests
 ```
@@ -178,9 +191,10 @@ make test            suite de tests
 Côté rendu (Node 22, pnpm) :
 
 ```
-pnpm verify          16 assertions sur les imposteurs, dans un vrai Chromium
+pnpm verify          36 assertions : imposteurs (S4), caméra, tramage, occlusion (S10)
 pnpm typecheck       TypeScript strict
-pnpm build           produit dist/spike.html et dist/first.html — les pages de mesure
+pnpm build           produit dist/dive.html (la plongée), les pages de mesure et le banc matériel
 node tools/test-g3d.mjs   lecture croisée du .g3d, Python → TypeScript, HTTP Range compris
 node tools/loadtime.mjs   premier rendu sous bridage Fast 4G / Slow 4G, dans Chromium
+node tools/dive.mjs       continuité de la plongée, image par image, contre un témoin qui saute
 ```

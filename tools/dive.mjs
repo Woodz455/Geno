@@ -118,6 +118,29 @@ try {
 
 const smooth = rows.find((r) => !r.hard);
 const hard = rows.find((r) => r.hard);
+
+// Transition par transition : l'image où chaque grandeur franchit 0,5, et le rapport de
+// son écart à la médiane des 20 voisines. C'est la lecture la plus directe : une transition
+// invisible a le rapport du mouvement seul, ~1.
+const transitions = (r) =>
+  ["lod", "focus", "mix"].map((key) => {
+    const s = r.result.states;
+    const k = s.findIndex((x, i) => i > 0 && s[i - 1][key] < 0.5 && x[key] >= 0.5);
+    if (k < 1) return { key, frame: null };
+    return { key, frame: k, width: s[k].w, ratio: ratios(r.result.diffs)[k - 1] };
+  });
+const NAMES = { lod: "niveau de détail 3 Mb → 750 kb", focus: "autres chromosomes effacés", mix: "territoires → compartiments" };
+if (smooth && hard) {
+  const ts = transitions(smooth);
+  const th = transitions(hard);
+  console.log(`\n  ${"transition".padEnd(34)} ${"image".padStart(5)} ${"champ".padStart(8)}   fondu   sèche`);
+  ts.forEach((t, i) => {
+    if (t.frame === null) return;
+    console.log(`  ${NAMES[t.key].padEnd(34)} ${String(t.frame).padStart(5)} ${t.width.toFixed(1).padStart(5)} µm   ${t.ratio.toFixed(2)}×   ${th[i].ratio.toFixed(2)}×`);
+  });
+  smooth.transitions = ts;
+  hard.transitions = th;
+}
 if (smooth && hard) {
   const ok = smooth.jumps.length === 0 && hard.jumps.length > 0;
   console.log(
@@ -127,7 +150,7 @@ if (smooth && hard) {
   if (!ok) failed = true;
 }
 console.log(`  Rendu ${rows[0]?.result.gpu ?? "?"} — les temps par image sont une borne haute, pas une mesure de fps.\n`);
-process.stdout.write(`JSON ${JSON.stringify(rows.map((r) => ({ name: r.name, hard: r.hard, jumps: r.jumps, worst: r.worst,
+process.stdout.write(`JSON ${JSON.stringify(rows.map((r) => ({ name: r.name, hard: r.hard, jumps: r.jumps, worst: r.worst, transitions: r.transitions,
   frames: r.result.frames, size: r.result.size, gpu: r.result.gpu, instances: r.result.instances,
   diff_median: median(r.result.diffs), frame_ms_median: median(r.result.frame_ms),
   frame_ms_p95: pct(r.result.frame_ms, 0.95), raf_ms_median: median(r.result.raf_ms),

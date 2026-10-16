@@ -9,6 +9,259 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S10 — La plongée est continue ; ses 60 images par seconde attendent un vrai GPU
+
+### Le critère, et les deux moitiés qu'il contient
+
+**Fait quand : on descend du noyau aux compartiments en plongée continue, à 60 fps sur la cible
+matérielle médiane.** Deux affirmations de nature différente. « Continue » est une propriété de
+l'algorithme : elle se mesure ici, image par image, contre un témoin construit pour échouer.
+« 60 fps sur la cible médiane » est une propriété du matériel : l'environnement ne rend que par
+SwiftShader, un rasteriseur logiciel, et aucun chiffre qui en sort ne la prouve ni ne l'infirme.
+La première moitié est tenue ; la seconde est instrumentée et **pas encore mesurée**.
+
+### Ce qui est montré
+
+`dist/dive.html` lit le `.g3d` de la semaine 9 et descend en une plongée de la vue d'ensemble
+(80 µm de champ) jusqu'à la bille d'ACTB sur chr7:a (2,6 µm). En chemin, trois transitions :
+
+| transition | où | comment |
+|---|---|---|
+| aperçu 3 Mb → noyau 750 kb | bille du noyau entre 3 et 6 px de rayon | fondu tramé complémentaire |
+| les 45 autres copies s'effacent | champ de 20 à 8 µm | extinction par groupe, tramée |
+| territoires → compartiments | champ de 8 à 3,5 µm | seconde palette, mélangée dans le shader |
+
+**L'état visuel est une fonction de la caméra, pas du temps** (`apps/dive/scene.ts`) : remonter
+défait exactement ce que descendre a fait, et un arrêt en chemin montre un état stable. Seule
+l'arrivée du noyau par le réseau est fondue sur 400 ms ; la mesure la neutralise.
+
+### La caméra : vitesse perçue constante
+
+Le chemin de van Wijk et Nuij (2003) minimise la longueur dans la métrique
+`ds = √(ρ² du² + dw²/ρ²) / w`, où un déplacement compte en largeurs d'écran et un zoom en
+facteurs. Parcouru à pas constants, il doit avoir une vitesse constante dans cette métrique — et
+c'est cela qui est testé, pas seulement ses extrémités :
+
+| | vitesse perçue, min – max |
+|---|---:|
+| chemin de van Wijk et Nuij, 20 → 0,8 µm de champ et 3 µm de côté | **1,0000 – 1,0000** |
+| témoin : distance interpolée linéairement, même trajet | 0,712 – 16,747 |
+
+Le témoin varie d'un facteur 23 : il passerait l'essentiel du trajet loin de la cible et
+s'écraserait sur elle en quelques images.
+
+### Le fondu tramé ne troue jamais l'image
+
+Un fondu par alpha exigerait de trier 8 000 billes à chaque image et casserait la profondeur
+écrite par les imposteurs. On trame : chaque pixel est gardé ou jeté selon un seuil fixe à
+l'écran, et le niveau suivant, en mode inversé, garde exactement les pixels jetés. Quarante
+billes qui se chevauchent, dessinées en double avec des identifiants distincts :
+
+| t | trous | écart de profondeur | part du second niveau |
+|---:|---:|---:|---:|
+| 0 | 0 | 0 | 0,000 |
+| 0,25 | 0 | 0 | 0,250 |
+| 0,5 | 0 | 0 | 0,500 |
+| 0,75 | 0 | 0 | 0,749 |
+| 1 | 0 | 0 | 1,000 |
+| témoin : deux trames identiques, t = 0,5 | **10 433 sur 20 886** | — | — |
+
+Aucun trou, la profondeur visible identique au bit près à celle d'un niveau seul, et la part
+du second niveau égale à `t`. Le témoin troue la moitié de l'image : la complémentarité est
+la propriété qui compte, et le test la distingue. Un groupe éteint disparaît entièrement (5 619
+pixels avant, 0 après) et ne coûte rien : son quad sort du volume de vue dans le vertex shader.
+
+### L'occlusion ambiante : un pli, et la même image à toute échelle
+
+| | |
+|---|---:|
+| bille seule, de face | 1,000 |
+| fond | 1,000 |
+| deux billes tangentes, flanc → face → pli (moyenne 5 × 5) | 1,000 ≥ 0,992 ≥ **0,802** |
+| scène ×10 et rayon ×10 : pixels qui changent | **2 sur 7 687**, d'un échantillon chacun |
+| témoin : scène ×10, rayon inchangé | 7 965 sur 13 986, de plus d'un échantillon |
+
+L'invariance d'échelle est ce qui rend l'occlusion utilisable dans une plongée de deux ordres de
+grandeur. Elle n'est pas exacte au bit : un échantillon tangent à une surface bascule d'un côté
+ou de l'autre du test de profondeur selon l'arrondi flottant, et vaut 1/16. Le test compte donc
+les pixels qui basculent et de combien, au lieu d'exiger l'égalité.
+
+### Les compartiments du modèle, et un biais que le témoin a montré
+
+Aucun compartiment n'est donné au modèle. On tire de l'ensemble de 200 structures la carte
+qu'une expérience Hi-C aurait vue — homologues confondus, contacts au seuil de la semaine 7 — et
+on y appelle E1 avec les appelants de la semaine 3, orienté par la piste LAD (A du côté pauvre
+en LAD, faute de GC lisible). L'X inactif ne reçoit aucun compartiment : il n'en a pas in vivo.
+
+**Le premier témoin a révélé un biais de mesure.** La force du damier, `(AA + BB) / (AB + BA)`
+sur les quintiles extrêmes de E1, se calcule d'habitude sur la carte même dont E1 est tiré. Sur
+un ensemble jouet **sans aucun compartiment**, elle vaut **2,80** au lieu de 1 : le vecteur
+propre est par construction la partition qui fait le meilleur damier de cette carte, bruit
+compris. On la croise donc : E1 d'une moitié des structures, carte de l'autre, dans les deux sens.
+
+| ensemble jouet | force croisée | force sur l'échantillon même | moitié contre moitié |
+|---|---:|---:|---:|
+| damier planté | 8,37 | 26,59 | r = +0,879 |
+| témoin sans damier | **0,97** | **2,80** | r = +0,003 |
+
+Sur l'ensemble réel :
+
+| | |
+|---|---:|
+| bins appelés | 3 976 sur 4 041 |
+| part de A | 50 % |
+| force du damier, croisée | **4,76** (5,09 sur l'échantillon même) |
+| E1 d'une moitié des structures contre l'autre | **r = +0,980** |
+| E1 contre la piste LAD | r = −0,49 |
+| E1 contre la position radiale moyenne | **r = −0,60** |
+| billes avec un compartiment | 7 747 sur 8 082 (Xi et bins non appelés exclus) |
+
+Le damier est fort et reproductible. Mais il dit d'où il vient : E1 suit la **position
+radiale** plus que la piste LAD elle-même. Le seul ingrédient du modèle capable de ségréger la
+chromatine est le terme radial de la semaine 6 ; les compartiments du modèle sont sa
+stratification radiale, vue à travers les contacts. C'est une prédiction, que le Hi-C de Rao
+2014 confirmera ou non le jour où il sera lisible — `make g3d COMPARTMENTS=e1.bedGraph`
+l'affiche alors à la place, et chiffre l'accord avec le modèle. La corrélation négative avec
+LAD est en partie imposée par l'orientation ; son amplitude, la force et la reproductibilité ne
+le sont pas.
+
+### La plongée est continue
+
+`node tools/dive.mjs 240` parcourt la plongée en 240 images à pas constants et mesure l'écart
+moyen absolu entre images successives. Le mouvement seul produit un écart régulier (médiane
+1,48/255) ; une transition qui saute fait un pic. Règle fixée avant la mesure : un **saut** est
+une image dont l'écart dépasse 3 fois la médiane de ses 20 voisines.
+
+| | sauts | pire rapport, toutes images |
+|---|---:|---:|
+| la plongée | **0** | **1,05** |
+| témoin : les mêmes transitions en marches sèches | 2 | 3,84 |
+
+Transition par transition, le rapport de l'écart à la médiane de ses voisines :
+
+| transition | image | champ | fondu | sèche |
+|---|---:|---:|---:|---:|
+| aperçu 3 Mb → noyau 750 kb | 98 | 19,8 µm | **0,95×** | 1,69× |
+| autres chromosomes effacés | 130 | 12,5 µm | **1,04×** | 3,24× |
+| territoires → compartiments | 191 | 5,2 µm | **0,97×** | 3,84× |
+
+Chaque transition fondue est indiscernable du mouvement de caméra seul. Le seuil de 3 fixé
+d'avance attrape deux des trois marches du témoin et **manque la troisième** : le changement de
+niveau sec ne fait « que » 1,69 fois le mouvement, parce qu'à 20 µm de champ une bille de 3 Mb
+et ses quatre filles de 750 kb se ressemblent. Ce n'est pas une raison de baisser le seuil après
+coup ; c'est la raison pour laquelle le tableau par transition est publié — il sépare les deux
+séries partout, d'un facteur 1,8 au moins. Deux exécutions donnent les mêmes écarts au pixel près.
+
+### Les 60 images par seconde : instrumentées, pas mesurées
+
+| SwiftShader, 960 × 540 | médiane | p95 |
+|---|---:|---:|
+| rendu d'une image, GPU attendu | 120 ms | 248 ms |
+| intervalle entre images (requestAnimationFrame) | 133 ms | — |
+
+Environ 8 images par seconde, sur un rasteriseur qui exécute les fragment shaders sur quatre
+cœurs de processeur. C'est une borne haute sans portée sur la cible : ne pas lire « 8 fps ».
+
+Le chiffre qui manque vient de **la page de banc matériel** (`dist/materiel/index.html`, publiée
+comme page privée sur claude.ai) : elle joue la même plongée, à la résolution de l'appareil qui
+l'ouvre, en deux passes — synchronisée, pour la marge du GPU ; au rythme de
+`requestAnimationFrame` sans aucune relecture, pour ce que voit l'utilisateur — et enregistre le
+résultat là où Claude le relit. Verdict « tenu » si 95 % des intervalles sont sous 20 ms.
+**Aucune mesure n'y est encore enregistrée.** Le budget suggère que la marge est large — 10 114
+billes au plus par image, une passe géométrique, une passe d'occlusion à 16 échantillons, quand
+le spike de la semaine 4 dessinait 620 000 billes —, mais c'est une suggestion, pas une mesure.
+
+### La semaine 9 tient encore
+
+Le viewer a grandi (tramage, groupes, palette double) et l'en-tête du `.g3d` porte les
+métadonnées de l'attribut. Grille de la semaine 9 refaite, dix passages par case :
+
+| aperçu 3 Mb, Slow 4G | semaine 9 | semaine 10 |
+|---|---:|---:|
+| préfixe 16 Kio (défaut) | 1 412 ms | **1 416 ms** |
+| préfixe ajusté | 1 381 ms | 1 381 ms |
+| fin du premier rendu | 11 149 o | 11 619 o |
+| page | 14,1 Kio | 15,1 Kio |
+
+La marge passe de 88 à 84 ms. Elle aurait fondu sans deux corrections ci-dessous : la page avait
+d'abord grossi à 18,7 Kio.
+
+### Défauts trouvés
+
+**Le lockfile de la semaine 9 était périmé.** `apps/first/package.json` déclarait deux
+dépendances absentes de `pnpm-lock.yaml` ; `pnpm install --frozen-lockfile`, ce que fait toute
+CI, échouait. Vu en reconstruisant l'environnement après le recyclage du conteneur.
+
+**L'occlusion ambiante voyageait dans la page du premier rendu.** Un gabarit de chaîne avec
+`${…}` au niveau d'un module n'est pas éliminé par esbuild, qui ne peut pas prouver l'absence
+d'effet de bord ; et les commentaires des shaders survivent à la minification. 18,7 Kio au lieu
+de 13,7 ; 14,8 après les deux corrections (shaders construits à la demande, commentaires GLSL
+retirés au bundle). Les suites headless sont construites pareil, donc elles prouvent que les
+shaders dépouillés compilent.
+
+**La force du damier, mesurée comme d'habitude, trouvait des compartiments dans le bruit.**
+Ci-dessus. Le test du témoin la garde en vue : il exige qu'elle soit fausse sur l'échantillon
+même et juste une fois croisée.
+
+**cooltools refusait les vraies données.** Les billes ont la même longueur dans un chromosome
+mais pas d'un chromosome à l'autre (747 à 753 kb) ; cooltools exige une taille de bin unique.
+L'ensemble jouet du test avait des billes toutes égales et l'avait laissé passer. Le cooler
+intermédiaire est maintenant indexé par bille ; le test a des longueurs par chromosome et
+échoue sur l'ancien code.
+
+**`make fine` ne reproduisait pas la semaine 8.** La commande de reproduction publiée tournait
+en 4 réplicats × 120 instantanés, quand le rapport en utilisait 8 × 150. Défauts corrigés.
+
+**La semaine 8 n'est reproductible qu'en statistique.** OpenMM sur processeur somme les forces
+dans un ordre qui dépend des fils d'exécution : à graines égales, les trajectoires divergent.
+Deux exécutions de 1 200 conformations :
+
+| | semaine 8 | semaine 10 |
+|---|---:|---:|
+| frontières retrouvées, avec CTCF | 12/13, 18 appelées | 12/13, 19 appelées |
+| frontières retrouvées, CTCF inoccupé | **0/13** | **2/13** |
+| points d'angle aux convergents, médiane | 2,56 | 2,56 |
+| idem, CTCF inoccupé | 1,06 | 1,00 |
+| pente de P(s), régime domaine | −1,08 | −1,12 |
+| pire écart du raccord | 2,42× | 2,35× |
+| pente de R(s) du modèle fin | −0,02 | +0,02 |
+
+Les conclusions tiennent ; le « 0 sur 13 » du témoin était le chiffre d'une exécution, et la
+suivante en donne 2. La pose du niveau fin a bougé avec son médoïde : RMSD 426,2 nm, échelle
+optimale ×1,05 (semaine 9 : 394,7 nm, ×1,58). La lecture ne change pas — une échelle ne
+rattrape presque rien, l'écart est de forme. L'ensemble de la semaine 7, lui, se reproduit : même
+médoïde, graine 1125. Le verdict de la pose citait « 2,42× » en dur ; il cite maintenant la plage.
+
+**Deux de mes seuils de test étaient arbitraires.** Le test du pli exigeait 0,15 d'écart sur un
+pixel seul, quantifié par pas de 1/16 ; l'invariance d'échelle exigeait l'égalité à 3/255 près,
+quand un échantillon vaut 16/255. Les deux ont échoué au premier passage. Ils mesurent
+maintenant ce qui est défendable — une décroissance monotone vers le contact sur des fenêtres
+moyennées, et le nombre de pixels qui basculent d'un échantillon — avec des témoins qui, eux,
+échouent.
+
+### Ce que ça ne dit pas
+
+**Rien des fps sur une vraie cible**, tant que la page de banc n'a pas reçu de mesure. **Rien
+des compartiments réels** : ceux du modèle sont une prédiction. **L'Xi n'est pas replié
+autrement que l'Xa** : il est montré sans compartiment parce qu'il n'en a pas in vivo, pas parce
+que le modèle l'aurait trouvé. **Le tramage se voit** pendant une transition — un grain fixe à
+l'écran, sur quelques dizaines d'images — ; c'est le prix d'un fondu sans tri. **La force de
+l'occlusion (0,9) est réglée à l'œil.** La plongée s'arrête à la bille de 750 kb : en dessous,
+c'est la semaine 11.
+
+### Reproduire
+
+```console
+$ cd pipeline && make ensemble && make fine     # ~32 + ~15 min, si les données manquent
+$ make g3d                                      # .g3d avec compartiments du modèle
+$ cd .. && pnpm verify                          # 16 assertions S4 + 20 assertions S10
+$ node tools/test-g3d.mjs                       # lecture croisée, attributs compris (34)
+$ node tools/dive.mjs 240                       # continuité, et le témoin qui doit sauter
+$ node tools/loadtime.mjs 10                    # la semaine 9 tient-elle encore
+```
+
+---
+
 ## S9 — Format et streaming : 1,41 s en Slow 4G, et une marge que TLS mangerait
 
 ### Le critère, et ce qu'il veut dire

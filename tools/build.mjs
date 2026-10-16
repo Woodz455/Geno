@@ -6,7 +6,7 @@
  */
 
 import { build } from "esbuild";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,13 +71,16 @@ for (const t of targets) {
 }
 
 // Banc matériel : une page au format Artifact (pas de squelette html/head/body, la
-// publication l'ajoute), et le .g3d à côté. Publiée pour être ouverte sur de vrais appareils.
+// publication l'ajoute), avec le .g3d **dans** la page en base64 — un Artifact ne sert
+// pas de fichier binaire à côté. Publiée pour être ouverte sur de vrais appareils.
 {
   const js = await bundle("apps/dive/materiel.ts", true);
   const tpl = await readFile(resolve(ROOT, "apps/dive/materiel.html"), "utf8");
-  await mkdir(resolve(ROOT, "dist/materiel"), { recursive: true });
-  await writeFile(resolve(ROOT, "dist/materiel/index.html"), tpl.replace("/*SCRIPT*/", () => js.replace(/<\/script/gi, "<\\/script")));
   const g3d = resolve(ROOT, "pipeline/data/g3d/gm12878.g3d");
-  if (existsSync(g3d)) await copyFile(g3d, resolve(ROOT, "dist/materiel/gm12878.g3d"));
-  console.log(`  dist/materiel/index.html  ${(js.length / 1024).toFixed(1)} ko${existsSync(g3d) ? "  (+ gm12878.g3d)" : "  (sans .g3d : make g3d)"}`);
+  const data = existsSync(g3d) ? (await readFile(g3d)).toString("base64") : "";
+  await mkdir(resolve(ROOT, "dist/materiel"), { recursive: true });
+  const html = tpl.replace("<script>/*SCRIPT*/</script>", () =>
+    `<script id="g3d" type="text/plain">${data}</script>\n<script>${js.replace(/<\/script/gi, "<\\/script")}</script>`);
+  await writeFile(resolve(ROOT, "dist/materiel/index.html"), html);
+  console.log(`  dist/materiel/index.html  ${(html.length / 1024).toFixed(1)} ko${data ? "  (.g3d intégré)" : "  (sans .g3d : make g3d)"}`);
 }

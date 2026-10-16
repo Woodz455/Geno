@@ -225,7 +225,7 @@ def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[L
     seulement, réflexion permise. Le RMSD restant est publié avec la pose.
 
     **Pas d'échelle dans la pose**, et c'est voulu. La semaine 8 a montré que les deux
-    modèles ne partagent pas la même `R(s)` — un facteur 2,42 au pire. Une similitude
+    modèles ne partagent pas la même `R(s)` — un facteur 2,2 à 2,4 au pire selon l'exécution. Une similitude
     absorberait cet écart dans un facteur d'échelle et le rendrait invisible ; on calcule
     ce facteur, on l'écrit, et on ne l'applique pas.
 
@@ -275,7 +275,7 @@ def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[L
         fit={
             **fit,
             "anchors": used,
-            "verdict": "le raccord de la semaine 8 ne tient pas (2,42× sur R(s)) ; "
+            "verdict": "le raccord de la semaine 8 ne tient pas (2,2 à 2,4× sur R(s) selon l'exécution, VALIDATION.md § S8 et § S10) ; "
                        "la pose le montre, elle ne le corrige pas",
         },
         notes=[

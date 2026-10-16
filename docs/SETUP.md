@@ -79,7 +79,7 @@ symboles Node dont il a besoin plutôt que d'ajouter `@types/node`.
 ## Vérifier
 
 ```console
-$ make test            # 218 tests (43 socle 1D + 138 conformation + 37 format .g3d)
+$ make test            # 227 tests (43 socle 1D + 138 conformation + 42 format .g3d + 4 compartiments)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

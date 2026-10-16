@@ -1,11 +1,13 @@
 /** Banc matériel : la plongée mesurée sur l'appareil de la personne qui ouvre la page.
  *
- *  Publiée comme Artifact (privée par défaut), avec le `.g3d` à côté. Chaque mesure est
+ *  Publiée comme Artifact (privée par défaut). Le `.g3d` voyage **dans** la page, en base64 :
+ *  les Artifacts ne servent pas de fichier binaire à côté d'une page. Chaque mesure est
  *  enregistrée dans la base de l'Artifact (capacité `db`), où Claude la relit : c'est le
  *  seul chemin par lequel un temps par image mesuré sur un vrai GPU revient au projet.
  *  Sans base (page ouverte hors de claude.ai), la mesure s'affiche et n'est pas enregistrée.
  */
 
+import { BufferSource } from "@geno/g3d";
 import { distanceFor, type Orbit } from "@geno/viewer";
 import { median, percentile, runBench } from "./bench.js";
 import { FOV, openDive } from "./dive.js";
@@ -81,7 +83,10 @@ function renderRuns(docs: Doc[]): void {
 
 async function main(): Promise<void> {
   fit();
-  const scene = await openDive(canvas, "gm12878.g3d");
+  const embedded = document.getElementById("g3d")?.textContent?.trim();
+  if (!embedded) throw new Error("le fichier du modèle manque à la page");
+  const bytes = Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0));
+  const scene = await openDive(canvas, new BufferSource(bytes));
   $("cap").textContent = `${scene.preview.frame.count.toLocaleString("fr")} puis ${(scene.fine?.frame.count ?? 0).toLocaleString("fr")} billes · ${canvas.width}×${canvas.height}`;
 
   // Arrivée du noyau en fondu, puis une rotation lente : la scène est vivante sans être mesurée.
