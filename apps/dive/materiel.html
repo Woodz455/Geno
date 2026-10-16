@@ -1,0 +1,119 @@
+<title>Banc matériel Geno</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Une colonne d'instrument : la scène en haut, la mesure dessous, l'historique des appareils en bas. */
+  :root {
+    --bg: #f3f5f7;
+    --panel: #ffffff;
+    --fg: #17202b;
+    --muted: #5d6b7c;
+    --line: #d8dee6;
+    --accent: #b9532c;       /* l'orange du compartiment A */
+    --ok: #217a4b;
+    --ko: #a8322a;
+    --scene: #0e1218;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1116; --panel: #151b23; --fg: #e6ebf1; --muted: #8d9aab; --line: #263140;
+      --accent: #e5794d; --ok: #4fbf84; --ko: #ec6a5f; --scene: #0e1218; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1116; --panel: #151b23; --fg: #e6ebf1; --muted: #8d9aab; --line: #263140;
+    --accent: #e5794d; --ok: #4fbf84; --ko: #ec6a5f; --scene: #0e1218; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--sans); line-height: 1.5; }
+  main {
+    max-width: 960px; margin: 0 auto; display: grid; gap: 20px;
+    padding-block: 24px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  h1 { font-size: 1.45rem; font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+  h2 { font-size: 0.78rem; font-weight: 600; margin: 0; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  p { margin: 0; max-width: 65ch; }
+  .lede { color: var(--muted); }
+  .scene { position: relative; background: var(--scene); border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
+  .scene canvas { display: block; width: 100%; height: 100%; }
+  .scene .cap { position: absolute; left: 10px; bottom: 8px; font: 12px var(--mono); color: #aeb9c7; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+  input {
+    font: 0.95rem var(--sans); color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 10px; min-width: 0; width: min(320px, 100%);
+  }
+  button {
+    font: 600 0.95rem var(--sans); color: #fff; background: var(--accent); border: 0; border-radius: 6px;
+    padding: 9px 16px; cursor: pointer;
+  }
+  button:disabled { opacity: 0.55; cursor: progress; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .status { font: 0.85rem var(--mono); color: var(--muted); min-height: 1.4em; }
+  .result { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 12px; }
+  .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 20px; }
+  .fig { display: grid; gap: 2px; min-width: 0; }
+  .fig b { font: 500 1.35rem var(--mono); font-variant-numeric: tabular-nums; }
+  .fig span { font-size: 0.78rem; color: var(--muted); }
+  .pill { display: inline-block; font: 600 0.78rem var(--sans); padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; }
+  .pill.ok { color: var(--ok); }
+  .pill.ko { color: var(--ko); }
+  .gpu { font: 0.8rem var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+  .table { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 500; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  td.n { font-family: var(--mono); text-align: right; padding-right: 14px; }
+  .empty { color: var(--muted); font-size: 0.9rem; }
+  .note { font-size: 0.8rem; color: var(--muted); }
+</style>
+<main>
+  <header style="display:grid;gap:6px">
+    <h1>Banc matériel Geno</h1>
+    <p class="lede">Ce banc joue une plongée du noyau de GM12878 jusqu'aux compartiments de chr7 : 8 082 billes en imposteurs,
+      fondu tramé entre deux niveaux, occlusion ambiante. Le critère de la semaine 10 est de tenir 60 images par seconde
+      sur un appareil moyen. Le serveur de développement ne rend qu'en logiciel, donc ce chiffre ne peut venir que d'ici.</p>
+  </header>
+
+  <div class="scene"><canvas id="scene" aria-label="Rendu de la plongée"></canvas><div class="cap" id="cap">chargement du modèle…</div></div>
+
+  <div class="controls">
+    <label for="device">Appareil (facultatif, aide à lire le tableau)
+      <input id="device" placeholder="ex. MacBook Air M2, Pixel 7, PC de bureau">
+    </label>
+    <button id="run" disabled>Mesurer cet appareil</button>
+  </div>
+  <div class="status" id="status" role="status"></div>
+
+  <section class="result" id="result" hidden>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+      <h2>Cet appareil</h2><span id="verdict" class="pill"></span>
+    </div>
+    <div class="figures">
+      <div class="fig"><b id="raf"></b><span>intervalle médian entre images (rAF)</span></div>
+      <div class="fig"><b id="rafp95"></b><span>95e centile de cet intervalle</span></div>
+      <div class="fig"><b id="dropped"></b><span>images à plus de 25 ms</span></div>
+      <div class="fig"><b id="sync"></b><span>rendu seul, GPU attendu (médiane)</span></div>
+    </div>
+    <div class="gpu" id="gpu"></div>
+  </section>
+
+  <section style="display:grid;gap:10px">
+    <h2>Appareils mesurés</h2>
+    <div class="table">
+      <table>
+        <thead><tr><th>Appareil</th><th>Processeur graphique</th><th>Canevas</th><th style="text-align:right">rAF méd.</th><th style="text-align:right">p95</th><th style="text-align:right">rendu seul</th><th>60 fps</th></tr></thead>
+        <tbody id="runs"><tr><td colspan="7" class="empty">Aucune mesure encore. Lancez-en une ci-dessus ; elle s'ajoutera ici, et Claude pourra la lire.</td></tr></tbody>
+      </table>
+    </div>
+    <p class="note">Verdict « tenu » : 95 % des intervalles sous 20 ms, sur un écran à 60 Hz ou plus. Le « rendu seul » attend la fin
+      du GPU après chaque image ; il dit la marge disponible, pas les fps. Données : modèle simulé (médoïde de 200 repliements),
+      compartiments appelés sur la carte de contacts du modèle.</p>
+  </section>
+</main>
+<script>/*SCRIPT*/</script>

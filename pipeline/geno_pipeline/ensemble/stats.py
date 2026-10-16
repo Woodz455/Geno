@@ -450,6 +450,36 @@ def read_bedgraph(path) -> tuple[dict[str, list[tuple[int, int, float]]], int]:
     return track, rows
 
 
+def overlap_mean(
+    starts: np.ndarray,
+    ends: np.ndarray,
+    copy_id: np.ndarray,
+    labels: tuple[str, ...],
+    track: dict[str, list[tuple[int, int, float]]],
+) -> np.ndarray:
+    """Valeur d'une piste par bille : moyenne des scores pondérée par le recouvrement.
+
+    Une bille que la piste ne couvre pas reçoit NaN, pas zéro : un zéro est une valeur,
+    pas une absence. Sert au DamID (semaine 7) et aux compartiments mesurés (semaine 10).
+    """
+    chroms = [label.split(":", 1)[0] for label in labels]
+    score = np.full(len(starts), np.nan)
+    for k in range(len(starts)):
+        spans = track.get(chroms[copy_id[k]])
+        if not spans:
+            continue
+        s0, e0 = int(starts[k]), int(ends[k])
+        weight = value = 0.0
+        for s1, e1, v in spans:
+            overlap = min(e0, e1) - max(s0, s1)
+            if overlap > 0:
+                weight += overlap
+                value += overlap * v
+        if weight > 0:
+            score[k] = value / weight
+    return score
+
+
 @dataclass(frozen=True)
 class DamID:
     """Le livrable de la semaine 7 : position radiale modélisée contre DamID mesuré."""
@@ -486,23 +516,8 @@ def damid(
     entrée DamID du manifeste n'a pu être récupérée (`DATA_SOURCES.md` § 8). Elle
     est écrite, testée sur une piste construite exprès, et attend son fichier.
     """
-    chroms = [label.split(":", 1)[0] for label in labels]
     mean_r = radial.mean(axis=0)
-
-    score = np.full(len(starts), np.nan)
-    for k in range(len(starts)):
-        spans = track.get(chroms[copy_id[k]])
-        if not spans:
-            continue
-        s0, e0 = int(starts[k]), int(ends[k])
-        weight = value = 0.0
-        for s1, e1, v in spans:
-            overlap = min(e0, e1) - max(s0, s1)
-            if overlap > 0:
-                weight += overlap
-                value += overlap * v
-        if weight > 0:
-            score[k] = value / weight
+    score = overlap_mean(starts, ends, copy_id, labels, track)
 
     ok = np.isfinite(score)
     r = float(np.corrcoef(mean_r[ok], score[ok])[0, 1]) if ok.sum() > 2 else float("nan")

@@ -15,11 +15,31 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  apps/dive:
+    dependencies:
+      '@geno/g3d':
+        specifier: workspace:*
+        version: link:../../packages/g3d
+      '@geno/viewer':
+        specifier: workspace:*
+        version: link:../../packages/viewer
+
+  apps/first:
+    dependencies:
+      '@geno/g3d':
+        specifier: workspace:*
+        version: link:../../packages/g3d
+      '@geno/viewer':
+        specifier: workspace:*
+        version: link:../../packages/viewer
+
   apps/spike:
     dependencies:
       '@geno/viewer':
         specifier: workspace:*
         version: link:../../packages/viewer
+
+  packages/g3d: {}
 
   packages/viewer: {}
 

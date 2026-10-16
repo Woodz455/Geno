@@ -27,47 +27,54 @@ if (!chrome) {
   process.exit(2);
 }
 
-const pagePath = resolve(ROOT, "dist/headless.html");
-if (!existsSync(pagePath)) {
-  console.error("dist/headless.html absent — lancer `pnpm build` d'abord.");
-  process.exit(2);
-}
-
-const { stdout } = await exec(
-  chrome,
-  [
-    "--headless",
-    "--no-sandbox",
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--virtual-time-budget=20000",
-    "--dump-dom",
-    `file://${pagePath}`,
-  ],
-  { maxBuffer: 64 * 1024 * 1024 },
-);
-
-const match = stdout.match(/<pre id="results">([\s\S]*?)<\/pre>/);
-if (!match) {
-  console.error("la page n'a pas rendu de résultats — le script a probablement levé.");
-  process.exit(1);
-}
+// Une suite par page : celle de la semaine 4 (imposteurs, picking) et celle de la
+// semaine 10 (caméra, fondu tramé, occlusion). Chacune se compte à part.
+const SUITES = [
+  { page: "dist/headless.html", title: "Correction des imposteurs (semaine 4)" },
+  { page: "dist/macro.html", title: "Plongée : caméra, fondu tramé, occlusion (semaine 10)" },
+];
 
 const decode = (s) =>
   s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
-const payload = JSON.parse(decode(match[1]));
-
-console.log("\n  Correction des imposteurs — Chromium headless (SwiftShader, rendu logiciel)\n");
-for (const r of payload.results) {
-  const mark = r.ok ? "\x1b[32mPASS\x1b[0m" : "\x1b[31mFAIL\x1b[0m";
-  console.log(`  ${mark}  ${r.name}${r.detail ? `  \x1b[2m${r.detail}\x1b[0m` : ""}`);
+let failed = 0;
+for (const suite of SUITES) {
+  const pagePath = resolve(ROOT, suite.page);
+  if (!existsSync(pagePath)) {
+    console.error(`${suite.page} absent — lancer \`pnpm build\` d'abord.`);
+    process.exit(2);
+  }
+  const { stdout } = await exec(
+    chrome,
+    [
+      "--headless",
+      "--no-sandbox",
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
+      "--virtual-time-budget=20000",
+      "--dump-dom",
+      `file://${pagePath}`,
+    ],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  const match = stdout.match(/<pre id="results">([\s\S]*?)<\/pre>/);
+  if (!match) {
+    console.error(`${suite.page} n'a pas rendu de résultats — le script a probablement levé.`);
+    process.exit(1);
+  }
+  const payload = JSON.parse(decode(match[1]));
+  console.log(`\n  ${suite.title} — Chromium headless (SwiftShader, rendu logiciel)\n`);
+  for (const r of payload.results) {
+    const mark = r.ok ? "\x1b[32mPASS\x1b[0m" : "\x1b[31mFAIL\x1b[0m";
+    console.log(`  ${mark}  ${r.name}${r.detail ? `  \x1b[2m${r.detail}\x1b[0m` : ""}`);
+  }
+  console.log(`\n  ${payload.passed} réussis, ${payload.failed} échoués`);
+  failed += payload.failed;
 }
-console.log(`\n  ${payload.passed} réussis, ${payload.failed} échoués`);
 console.log(
   "\n  \x1b[2mCe verdict porte sur la correction, pas sur la performance :\n" +
     "  SwiftShader est un rasteriseur logiciel. Pour les fps, ouvrir dist/spike.html\n" +
     "  sur du matériel réel.\x1b[0m\n",
 );
 
-process.exit(payload.failed === 0 ? 0 : 1);
+process.exit(failed === 0 ? 0 : 1);

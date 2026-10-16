@@ -152,6 +152,23 @@ def digest(data: bytes) -> str:
 
 
 @dataclass
+class Attribute:
+    """Une valeur par bille, au-delà de ce que tout niveau porte. NaN : valeur absente.
+
+    Stockée sur 16 bits, au pas `(max − min) / 65534` ; le code 65535 dit « absente ».
+    Le pas est donc dicté par l'étendue, pas par une incertitude : un attribut n'a pas
+    d'ensemble derrière lui comme les positions. `meta` dit ce que la valeur est et
+    d'où elle vient, et voyage telle quelle dans l'en-tête.
+    """
+
+    values: np.ndarray
+    meta: dict = field(default_factory=dict)
+
+
+MISSING = U16
+
+
+@dataclass
 class Level:
     """Une résolution du modèle : des billes, leurs positions, et d'où elles viennent."""
 
@@ -171,6 +188,7 @@ class Level:
     )
     fit: dict | None = None
     notes: list[str] = field(default_factory=list)
+    attributes: dict[str, Attribute] = field(default_factory=dict)
 
     @property
     def n(self) -> int:
@@ -194,6 +212,29 @@ class Level:
             raise ValueError(f"{self.name} : plus de 255 copies ne tiennent pas en u8")
         if self.start.max() >= 2**32 or self.end.max() >= 2**32:
             raise ValueError(f"{self.name} : coordonnée au-delà de 2³² pb")
+        for key, a in self.attributes.items():
+            if len(a.values) != n:
+                raise ValueError(f"{self.name} : attribut {key} a {len(a.values)} lignes pour {n} billes")
+            if not key.isidentifier():
+                raise ValueError(f"{self.name} : nom d'attribut invalide : {key!r}")
+            if np.isinf(a.values).any():
+                raise ValueError(f"{self.name} : attribut {key} infini")
+
+
+def _attribute_quant(values: np.ndarray) -> tuple[float, float]:
+    """Origine et pas d'un attribut : son étendue finie sur 65 535 codes, le dernier réservé."""
+    finite = values[np.isfinite(values)]
+    if not len(finite):
+        return 0.0, 1.0
+    lo, hi = float(finite.min()), float(finite.max())
+    return lo, (hi - lo) / (U16 - 1) if hi > lo else 1.0
+
+
+def _attribute_codes(values: np.ndarray, lo: float, step: float) -> np.ndarray:
+    q = np.rint((np.nan_to_num(values, nan=lo) - lo) / step)
+    q = np.clip(q, 0, U16 - 1).astype(np.uint16)
+    q[~np.isfinite(values)] = MISSING
+    return q
 
 
 def octree(points: np.ndarray, max_beads: int) -> list[np.ndarray]:
@@ -279,6 +320,9 @@ def _prepare(level: Level, max_beads: int, fraction: float):
     step = np.maximum(np.maximum((hi - lo) / U16, 2.0 * err), 1e-9)
     var_step = max(2.0 * err, float(var.max()) / U16, 1e-9)
 
+    attr_quant = {key: _attribute_quant(np.asarray(a.values, dtype=np.float64))
+                  for key, a in level.attributes.items()}
+
     chunks = []
     order = []
     for leaf in octree(pos, max_beads):
@@ -312,6 +356,11 @@ def _prepare(level: Level, max_beads: int, fraction: float):
             _column("variability", _quantize(var[leaf], np.zeros(1), np.array([var_step]))),
             _column("start", level.start[leaf].astype(np.uint32)),
             _column("end", level.end[leaf].astype(np.uint32)),
+            *[
+                _column("attr." + key,
+                        _attribute_codes(np.asarray(a.values, dtype=np.float64)[leaf], *attr_quant[key]))
+                for key, a in level.attributes.items()
+            ],
         ]
 
     # Index génomique : les identifiants de billes dans l'ordre (copie, début). Les
@@ -347,6 +396,12 @@ def _prepare(level: Level, max_beads: int, fraction: float):
         "index": {"copy_offsets": offsets},
         "notes": list(level.notes),
     }
+    if level.attributes:
+        meta["attributes"] = {
+            key: {**a.meta, "origin": attr_quant[key][0], "step": attr_quant[key][1],
+                  "missing": MISSING, "max_error": attr_quant[key][1] / 2.0}
+            for key, a in level.attributes.items()
+        }
     return meta, chunks, index, order
 
 
@@ -523,8 +578,15 @@ def read(path: str | Path) -> Read:
                 parts[name].append(col(c["columns"][name]))
         pos_q = np.concatenate([p.reshape(3, -1).T for p in parts["position"]])
         positions = np.asarray(q["origin"]) + pos_q * np.asarray(q["step"])
+        attrs = {}
+        for key, spec in lv.get("attributes", {}).items():
+            codes = np.concatenate([col(c["columns"]["attr." + key]) for c in lv["chunks"]])
+            vals = spec["origin"] + codes.astype(np.float64) * spec["step"]
+            vals[codes == spec["missing"]] = np.nan
+            attrs[key] = vals
         out[lv["name"]] = {
             "meta": lv,
+            "attributes": attrs,
             "copy": np.concatenate(parts["copy"]),
             "positions_nm": positions,
             "variability_nm": np.concatenate(parts["variability"]) * lv["variability"]["step"],

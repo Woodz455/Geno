@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from .build import pose
-from .g3d import Level, read, write
+from .g3d import Attribute, Level, read, write
 
 
 def _chain(counts, name, bp, seed, step_nm):
@@ -46,6 +46,11 @@ def main(out: str) -> None:
     d = Path(out)
     d.mkdir(parents=True, exist_ok=True)
     nucleus = _chain((900, 900, 700, 700), "noyau", 750_000, 1, 230.0)
+    # Un attribut avec des trous : une copie entière absente (comme l'Xi) et des billes isolées.
+    e1 = np.random.default_rng(4).normal(0, 0.04, nucleus.n)
+    e1[nucleus.copy == 3] = np.nan
+    e1[::97] = np.nan
+    nucleus.attributes["compartment"] = Attribute(e1, {"kind": "E1", "source": "témoin"})
     finer = _chain((1500,), "fin", 2_000, 2, 30.0)
     anchors = finer.positions_nm[::300][:5]
     m, fit = pose(anchors @ np.diag([1, -1, 1]) + 500.0, anchors)
@@ -84,6 +89,10 @@ def main(out: str) -> None:
             "variability": lv["variability_nm"].tolist(),
             "variability_step": meta["variability"]["step"],
             "queries": queries,
+            # JSON n'a pas de NaN : une valeur absente voyage comme null.
+            "attributes": {k: [None if np.isnan(x) else float(x) for x in v]
+                           for k, v in lv["attributes"].items()},
+            "attribute_meta": meta.get("attributes", {}),
         }
     (d / "expected.json").write_text(json.dumps(expected))
     print(f"{d / 'fixture.g3d'}  {rep['bytes']:,} o  ·  chunks {rep['chunks']}")

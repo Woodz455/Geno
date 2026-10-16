@@ -67,11 +67,12 @@ d'accord par une lecture croisée sur un fichier commun (`node tools/test-g3d.mj
 │    frame {transform 4×4 vers le noyau, fit {méthode, ancres, RMSD, échelle}}, │
 │    quant {origin, step, max_error_nm, rule}, variability {kind, step, …},    │
 │    chunks[] {first, n, bbox, sphere, columns{nom → offset, length, dtype,     │
-│              planes, filters[], sha256}},  index {copy_offsets, columns}      │
+│              planes, filters[], sha256}},  index {copy_offsets, columns},     │
+│    attributes {nom → origin, step, missing, max_error, kind, source, …}       │
 ├─ colonnes du premier rendu du niveau `first`, tous chunks, contiguës ────────┤
 │  copy u8 · position u16 × 3 plans                                           │
 ├─ le reste : colonnes paresseuses, index, autres niveaux ─────────────────────┤
-│  variability u16 · start u32 · end u32 · index ids/starts/ends u32           │
+│  variability u16 · start u32 · end u32 · attr.<nom> u16 · index u32 × 3     │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -117,6 +118,14 @@ exigé par le principe n°2 de la feuille de route. `predicted` est réservé au
 d'un modèle séquence → contact (Akita, Orca, C.Origami) — hors périmètre v1, mais le champ le
 prévoit pour qu'une telle position ne puisse jamais se faire passer pour une mesure.
 Voir [`DATA_SOURCES.md` § 7](DATA_SOURCES.md).
+
+**Attributs par bille (semaine 10).** Une valeur par bille au-delà des colonnes de base — le
+premier est `compartment`, l'E1 des compartiments A/B. Colonne `attr.<nom>` par chunk, sur
+16 bits au pas `(max − min) / 65 534`, le code 65 535 réservé à « absente » (l'X inactif n'a
+pas de compartiment, et le dire vaut mieux qu'un zéro). L'en-tête porte ce que la valeur est
+et d'où elle vient (`evidence`, `source`, mesures de qualité). Les attributs sont **paresseux** :
+le premier rendu de la semaine 9 n'en lit pas un octet, et un test le garde. Un fichier sans
+attribut se lit comme avant ; un lecteur qui ne les connaît pas les ignore.
 
 **Zéro dépendance de lecture.** `DecompressionStream("deflate-raw")` et `crypto.subtle` sont
 dans tous les navigateurs récents et dans Node 22. Le lecteur n'importe rien.
@@ -184,11 +193,34 @@ transposent tels quels dans un `RawShaderMaterial` de Three.js.
 selon la distance caméra. Les ancres de boucles sont des arcs explicites, pas des artefacts
 de la polyligne.
 
-**Lisibilité du volume.** Occlusion ambiante en espace écran : sans elle, un nuage de billes
-sphériques est illisible. Profondeur de champ réservée aux vues macro.
+**Lisibilité du volume.** Occlusion ambiante en espace écran (`packages/viewer/src/ssao.ts`),
+hémisphère orienté par la normale, 16 échantillons, flou 4 × 4 qui respecte la profondeur. La
+normale voyage dans les trois canaux libres de la cible de profondeur flottante : pas de
+passe géométrique de plus. Le rayon est en unités de vue et le biais lui est proportionnel,
+si bien qu'une scène agrandie dix fois avec un rayon dix fois plus grand donne la même image —
+à un échantillon de bascule près sur 2 pixels sur 7 687 ; une plongée qui traverse deux ordres
+de grandeur en dépend. Profondeur de champ : pas encore.
 
-**Transitions entre niveaux.** Fondu croisé sur un recouvrement de distance caméra, avec
-préchargement du niveau suivant. L'utilisateur ne doit jamais voir un niveau apparaître.
+**Opacité par tramage, jamais par mélange.** Un fondu entre niveaux, ou un chromosome qui
+s'efface, ne passe pas par l'alpha : chaque pixel est gardé ou jeté selon un seuil fixe à
+l'écran (bruit à gradient entrelacé). Pas de tri, pas d'ordre de dessin, une profondeur exacte,
+et un picking qui rend ce qui est vu. Le mode inversé garde **exactement** les pixels que l'autre
+jette : un niveau à `1 − t` et le suivant à `t` se partagent l'écran sans trou ni doublon — le
+test le vérifie pixel à pixel, et un témoin à deux trames identiques troue 50 % de l'image. Un
+groupe (une copie de chromosome) éteint ne coûte rien : son quad sort du volume de vue dans le
+vertex shader.
+
+**Transitions entre niveaux, et l'état visuel comme fonction de la caméra.** Ce qui est montré
+— niveau de détail, chromosomes visibles, palette territoires ou compartiments — se lit sur la
+largeur de champ et la taille des billes à l'écran (`apps/dive/scene.ts`), jamais sur le temps.
+Une plongée est donc réversible et un arrêt en chemin est un état stable. Seule l'arrivée d'un
+niveau par le réseau, qui ne dépend pas de la caméra, est fondue sur 400 ms. La caméra suit le
+chemin de van Wijk et Nuij (2003), parcouru à vitesse perçue constante (`camera.ts`).
+
+**Les shaders voyagent sans commentaires.** La minification ne touche pas au contenu des
+chaînes : `tools/build.mjs` retire les commentaires GLSL au bundle, ce qui rendait 2 Kio à la
+page du premier rendu. Les suites headless sont construites pareil, donc elles prouvent que les
+shaders dépouillés compilent.
 
 ---
 

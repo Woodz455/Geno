@@ -966,6 +966,12 @@ def _g3d_levels(args: argparse.Namespace):
     from .export import build
 
     nuc, src_n, ens = build.nucleus(args.ensemble)
+    attr, model, agreement = build.compartments(ens, args.compartments)
+    nuc.attributes["compartment"] = attr
+    print(f"compartiments du modèle : {model}")
+    if agreement:
+        print(f"piste mesurée {args.compartments} : r = {agreement['r']:+.3f} avec le modèle, "
+              f"même signe sur {agreement['same_sign']:.0%} de {agreement['covered']:,} billes")
     levels = [nuc]
     sources = [src_n]
     if not args.no_preview:
@@ -1220,9 +1226,12 @@ def main(argv: list[str] | None = None) -> int:
     g3.add_argument("--fine", default=str(ROOT / "data" / "fine" / "actb.npz"))
     # L'aperçu est inclus par défaut en vertu d'une règle fixée avant la mesure : il
     # n'entre que s'il fait passer un profil réseau nommé sous 1,5 s. Il fait passer
-    # Slow 4G (1 378 ms médian, contre 1 617 ms pour le noyau). VALIDATION.md § S9.
+    # Slow 4G (1 412 ms médian avec un préfixe de 16 Kio, contre 1 602 ms pour le noyau
+    # seul au mieux). VALIDATION.md § S9.
     g3.add_argument("--no-preview", action="store_true",
                     help="sans aperçu à 3 Mb : le noyau devient le niveau du premier rendu")
+    g3.add_argument("--compartments", default=None,
+                    help="bedGraph E1 mesuré à afficher à la place des compartiments du modèle")
     g3.add_argument("--fraction", type=float, default=0.01,
                     help="erreur de quantification max, en fraction de l'incertitude médiane")
     g3.add_argument("--sizes", default="1000000,250000,100000,25000,10000",

@@ -23,6 +23,7 @@ interface Expected {
       variability: number[];
       variability_step: number;
       queries: { chrom: string; start: number; end: number; hits: { copy: string; ids: number[] }[] }[];
+      attributes: Record<string, (number | null)[]>;
     }
   >;
 }
@@ -95,6 +96,22 @@ async function main(): Promise<void> {
     }
     check(`${name} : identify rend début et fin exacts`, idOk);
     check(`${name} : variabilité à la précision du stockage`, varErr < 1e-6, `écart ${varErr.toExponential(1)} nm`);
+
+    for (const [key, want] of Object.entries(exp.attributes)) {
+      const got = await g.attribute(name, key);
+      let gaps = got !== null;
+      let err = 0;
+      want.forEach((w, i) => {
+        if (w === null) gaps &&= Number.isNaN(got![i]);
+        else err = Math.max(err, Math.abs(got![i] - w));
+      });
+      const n = want.filter((w) => w === null).length;
+      check(`${name} : attribut ${key}, trous au même endroit`, gaps, `${n} absente(s) sur ${want.length}`);
+      check(`${name} : attribut ${key}, valeurs au flottant près`, err < 1e-6, `écart ${err.toExponential(1)}`);
+    }
+    if (Object.keys(exp.attributes).length === 0) {
+      check(`${name} : aucun attribut, et le lecteur le dit sans lever`, (await g.attribute(name, "compartment")) === null);
+    }
 
     for (const q of exp.queries) {
       const hits = await g.locate(name, q.chrom, q.start, q.end);

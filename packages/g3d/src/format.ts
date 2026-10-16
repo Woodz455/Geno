@@ -41,6 +41,20 @@ export interface LevelSpec {
   index: { copy_offsets: number[]; columns: Record<string, ColumnSpec> };
   notes: string[];
   chunks: ChunkSpec[];
+  /** Valeurs par bille au-delà des colonnes de base (semaine 10). Colonne `attr.<nom>` par chunk. */
+  attributes?: Record<string, AttributeSpec>;
+}
+
+export interface AttributeSpec {
+  origin: number;
+  step: number;
+  /** Code réservé à « absente ». */
+  missing: number;
+  max_error: number;
+  kind?: string;
+  evidence?: LevelSpec["evidence"];
+  source?: string;
+  [k: string]: unknown;
 }
 
 export interface Header {

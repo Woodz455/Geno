@@ -28,7 +28,7 @@ from ..ensemble import medoid
 from ..ensemble import read as read_ensemble
 from ..ensemble.stats import kabsch
 from ..fine.run import load as load_fine
-from .g3d import Level
+from .g3d import Attribute, Level
 
 
 def _sha(*arrays: np.ndarray) -> str:
@@ -93,6 +93,50 @@ def nucleus(path: str | Path) -> tuple[Level, dict, dict]:
     return level, source, {"coords_um": e.coords, "beads": b, "medoid": mi}
 
 
+def compartments(ens: dict, track_path: str | Path | None = None):
+    """L'attribut `compartment` du niveau noyau, et le bilan qui dit ce qu'il vaut.
+
+    Toujours calculé depuis l'ensemble (`ensemble.compartments`). Si une piste E1
+    mesurée est fournie — un bedGraph, Rao 2014 par exemple —, c'est **elle** qui est
+    affichée, et le bilan dit à quel point le modèle s'en approche. Aucune ne l'a été :
+    le réseau de l'environnement est fermé, comme pour le DamID et le CTCF.
+    """
+    from ..ensemble.compartments import compute
+    from ..ensemble.stats import overlap_mean, read_bedgraph
+
+    b = ens["beads"]
+    model = compute(ens["coords_um"], b.radius, b.copy_id, tuple(b.labels), b.start, b.end,
+                    b.lad, b.nuclear_radius)
+    meta = {
+        "kind": "E1",
+        "meaning": "premier vecteur propre cis ; > 0 : compartiment A, < 0 : B",
+        "evidence": "simulated",
+        "source": f"carte de contacts de l'ensemble ({model.n_structures} structures, "
+                  f"seuil {model.cutoff:g}), appelants de la semaine 3",
+        "phasing": "piste LAD : A du côté pauvre en LAD (pas de GC lisible ici)",
+        "strength_cross_validated": round(model.strength, 3),
+        "split_half_r": round(model.split_half_r, 3),
+        "absent": "X inactif (pas de compartiments A/B in vivo) et bins non appelés",
+    }
+    values = model.e1
+    agreement = None
+    if track_path:
+        track, _ = read_bedgraph(track_path)
+        measured = overlap_mean(b.start, b.end, b.copy_id, tuple(b.labels), track)
+        measured[np.array([b.labels[c].endswith(":Xi") for c in b.copy_id])] = np.nan
+        ok = np.isfinite(measured) & np.isfinite(model.e1)
+        agreement = {
+            "r": float(np.corrcoef(measured[ok], model.e1[ok])[0, 1]) if ok.sum() > 2 else float("nan"),
+            "same_sign": float(((measured[ok] > 0) == (model.e1[ok] > 0)).mean()) if ok.any() else float("nan"),
+            "covered": int(ok.sum()),
+        }
+        values = measured
+        meta = {**meta, "evidence": "measured", "source": str(track_path),
+                "model_agreement": {k: round(v, 3) if isinstance(v, float) else v
+                                    for k, v in agreement.items()}}
+    return Attribute(values, meta), model, agreement
+
+
 def coarsen(level: Level, ens: dict, k: int = 4) -> Level:
     """Fusionne `k` billes consécutives d'une même copie. Le centroïde, pas un choix.
 
@@ -120,6 +164,18 @@ def coarsen(level: Level, ens: dict, k: int = 4) -> Level:
         # r ∝ L^(1/3) : la loi de la semaine 6, appliquée à la longueur fusionnée.
         radius.append(level.radius_nm[c] * float(np.cbrt(np.median(counts[m]))) if m.any()
                       else level.radius_nm[c])
+    # Les attributs suivent : moyenne des billes filles qui en ont une, absente
+    # seulement si aucune n'en a. Une bille de 3 Mb à moitié dans l'Xi n'existe pas —
+    # les copies ne se mélangent jamais — donc « absente » reste une propriété de copie.
+    attributes = {}
+    for key, a in level.attributes.items():
+        v = np.asarray(a.values, dtype=np.float64)
+        ok = np.isfinite(v)
+        total = np.add.reduceat(np.where(ok, v, 0.0), first_of)
+        n_ok = np.add.reduceat(ok.astype(np.float64), first_of)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = np.where(n_ok > 0, total / n_ok, np.nan)
+        attributes[key] = Attribute(mean, {**a.meta, "coarsened": f"moyenne de {k} billes"})
     return Level(
         name="apercu",
         bp_per_bead=level.bp_per_bead * k,
@@ -133,6 +189,7 @@ def coarsen(level: Level, ens: dict, k: int = 4) -> Level:
         variability=dict(level.variability),
         notes=[f"{k} billes du noyau fusionnées par centroïde ; variabilité recalculée "
                f"sur l'ensemble fusionné"],
+        attributes=attributes,
     )
 
 

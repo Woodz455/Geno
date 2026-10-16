@@ -12,7 +12,7 @@ import struct
 import numpy as np
 import pytest
 
-from geno_pipeline.export import CorruptError, Level, read, read_header, write
+from geno_pipeline.export import Attribute, CorruptError, Level, read, read_header, write
 from geno_pipeline.export.build import coarsen, pose
 from geno_pipeline.export.g3d import (
     CHAINS,
@@ -361,3 +361,67 @@ def test_pose_reports_a_scale_it_does_not_apply():
     assert fit["rmsd_if_scaled_nm"] == pytest.approx(0.0, abs=0.05)
     assert fit["rmsd_nm"] > 50
     assert np.allclose(np.abs(np.linalg.det(m[:3, :3])), 1.0)   # rigide : aucune échelle
+
+
+# --------------------------------------------------------------------------
+# Attributs par bille (semaine 10)
+# --------------------------------------------------------------------------
+
+
+def with_attribute(lv: Level, seed: int = 3) -> tuple[Level, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    v = rng.normal(0, 0.05, lv.n)
+    v[lv.copy == 2] = np.nan          # une copie entière sans valeur, comme l'Xi
+    v[[4, 9]] = np.nan                # et deux trous isolés
+    lv.attributes["compartment"] = Attribute(v, {"kind": "E1", "source": "test"})
+    return lv, v
+
+
+def test_an_attribute_round_trips_within_its_step_and_keeps_its_gaps(tmp_path):
+    lv, v = with_attribute(chain_level())
+    got = read(write(tmp_path / "a.g3d", [lv])["path"]).levels["noyau"]
+    o1, o2 = by_locus(lv.copy, lv.start), by_locus(got["copy"], got["start"])
+    back = got["attributes"]["compartment"][o2]
+    want = v[o1]
+    spec = got["meta"]["attributes"]["compartment"]
+    assert np.array_equal(np.isnan(back), np.isnan(want))
+    ok = np.isfinite(want)
+    assert np.abs(back[ok] - want[ok]).max() <= spec["max_error"] * (1 + 1e-9)
+    assert spec["kind"] == "E1" and spec["source"] == "test"
+
+
+def test_attributes_are_lazy_and_leave_the_first_render_untouched(tmp_path):
+    """Un attribut ne doit coûter aucun octet au premier rendu : c'est la semaine 9."""
+    plain = write(tmp_path / "a.g3d", [chain_level()])
+    lv, _ = with_attribute(chain_level())
+    rich = write(tmp_path / "b.g3d", [lv])
+    assert rich["bytes"] > plain["bytes"]
+    first = lambda r: r["first_frame_end"] - r["header"]
+    assert first(rich) == first(plain)
+
+
+def test_an_attribute_of_the_wrong_length_is_refused(tmp_path):
+    lv = chain_level()
+    lv.attributes["compartment"] = Attribute(np.zeros(lv.n - 1))
+    with pytest.raises(ValueError, match="attribut"):
+        write(tmp_path / "a.g3d", [lv])
+
+
+def test_a_level_without_attributes_has_no_attribute_header(tmp_path):
+    got = read(write(tmp_path / "a.g3d", [chain_level()])["path"]).levels["noyau"]
+    assert "attributes" not in got["meta"] and got["attributes"] == {}
+
+
+def test_coarsening_averages_attributes_and_keeps_missing_copies_missing():
+    copy = np.array([0] * 4 + [1] * 4)
+    start = np.r_[np.arange(4), np.arange(4)] * 100
+    b = _Beads(copy, start, start + 100)
+    coords = np.random.default_rng(2).normal(0, 1, (5, 8, 3))
+    lv = Level("noyau", 100, coords[0] * 1000, copy, start, start + 100,
+               np.ones(8), b.labels, [100.0, 100.0])
+    lv.attributes["compartment"] = Attribute(
+        np.array([0.1, 0.3, np.nan, 0.2, np.nan, np.nan, np.nan, np.nan]), {"kind": "E1"})
+    ap = coarsen(lv, {"beads": b, "coords_um": coords, "medoid": 0}, k=4)
+    got = ap.attributes["compartment"].values
+    assert got[0] == pytest.approx(0.2)        # moyenne des trois présentes, pas des quatre
+    assert np.isnan(got[1])                    # copie entière absente : reste absente

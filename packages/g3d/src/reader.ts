@@ -180,6 +180,27 @@ export class G3D {
     };
   }
 
+  /** Un attribut par bille, dans l'ordre des identifiants. NaN : valeur absente.
+   *
+   *  Paresseux comme le reste : une seule lecture couvre les colonnes de tous les chunks.
+   *  Rend `null` si le niveau ne porte pas cet attribut — ce n'est pas une erreur, un
+   *  fichier de la semaine 9 n'en a aucun.
+   */
+  async attribute(name: string, key: string): Promise<Float32Array | null> {
+    const lv = this.level(name);
+    const spec = lv.attributes?.[key];
+    if (!spec) return null;
+    const cols = (await this.columns(lv.chunks.map((c) => c.columns["attr." + key]))) as Uint16Array[];
+    const out = new Float32Array(lv.n_beads);
+    lv.chunks.forEach((c, k) => {
+      const q = cols[k];
+      for (let i = 0; i < c.n; i++) {
+        out[c.first + i] = q[i] === spec.missing ? NaN : spec.origin + q[i] * spec.step;
+      }
+    });
+    return out;
+  }
+
   /** Chunks dont la sphère englobante coupe le tronc de vue (plans ax+by+cz+d ≥ 0). */
   visibleChunks(name: string, planes: [number, number, number, number][]): number[] {
     return this.level(name).chunks.flatMap((c, k) => {
