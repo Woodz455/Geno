@@ -1169,8 +1169,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="taille de boucle sans obstacle, en pb")
     fi.add_argument("--release", type=float, default=0.003,
                     help="probabilité par pas qu'une jambe quitte un site CTCF")
-    fi.add_argument("--replicates", type=int, default=4)
-    fi.add_argument("--snapshots", type=int, default=120)
+    # Les valeurs du rapport de la semaine 8 (VALIDATION.md § S8 : 8 × 150 = 1 200
+    # conformations). Jusqu'à la semaine 10, les défauts valaient 4 × 120 : `make fine`, la
+    # commande de reproduction publiée, ne reproduisait donc pas les chiffres publiés.
+    fi.add_argument("--replicates", type=int, default=8)
+    fi.add_argument("--snapshots", type=int, default=150)
     fi.add_argument("--stride", type=int, default=4, help="pas d'extrusion entre instantanés")
     fi.add_argument("--md-per-step", type=int, default=200)
     fi.add_argument("--relax", type=int, default=150_000,
