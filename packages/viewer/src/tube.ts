@@ -29,7 +29,10 @@ const TEX_W = 1024;
 const SUBDIV = [1, 2, 4, 8, 16] as const;
 const SIDES = [4, 6, 8, 12, 16] as const;
 
-const VERT = /* glsl */ `#version 300 es
+// Construit à la demande, comme celui de l'occlusion (ssao.ts) : un gabarit avec `${…}` au
+// niveau du module n'est pas éliminé par esbuild, et le tube se retrouvait dans la page du
+// premier rendu, qui n'en dessine pas — 2,3 Kio et 22 ms en Slow 4G.
+const vertSource = () => /* glsl */ `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
@@ -225,7 +228,7 @@ export class TubeRenderer {
   lastSides = 0;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
-    this.program = link(gl, VERT, FRAG);
+    this.program = link(gl, vertSource(), FRAG);
     const t = () => gl.createTexture()!;
     this.tex = { point: t(), normal: t(), color: t(), color2: t() };
   }
