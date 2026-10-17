@@ -68,3 +68,15 @@ export function launch(extra = []) {
   });
 }
 
+
+/** Arrête Chromium **puis** efface son profil. Effacer d'abord échoue au hasard (ENOTEMPTY) :
+ *  le navigateur écrit encore dans le profil pendant qu'il s'arrête. */
+export async function shutdown(proc, profile) {
+  const { rmSync } = await import("node:fs");
+  if (proc.exitCode === null) {
+    const exited = new Promise((ok) => proc.once("exit", ok));
+    proc.kill();
+    await exited;
+  }
+  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}

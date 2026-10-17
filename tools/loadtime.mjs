@@ -17,10 +17,10 @@
  *    node tools/loadtime.mjs [passages]
  */
 
-import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cdp, launch } from "./cdp.mjs";
+import { cdp, launch, shutdown } from "./cdp.mjs";
 import { serve } from "./serve.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -135,9 +135,8 @@ try {
   }
 } finally {
   browser.close();
-  proc.kill();
   server.close();
-  rmSync(profile, { recursive: true, force: true });
+  await shutdown(proc, profile);
 }
 
 console.log(`\n  Profils : ${Object.entries(PROFILES).map(([k, p]) =>

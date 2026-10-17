@@ -11,7 +11,7 @@
  *     utilisateur. Sur du vrai matériel, c'est elle qui dit si 60 images par seconde tiennent.
  */
 
-import { dive } from "@geno/viewer";
+import { dive, type Orbit } from "@geno/viewer";
 import { type DiveScene, FOV } from "./dive.js";
 
 export interface BenchResult {
@@ -24,7 +24,26 @@ export interface BenchResult {
   diffs: number[];
   frameMs: number[];
   rafMs: number[];
-  states: { w: number; lod: number; focus: number; mix: number }[];
+  states: { w: number; lod: number; focus: number; mix: number; fiber: number; loop: number; nuc: number }[];
+}
+
+/** La plongée entière, étape par étape : vue d'ensemble → ACTB (semaine 10) → la boucle
+ *  CTCF visée → son ancre, à l'échelle des nucléosomes (semaine 11). Chaque étape est un
+ *  chemin de van Wijk et Nuij ; la longueur totale est leur somme, si bien qu'un pas
+ *  constant en `s` garde la vitesse perçue constante d'une étape à l'autre aussi. */
+export function divePath(scene: DiveScene): { length: number; at(s: number): Orbit; stops: number[] } {
+  const orbits = [scene.start, scene.final, scene.loopView, scene.anchorView].filter((o): o is Orbit => !!o);
+  const legs = orbits.slice(1).map((o, i) => dive(orbits[i], o, FOV));
+  const stops: number[] = [0];
+  for (const l of legs) stops.push(stops[stops.length - 1] + l.length);
+  return {
+    length: stops[stops.length - 1],
+    stops,
+    at(s: number): Orbit {
+      const k = Math.max(0, Math.min(legs.length - 1, stops.findIndex((v, i) => i > 0 && s <= v) - 1));
+      return legs[k].at(s - stops[k]);
+    },
+  };
 }
 
 export interface BenchOptions {
@@ -35,7 +54,7 @@ export interface BenchOptions {
 export async function runBench(scene: DiveScene, frames: number, opts: BenchOptions = {}): Promise<BenchResult> {
   const gl = scene.gl;
   const [W, H] = scene.size();
-  const path = dive(scene.start, scene.final, FOV);
+  const path = divePath(scene);
   const one = new Uint8Array(4);
   const px = opts.continuity ? new Uint8Array(W * H * 4) : null;
   const prev = opts.continuity ? new Uint8Array(W * H * 4) : null;
@@ -53,7 +72,8 @@ export async function runBench(scene: DiveScene, frames: number, opts: BenchOpti
     scene.render(path.at((k / frames) * path.length));
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one);
     frameMs.push(performance.now() - t0);
-    states.push({ w: scene.last.widthUm, lod: scene.last.lod, focus: scene.last.focus, mix: scene.last.mix });
+    const st = scene.last;
+    states.push({ w: st.widthUm, lod: st.lod, focus: st.focus, mix: st.mix, fiber: st.fiber, loop: st.loop, nuc: st.nuc });
     if (px && prev) {
       gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
       if (k > 0) {

@@ -18,6 +18,7 @@ import {
   viewMatrix,
   widthAt,
 } from "@geno/viewer";
+import { type Fiber, IDS, openFiber } from "./fiber.js";
 import { compartmentColors, type State, stateAt, territoryPalette } from "./scene.js";
 
 export const FOV = (45 * Math.PI) / 180;
@@ -66,8 +67,14 @@ export interface DiveScene {
   overview: Orbit;
   /** Départ de la plongée mesurée : assez loin pour traverser le changement de niveau. */
   start: Orbit;
-  /** Arrivée : la bille d'ACTB sur chr7:a, 2,6 µm de champ. */
+  /** Arrivée de la semaine 10 : la bille d'ACTB sur chr7:a, 2,6 µm de champ. */
   final: Orbit;
+  /** Semaine 11 : le niveau fin dessiné, s'il est dans le fichier. */
+  fiber: Fiber | null;
+  /** La boucle CTCF visée, cadrée entière. */
+  loopView: Orbit | null;
+  /** Son ancre gauche, à l'échelle des nucléosomes (100 nm de champ). */
+  anchorView: Orbit | null;
   /** Ms entre l'ouverture et le premier rendu (aperçu seul). */
   firstRenderMs: number;
   /** État visuel du dernier rendu, avec la largeur de champ. */
@@ -79,12 +86,18 @@ export interface DiveScene {
   size(): [number, number];
   /** Bille sous un pixel du canevas : texte prêt à afficher, ou null. */
   describe(x: number, y: number): Promise<string | null>;
+  /** Le tampon d'identifiants du dernier rendu, ligne 0 en bas (convention WebGL). */
+  ids(): Uint32Array;
+  /** Pixel d'un point monde au dernier rendu, origine en haut à gauche. */
+  project(p: number[]): [number, number];
 }
 
 export interface OpenOptions {
   /** Témoin de la mesure : transitions sèches au lieu de fondus. */
   hard?: boolean;
   prefix?: number;
+  /** Témoin de lisibilité : la boucle visée n'est pas isolée du reste de la région. */
+  noIsolate?: boolean;
 }
 
 export async function openDive(canvas: HTMLCanvasElement, file: string | Source, opts: OpenOptions = {}): Promise<DiveScene> {
@@ -109,6 +122,8 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   let focusCopy = copies.indexOf("chr7:a");
 
   const overview: Orbit = { target: [0, 0, 0], yaw: 0.35, pitch: 0.28, distance: distanceFor(24, FOV) };
+  let lastView: Float32Array = new Float32Array(16);
+  let lastProj: Float32Array = new Float32Array(16);
 
   const scene: DiveScene = {
     gl,
@@ -119,22 +134,32 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
     overview,
     start: { ...overview, distance: distanceFor(80, FOV) },
     final: { ...overview },
+    fiber: null,
+    loopView: null,
+    anchorView: null,
     firstRenderMs: 0,
-    last: { lod: 0, focus: 0, mix: 0, widthUm: 0 },
+    last: { lod: 0, focus: 0, mix: 0, fiber: 0, loop: 0, nuc: 0, widthUm: 0 },
     arrival: 0,
 
     render(o: Orbit): void {
       const view = viewMatrix(o);
       const d = o.distance;
-      const reach = Math.hypot(...o.target) + 6;          // rayon du noyau 5 µm, et de la marge
-      const proj = perspective(FOV, W / H, Math.max(0.02 * d, d - reach), d + reach);
       // Le « champ » est la hauteur visible au point visé : la plus petite dimension d'un
       // écran paysage, celle qui dit ce qui tient dans la vue.
       const widthUm = widthAt(d, FOV);
       const fine = scene.fine;
+      const fiber = scene.fiber;
       const st = stateAt({ widthUm, beadPx: fine ? (fine.radiusUm / widthUm) * H : 0 }, opts.hard);
+      if (!fiber) st.fiber = st.loop = st.nuc = 0;
+      // Profondeur de champ utile : tout le noyau tant qu'on le voit, la région fine ensuite.
+      const reach = Math.exp((1 - st.loop) * Math.log(Math.hypot(...o.target) + 6) + st.loop * Math.log(1.2));
+      const proj = perspective(FOV, W / H, Math.max(0.02 * d, d - reach), d + reach);
+      lastView = view;
+      lastProj = proj;
       const t = fine ? st.lod * scene.arrival : 0;
-      for (let c = 0; c < copies.length; c++) groupFade[c] = c === focusCopy ? 1 : 1 - st.focus;
+      // La copie visée cède à la fibre par tramage complémentaire : elle garde h ≥ fiber, la
+      // fibre h < fiber.
+      for (let c = 0; c < copies.length; c++) groupFade[c] = c === focusCopy ? 1 - st.fiber : 1 - st.focus;
       scene.last = { ...st, lod: t, widthUm };
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, targets.fbo);
@@ -144,8 +169,13 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       gl.clearBufferfv(gl.COLOR, 2, [1, 0, 0, 1]);
       gl.clearBufferfi(gl.DEPTH_STENCIL, 0, 1.0, 0);
       if (t < 1) preview.renderer.draw(proj, { view, fade: 1 - t, groupFade, mix: st.mix });
-      if (fine && t > 0) fine.renderer.draw(proj, { view, fade: t, invert: true, groupFade, mix: st.mix });
-      const radius = 2 * (fine ?? preview).radiusUm;
+      if (fine && t > 0 && st.fiber < 1) fine.renderer.draw(proj, { view, fade: t, invert: true, groupFade, mix: st.mix });
+      if (fiber) fiber.draw(proj, view, H, st);
+      // Rayon d'occlusion : l'échelle de ce qu'on regarde, interpolée en logarithme — deux
+      // billes de 750 kb, puis deux fois le rayon de la fibre, puis un nucléosome.
+      const r750 = 2 * (fine ?? preview).radiusUm;
+      const rFib = fiber ? 2 * fiber.radiusUm : r750;
+      const radius = Math.exp((1 - st.nuc) * ((1 - st.fiber) * Math.log(r750) + st.fiber * Math.log(rFib)) + st.nuc * Math.log(0.012));
       ssao.occlusion(proj, { radius });
       ssao.composite(proj, { radius, strength: AO_STRENGTH });
     },
@@ -161,9 +191,29 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
 
     size: () => [W, H],
 
+    ids(): Uint32Array {
+      const buf = new Uint32Array(W * H * 4);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, targets.fbo);
+      gl.readBuffer(gl.COLOR_ATTACHMENT1);
+      gl.readPixels(0, 0, W, H, gl.RGBA_INTEGER, gl.UNSIGNED_INT, buf);
+      gl.readBuffer(gl.COLOR_ATTACHMENT0);
+      return buf.filter((_, i) => i % 4 === 0);
+    },
+
+    project(p: number[]): [number, number] {
+      const v = lastView;
+      const m = lastProj;
+      const e = [0, 1, 2].map((k) => v[k] * p[0] + v[4 + k] * p[1] + v[8 + k] * p[2] + v[12 + k]);
+      const cx = m[0] * e[0] + m[4] * e[1] + m[8] * e[2] + m[12];
+      const cy = m[1] * e[0] + m[5] * e[1] + m[9] * e[2] + m[13];
+      const cw = m[3] * e[0] + m[7] * e[1] + m[11] * e[2] + m[15];
+      return [((cx / cw) * 0.5 + 0.5) * W, (1 - ((cy / cw) * 0.5 + 0.5)) * H];
+    },
+
     async describe(x: number, y: number): Promise<string | null> {
       const id = picker.pick(x, y);
       if (id === NO_HIT) return null;
+      if (id >= IDS.fiber && scene.fiber) return scene.fiber.describe(id);
       const lay = id > PREVIEW_IDS ? preview : scene.fine!;
       const b = await g3d.identify(lay.name, id - lay.idBase);
       const e1 = lay.e1 ? lay.e1[id - lay.idBase - 1] : NaN;
@@ -193,5 +243,34 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
     }
   }
   scene.final = { target, yaw: overview.yaw + 1.1, pitch: 0.12, distance: distanceFor(2.6, FOV) };
+
+  // Puis la fibre, sa boucle visée et son ancre.
+  scene.fiber = await openFiber(gl, g3d, "fin", 763, !opts.noIsolate);
+  const focus = scene.fiber?.focus;
+  if (scene.fiber && focus) {
+    // Caméra **de côté** : perpendiculaire à l'axe base → boucle et à l'écart entre les deux
+    // ancres. Les deux flèches CTCF pointent alors dans le plan de l'image, vers le corps de
+    // la boucle, et la convergence se lit. Deux essais l'ont précédée : l'orientation de la
+    // plongée regardait la base à travers la pelote ; l'axe base → boucle mettait les deux
+    // flèches dans l'axe de visée, fondues en une seule tache.
+    const F = scene.fiber;
+    const at = (k: number): [number, number, number] => [F.points[3 * k], F.points[3 * k + 1], F.points[3 * k + 2]];
+    const a = at(focus.i);
+    const b = at(focus.j);
+    const base = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+    const ax = [focus.centroid[0] - base[0], focus.centroid[1] - base[1], focus.centroid[2] - base[2]];
+    const sep = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let v = [ax[1] * sep[2] - ax[2] * sep[1], ax[2] * sep[0] - ax[0] * sep[2], ax[0] * sep[1] - ax[1] * sep[0]];
+    if (Math.hypot(v[0], v[1], v[2]) < 1e-9) v = [ax[2], 0, -ax[0]];
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    const pitch = Math.max(-1.2, Math.min(1.2, Math.asin(v[1] / l)));
+    const yaw = Math.atan2(v[0], v[2]);
+    const mid: [number, number, number] = [
+      (base[0] + focus.centroid[0]) / 2, (base[1] + focus.centroid[1]) / 2, (base[2] + focus.centroid[2]) / 2,
+    ];
+    const w = Math.max(0.3, Math.min(0.58, 2.4 * focus.extent));
+    scene.loopView = { target: mid, yaw, pitch, distance: distanceFor(w, FOV) };
+    scene.anchorView = { target: a, yaw: yaw + 0.35, pitch, distance: distanceFor(0.12, FOV) };
+  }
   return scene;
 }

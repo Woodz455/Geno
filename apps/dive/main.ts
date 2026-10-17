@@ -10,16 +10,20 @@
  *    bench=N    plongée scriptée de N images, mesurée, puis résultat publié dans window.__geno
  *    hard       témoin : transitions sèches au lieu de fondus (la mesure doit y voir des sauts)
  *    w, h       taille du canevas en mode mesure (défaut 960 × 540)
+ *    view=…     une seule image, à une étape de la plongée : final, loop ou anchor
+ *    legibility mesure la lisibilité de la boucle visée ; noisolate : le témoin sans isolement
  */
 
 import { dive, type Orbit, rotate, zoom } from "@geno/viewer";
 import { runBench } from "./bench.js";
 import { FOV, openDive } from "./dive.js";
+import { measureLoop } from "./legibility.js";
 
 const q = new URLSearchParams(location.search);
 const FILE = q.get("f") ?? "data/gm12878.g3d";
 const BENCH = Number(q.get("bench") ?? 0);
 const HARD = q.has("hard");
+const VIEW = q.get("view") ?? (q.has("legibility") ? "loop" : null);
 
 declare global {
   interface Window {
@@ -46,7 +50,7 @@ const canvas = document.createElement("canvas");
 document.body.appendChild(canvas);
 
 function fit(): [number, number] {
-  if (BENCH) {
+  if (BENCH || VIEW) {
     const w = Number(q.get("w") ?? 960);
     const h = Number(q.get("h") ?? 540);
     canvas.width = w;
@@ -69,7 +73,22 @@ function publish(r: Record<string, unknown>): void {
 
 async function main(): Promise<void> {
   fit();
-  const scene = await openDive(canvas, FILE, { hard: HARD });
+  const scene = await openDive(canvas, FILE, { hard: HARD, noIsolate: q.has("noisolate") });
+
+  if (q.has("legibility")) {
+    publish({ ...measureLoop(scene), isolate: !q.has("noisolate") });
+    return;
+  }
+
+  if (VIEW) {
+    const o = { final: scene.final, loop: scene.loopView, anchor: scene.anchorView }[VIEW];
+    scene.arrival = 1;
+    if (o) scene.render(o);
+    publish({ ok: !!o, view: VIEW, state: scene.last, focus: scene.fiber?.focus ?? null,
+              arcs: scene.fiber?.arcs.length ?? 0, held: scene.fiber?.held.length ?? 0,
+              nucleosomes: scene.fiber?.nucleosomeCount() ?? 0 });
+    return;
+  }
 
   if (BENCH) {
     const r = await runBench(scene, BENCH, { continuity: true });

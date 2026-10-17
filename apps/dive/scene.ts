@@ -23,6 +23,12 @@ export interface State {
   focus: number;
   /** 0 : couleurs de territoire ; 1 : couleurs de compartiment. */
   mix: number;
+  /** 0 → 1 : la fibre de 2 kb remplace les billes de 750 kb (semaine 11). Le saut S8 est ici. */
+  fiber: number;
+  /** 0 → 1 : la boucle visée s'isole ; sites CTCF, cohésines et arcs apparaissent. */
+  loop: number;
+  /** 0 → 1 : le tube cède aux nucléosomes et à l'ADN de liaison. */
+  nuc: number;
 }
 
 /** Les seuils, en unités qui ont un sens : des pixels pour le détail, des µm pour le sujet. */
@@ -34,6 +40,14 @@ export const SCHEDULE = {
   focusUm: [20, 8] as const,
   // Puis les territoires laissent place aux compartiments, entre 8 et 3,5 µm.
   mixUm: [8, 3.5] as const,
+  // Semaine 11. La fibre remplace les billes de 750 kb entre 3 et 1,5 µm : une bille y fait
+  // 30 à 60 px, et c'est en dessous qu'elle cesse de dire quoi que ce soit.
+  fiberUm: [3, 1.5] as const,
+  // Une boucle de 100 à 200 kb occupe quelques centaines de nm : elle « existe » à l'écran
+  // entre 1,4 µm et 600 nm de champ, et c'est là que ses annotations apparaissent.
+  loopUm: [1.4, 0.6] as const,
+  // Sous 250 nm, un monomère de 2 kb fait plus de 100 px : ses ~10 nucléosomes se voient.
+  nucUm: [0.25, 0.12] as const,
 };
 
 export function smoothstep(a: number, b: number, x: number): number {
@@ -49,10 +63,14 @@ export function stateAt(v: View, hard = false): State {
   const lw = Math.log(v.widthUm);
   const [f0, f1] = SCHEDULE.focusUm.map(Math.log);
   const [m0, m1] = SCHEDULE.mixUm.map(Math.log);
+  const zoomIn = (r: readonly [number, number]) => step(-Math.log(r[0]), -Math.log(r[1]), -lw);
   return {
     lod: step(SCHEDULE.lodPx[0], SCHEDULE.lodPx[1], v.beadPx),
     focus: step(-f0, -f1, -lw),
     mix: step(-m0, -m1, -lw),
+    fiber: zoomIn(SCHEDULE.fiberUm),
+    loop: zoomIn(SCHEDULE.loopUm),
+    nuc: zoomIn(SCHEDULE.nucUm),
   };
 }
 

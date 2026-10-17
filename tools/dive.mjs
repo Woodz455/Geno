@@ -15,10 +15,10 @@
  *    node tools/dive.mjs [images]
  */
 
-import { existsSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cdp, launch } from "./cdp.mjs";
+import { cdp, launch, shutdown } from "./cdp.mjs";
 import { serve } from "./serve.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -111,9 +111,8 @@ try {
   }
 } finally {
   browser.close();
-  proc.kill();
   server.close();
-  rmSync(profile, { recursive: true, force: true });
+  await shutdown(proc, profile);
 }
 
 const smooth = rows.find((r) => !r.hard);
@@ -123,20 +122,27 @@ const hard = rows.find((r) => r.hard);
 // son écart à la médiane des 20 voisines. C'est la lecture la plus directe : une transition
 // invisible a le rapport du mouvement seul, ~1.
 const transitions = (r) =>
-  ["lod", "focus", "mix"].map((key) => {
+  ["lod", "focus", "mix", "fiber", "loop", "nuc"].map((key) => {
     const s = r.result.states;
     const k = s.findIndex((x, i) => i > 0 && s[i - 1][key] < 0.5 && x[key] >= 0.5);
     if (k < 1) return { key, frame: null };
     return { key, frame: k, width: s[k].w, ratio: ratios(r.result.diffs)[k - 1] };
   });
-const NAMES = { lod: "niveau de détail 3 Mb → 750 kb", focus: "autres chromosomes effacés", mix: "territoires → compartiments" };
+const NAMES = {
+  lod: "niveau de détail 3 Mb → 750 kb",
+  focus: "autres chromosomes effacés",
+  mix: "territoires → compartiments",
+  fiber: "billes 750 kb → fibre 2 kb (raccord S8)",
+  loop: "la boucle CTCF s'isole",
+  nuc: "fibre → nucléosomes",
+};
 if (smooth && hard) {
   const ts = transitions(smooth);
   const th = transitions(hard);
-  console.log(`\n  ${"transition".padEnd(34)} ${"image".padStart(5)} ${"champ".padStart(8)}   fondu   sèche`);
+  console.log(`\n  ${"transition".padEnd(40)} ${"image".padStart(5)} ${"champ".padStart(9)}   fondu   sèche`);
   ts.forEach((t, i) => {
     if (t.frame === null) return;
-    console.log(`  ${NAMES[t.key].padEnd(34)} ${String(t.frame).padStart(5)} ${t.width.toFixed(1).padStart(5)} µm   ${t.ratio.toFixed(2)}×   ${th[i].ratio.toFixed(2)}×`);
+    console.log(`  ${NAMES[t.key].padEnd(40)} ${String(t.frame).padStart(5)} ${t.width.toFixed(2).padStart(6)} µm   ${t.ratio.toFixed(2)}×   ${th[i].ratio.toFixed(2)}×`);
   });
   smooth.transitions = ts;
   hard.transitions = th;
