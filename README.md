@@ -9,13 +9,14 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 10.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 11.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
 entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration —, un **ensemble de
 200 repliements** du même génome, une **descente sous le TAD** par extrusion de boucles, un **format de fichier** qui
-les sert par morceaux, et une **plongée continue** du noyau aux compartiments.
+les sert par morceaux, et une **plongée continue** du noyau jusqu'aux nucléosomes d'une boucle
+CTCF.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -116,6 +117,16 @@ seconde tiennent sur deux vrais appareils, mesurés par une page de banc : un GP
 Iris Xe (2,6 ms de rendu par image) et un iPhone 14 (3 ms), sans une image perdue
 ([`docs/VALIDATION.md` § S10](docs/VALIDATION.md)).
 
+La plongée continue sous la bille de 750 kb : la fibre de 2 kb du modèle de la semaine 8, puis
+une **boucle CTCF** isolée du reste de la région — ses deux sites CTCF en flèches qui se font
+face le long de la chaîne, les cohésines qui la tiennent dans cette conformation, et un arc pour
+la fréquence de la paire dans la population —, puis ses nucléosomes, illustratifs. Mesurée sur
+ce que l'image montre, la boucle se lit : ancres, anneau, arc et 85 % de son corps visibles, là
+où la pelote de 4 Mb les cache entièrement sans isolement. Les arcs sont les bonnes paires
+(11 domaines convergents plantés sur 14, aucun arc quand CTCF est inoccupé). Le raccord avec le
+noyau, lui, ne tient toujours pas : le fondu le rend continu à l'œil, mais seule 45 % de la
+fibre tombe là où étaient les billes qu'elle détaille ([`docs/VALIDATION.md` § S11](docs/VALIDATION.md)).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
@@ -192,10 +203,11 @@ make test            suite de tests
 Côté rendu (Node 22, pnpm) :
 
 ```
-pnpm verify          36 assertions : imposteurs (S4), caméra, tramage, occlusion (S10)
+pnpm verify          49 assertions : imposteurs (S4), caméra, tramage, occlusion (S10), tubes, nucléosomes (S11)
 pnpm typecheck       TypeScript strict
 pnpm build           produit dist/dive.html (la plongée), les pages de mesure et le banc matériel
 node tools/test-g3d.mjs   lecture croisée du .g3d, Python → TypeScript, HTTP Range compris
 node tools/loadtime.mjs   premier rendu sous bridage Fast 4G / Slow 4G, dans Chromium
 node tools/dive.mjs       continuité de la plongée, image par image, contre un témoin qui saute
+node tools/loop.mjs       lisibilité de la boucle CTCF, témoin sans isolement, raccord S8 sur l'image
 ```

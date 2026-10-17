@@ -247,6 +247,17 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   *in situ*.
 - **Fait quand** : une boucle CTCF se lit comme telle, ancres comprises, à l'échelle où elle
   existe.
+- **Fait.** Sous 3 µm la bille de 750 kb cède à la fibre de 2 kb (tube à tessellation
+  adaptative, sans fissure) ; entre 1,4 µm et 600 nm la boucle visée s'isole, avec ses flèches
+  CTCF, ses anneaux de cohésine et l'arc de sa paire ; sous 250 nm, des nucléosomes illustratifs
+  en chaîne désordonnée. Mesurée sur le tampon de picking, la boucle 1527–1621 (188 kb, tenue ici
+  par deux cohésines et dans 18,7 % de l'ensemble) **se lit** : ancres 269 et 131 px, anneau,
+  arc, 85 % du corps visible, flèches dans le sens de leur brin (26/26 sur tous les arcs) ; sans
+  isolement, rien n'est visible. Les arcs sont les bonnes paires : 11 convergents plantés sur 14
+  au seuil de 5 % fixé d'avance, **aucun** dans le témoin sans CTCF. La plongée n'a aucun saut —
+  mais au milieu du fondu noyau → fibre, 45 % seulement de la fibre tombe dans la silhouette des
+  billes qu'elle détaille : **le fondu cache le saut du raccord S8, pas l'écart**, montré et
+  mesuré comme convenu ([`VALIDATION.md` § S11](VALIDATION.md)).
 
 #### Semaine 12 — Niveau séquence : la double hélice procédurale
 - **Objectif** : la démonstration qui fait le projet.

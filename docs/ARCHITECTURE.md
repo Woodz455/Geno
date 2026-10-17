@@ -129,6 +129,17 @@ qui fait partie de la première requête, grandit de leurs métadonnées : le pr
 fichier par défaut finit à l'octet 11 619 au lieu de 11 149. Un fichier sans
 attribut se lit comme avant ; un lecteur qui ne les connaît pas les ignore.
 
+**Liens entre billes (semaine 11).** Des paires `(i, j)` d'un niveau, typées et pondérées :
+colonnes paresseuses `links.i`, `links.j` (u32, index dans l'ordre stocké), `links.kind` (u8,
+indice dans `kinds`), `links.weight` (u16, comme un attribut). Le niveau fin en porte deux sortes :
+les **boucles tenues** par une cohésine dans la conformation affichée (`cohesin_ctcf` si ses deux
+pieds sont arrêtés sur des CTCF qui leur font face, `cohesin_one_side`, `cohesin_free`), sans
+poids ; et les **paires CTCF** candidates (`ctcf_pair`, site `+` puis site `−` à moins de 1 Mb),
+pondérées par la fraction des conformations où une cohésine les tient. Les candidates ne doivent
+rien à la vérité plantée, ce qui permet de les juger contre elle. Les sites CTCF sont deux
+attributs (`ctcf_forward`, `ctcf_reverse` : occupation, absente sans site). 326 octets de
+colonnes pour 86 liens.
+
 **Zéro dépendance de lecture.** `DecompressionStream("deflate-raw")` et `crypto.subtle` sont
 dans tous les navigateurs récents et dans Node 22. Le lecteur n'importe rien.
 
@@ -191,9 +202,26 @@ instances, identifiants sur toute la plage 32 bits.
 Les shaders sont écrits en GLSL ES 3.0 brut dans `packages/viewer/src/impostors.ts` et se
 transposent tels quels dans un `RawShaderMaterial` de Three.js.
 
-**Fibre et boucles.** Géométrie tubulaire générée depuis la polyligne, tessellation adaptative
-selon la distance caméra. Les ancres de boucles sont des arcs explicites, pas des artefacts
-de la polyligne.
+**Fibre et boucles (semaine 11).** `packages/viewer/src/tube.ts` : le tube est évalué dans le
+vertex shader — Hermite entre deux points, tangentes de Catmull-Rom, repère à transport parallèle
+précalculé —, un segment par instance d'un gabarit choisi à chaque image selon sa longueur à
+l'écran (1 à 16 subdivisions). Le nombre de côtés est choisi **une fois par image pour tout le
+tube** : deux segments voisins partagent donc exactement le même anneau, et la surface ne se fend
+pas (0 trou contre 257 pour le témoin à côtés par segment). Plusieurs polylignes par tube ; les
+arcs, les flèches CTCF (manchon puis pointe), les anneaux de cohésine et l'ADN de liaison en sont.
+Les arcs sont des Bézier quadratiques entre les deux ancres, bombées hors de la boucle d'au moins
+la moitié de son étendue, d'épaisseur proportionnelle à la fréquence de la paire.
+
+**Nucléosomes.** `packages/viewer/src/disc.ts` : imposteurs d'ellipsoïdes aplatis (11 × 5,5 nm),
+rayon–ellipsoïde dans le repère propre, profondeur du point d'impact et normale de l'ellipsoïde.
+Les positions sont générées dans le client (`apps/dive/nucleosomes.ts`), déterministes par
+monomère, et **illustratives** : aucune donnée de positionnement n'est lisible.
+
+**Isoler pour lire.** À l'échelle d'une boucle, la pelote de 4 Mb la cache entièrement (0 pixel
+d'ancre visible sans isolement). La boucle visée et 12 kb de contexte restent ; le reste de la
+région, **et ses annotations**, s'effacent par tramage. La caméra de la vue de boucle regarde
+perpendiculairement à l'axe base → boucle, pour que les deux flèches pointent dans le plan de
+l'image.
 
 **Lisibilité du volume.** Occlusion ambiante en espace écran (`packages/viewer/src/ssao.ts`),
 hémisphère orienté par la normale, 16 échantillons, flou 4 × 4 qui respecte la profondeur. La

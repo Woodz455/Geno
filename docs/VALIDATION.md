@@ -9,6 +9,208 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S11 — Une boucle CTCF se lit, ancres comprises ; le fondu cache le saut du raccord, pas l'écart
+
+### Le critère, traduit
+
+**Fait quand : une boucle CTCF se lit comme telle, ancres comprises, à l'échelle où elle
+existe.** « Se lire » ne se mesure pas au goût. On l'a traduit, avant de mesurer, en propriétés
+de l'image de la vue de boucle, relevées dans le **tampon d'identifiants** du picking — qui ne
+garde que le fragment le plus proche, donc ce qui est *vu*, pas ce qui est dessiné :
+
+1. les deux **ancres** — la flèche CTCF `+` au pied gauche, la `−` au pied droit — ont chacune
+   au moins 50 pixels non occultés ; l'**anneau** de cohésine et l'**arc** de la paire aussi ;
+2. au moins 80 % des monomères du **corps** de la boucle ont un pixel visible ;
+3. chaque flèche suit **son brin vers l'intérieur** de la boucle, en 3D et à l'écran ;
+4. les arcs dessinés sont les **bonnes paires** : jugés contre la vérité plantée, et contre le
+   témoin sans CTCF où aucun ne doit passer le seuil ;
+5. « à l'échelle où elle existe » : chaque transition de la plongée change l'écran autant que le
+   mouvement de caméra seul, et le raccord noyau → fibre est **chiffré**, pas caché.
+
+### Ce qui est dessiné
+
+Sous 3 µm de champ, la bille de 750 kb cède à la **fibre de 2 kb** : un tube le long des 2 000
+monomères du modèle de la semaine 8, posé dans le repère du noyau (semaine 9). Entre 1,4 µm et
+600 nm, la boucle visée s'isole — le reste de la région s'efface par tramage — et ses annotations
+apparaissent : **flèches CTCF** qui enveloppent la fibre dans le sens du motif, **anneaux** des
+cohésines tenues dans la conformation affichée, **arcs** des paires d'ancres fréquentes dans la
+population. Sous 250 nm, le tube cède aux **nucléosomes**.
+
+Un arc n'est pas une liaison de la structure affichée : c'est une fréquence de population —
+la fraction des 1 200 conformations où une cohésine tient la paire —, dessinée là où sont les
+deux ancres dans cette structure-ci. Un anneau, lui, est l'état de cette conformation-là.
+
+### Les jambes de cohésine, retrouvées sans refaire tourner OpenMM
+
+Le fichier de la semaine 8 garde les positions, pas les jambes. L'étage 1D est du numpy pur à
+graines fixes : le refaire tourner rend les jambes qui ont guidé le 3D — à condition de le
+vérifier contre le 3D, puisqu'OpenMM, lui, ne se reproduit pas au bit (§ S10). Une cohésine tient
+ses deux pieds à ~1 σ :
+
+| | distance médiane des deux pieds |
+|---|---:|
+| jambes régénérées, paires tenues | **1,08 σ** |
+| paires quelconques à même séparation génomique | 5,69 σ |
+| témoin : jambes décalées d'une seule conformation | 2,18 σ |
+
+Le garde-fou voit un décalage d'une seule conformation. Les exécutions futures sauvent les
+jambes, avec `velocity` et `burnin_1d`, que le `.json` n'écrivait pas.
+
+### Les arcs sont les bonnes paires
+
+Les candidates ne doivent rien à la vérité : toutes les paires (site `+`, site `−` à sa droite)
+à moins de 1 Mb, 66 après fusion des grappes de motifs voisins. Seuil fixé d'avance : une paire
+tenue dans au moins **5 %** des conformations est une boucle de la population.
+
+| | arcs dessinés |
+|---|---:|
+| domaines convergents plantés | **11 / 14** |
+| domaines tandem plantés | 1 / 3 |
+| domaines divergents plantés | 0 / 3 |
+| paires hors de toute vérité | 1 |
+| **témoin : sites CTCF inoccupés** | **0** (fréquence maximale 0,003) |
+
+Les divergents (`− +`) ne sont pas candidats par construction : leur 0 ne prouve rien, et c'est
+dit. Le tandem retrouvé est celui que la semaine 8 avait expliqué : le `−` du domaine suivant est
+à un monomère de son ancre droite. Le seuil se lit dans les deux sens — à 10 %, 5 convergents
+sur 14 seulement ; à 2 %, 12 sur 14 mais 4 paires hors vérité.
+
+### La boucle visée, et une boucle de l'instant qui n'en était pas une
+
+La première boucle visée était la plus proche d'ACTB parmi celles qu'une cohésine tient, ses
+deux pieds sur des CTCF, dans la conformation affichée : 1341–1392, un domaine convergent planté.
+Mais cette paire n'est tenue que dans **2,5 %** des conformations — une boucle de l'instant, pas
+de la population, et elle n'avait pas d'arc. La règle est devenue : tenue ici **et** au-dessus du
+seuil. La boucle montrée est **1527–1621** (188 kb, domaine convergent planté), tenue par
+**deux** cohésines dans cette conformation et dans **18,7 %** des conformations de l'ensemble.
+Elle est à 1,5 Mb d'ACTB, pas sur ACTB : c'est la plus proche qui remplisse les deux conditions.
+
+### Elle se lit
+
+`node tools/loop.mjs`, vue de boucle à 960 × 540 :
+
+| | ancre `+` | ancre `−` | anneau | arc | corps visible | flèches vers l'intérieur | verdict |
+|---|---:|---:|---:|---:|---:|---|---|
+| vue de boucle | **269 px** | **131 px** | 1 662 px | 2 961 px | **85 %** | oui / oui (0,95 ; 0,93 à l'écran) | lisible |
+| témoin : sans isolement | 0 | 0 | 0 | 0 | 7 % | — | non |
+
+Sur les 26 ancres des 13 arcs dessinés, les 26 flèches suivent leur brin vers l'intérieur. Le
+témoin dit ce que l'isolement achète : dans la pelote de 4 Mb, la boucle et ses ancres sont
+entièrement cachées.
+
+Il a fallu quatre corrections pour en arriver là, chacune vue sur l'image ou la mesure :
+- les annotations de **toute la région** — 40 flèches, 20 anneaux, 13 arcs — flottaient autour de
+  la boucle isolée, sans chromatine sous elles ; elles s'isolent maintenant avec elle ;
+- la caméra regardait la base **à travers la pelote**, puis dans **l'axe** des deux flèches, fondues
+  en une tache ; elle regarde maintenant de côté, perpendiculairement à l'axe base → boucle ;
+- la boucle de l'instant ci-dessus ;
+- la première mesure d'orientation comparait la flèche à la corde vers le monomère situé trois
+  plus loin, et donnait −0,35 et −0,65 : à sa base, la chaîne fait demi-tour en 6 kb. Elle
+  mesurait la pelote. La flèche se juge contre son brin, à un monomère.
+
+### À l'échelle où elle existe : continue, et l'écart du raccord est sur l'image
+
+`node tools/dive.mjs 360`, la plongée entière en 360 images à vitesse perçue constante :
+
+| transition | champ | fondu | marche sèche |
+|---|---:|---:|---:|
+| aperçu 3 Mb → noyau 750 kb | 19,9 µm | 0,94× | 1,42× |
+| autres chromosomes effacés | 12,5 µm | 1,06× | 3,06× |
+| territoires → compartiments | 5,2 µm | 0,97× | 3,13× |
+| **billes 750 kb → fibre 2 kb (raccord S8)** | **2,1 µm** | **0,98×** | **6,77×** |
+| la boucle CTCF s'isole | 0,90 µm | 0,98× | 3,37× |
+| fibre → nucléosomes | 0,17 µm | 0,97× | 2,91× |
+
+**0 saut** dans la plongée, 4 dans le témoin. Mais le chiffre qui compte ici est ailleurs : le
+raccord noyau → fibre ne « saute » pas, parce qu'un fondu étale n'importe quel changement sur
+des dizaines d'images. Une mesure image à image ne distingue pas *la même chose qui change de
+forme* de *une chose qui s'efface pendant qu'une autre apparaît ailleurs*. On a donc mesuré la
+géométrie : au milieu du fondu, à la même caméra, les seules billes qui couvrent la région fine,
+puis la seule fibre.
+
+| au milieu du fondu (2,1 µm de champ) | |
+|---|---:|
+| part de la fibre dans la silhouette des 6 billes de 750 kb qu'elle détaille | **45 %** |
+| écart des deux centres | **8 %** de la hauteur de l'image |
+
+**Le fondu cache le saut, pas l'écart.** C'est le défaut de la semaine 8 rendu visible, et
+mesuré, comme convenu : la fibre est une pelote de 435 nm de rayon, les six billes un chemin
+étiré, et la pose rigide laisse 426 nm de RMSD. Ce chiffre décrit ; il n'a pas de témoin, faute
+d'un niveau fin qui raccorderait.
+
+### Le rendu, prouvé correct
+
+Suite headless de la semaine 11 (`pnpm verify`, 13 assertions) :
+
+| propriété | mesure | témoin |
+|---|---|---|
+| transport parallèle : jamais plus de rotation que la tangente | excès max 0,0001° | Frenet : 3 retournements de 180° |
+| tube centré sur ses points, au bon rayon | 26,0 px pour 25,8 attendus | — |
+| **aucune fissure** entre segments de tessellations différentes | **0 trou** sur 11 711 pixels sondés | côtés par segment : 257 trous |
+| faces avant vers l'extérieur | 13 312 px sur 13 312 avec élimination de l'arrière | — |
+| tessellation adaptative | 1 592 triangles à 60 unités, 15 328 à 4 | — |
+| nucléosome de face, de profil | 104 × 104 px ; 104 × 52, rapport 0,500 | — |
+| profondeur du point d'impact | au 10⁻⁶ près | — |
+| ellipsoïdes qui s'interpénètrent | 0 pixel de différence selon l'ordre | — |
+
+Deux de ces tests ont d'abord été faux. Le seuil de rotation du transport (12°) était arbitraire :
+sur une courbe plane la normale *doit* tourner avec la tangente, et c'est l'excès de rotation qui
+signe la faute. Le test de fissure ne voyait rien — témoin compris — tant que le tube était
+dessiné des deux côtés : une fissure montre l'intérieur du tube, pas le fond. En éliminant les
+faces arrière pour le voir, on a trouvé l'**enroulement des triangles inversé** — faces avant vers
+l'intérieur —, corrigé. Le témoin ne fuyait alors que 2 pixels avec une sonde de 7 × 7 sur l'axe :
+une fissure s'ouvre près de la silhouette. La sonde couvre maintenant 80 % du rayon projeté (pas
+90 % : un tube à 8 côtés n'a que cos(π/8) = 0,92 r entre deux arêtes).
+
+### Les nucléosomes, illustratifs
+
+Environ dix par monomère de 2 kb — l'ordre de grandeur d'une répétition de 200 pb —, cœurs de
+11 × 5,5 nm, liés par l'ADN (2 nm), en chaîne désordonnée confinée dans le volume du monomère,
+distance minimale 10 nm. **Ce n'est pas un modèle** : aucune donnée de positionnement n'est
+lisible, et les positions sont tirées, déterministes par monomère. La forme est juste — une chaîne
+désordonnée, pas une fibre de 30 nm, que la ChromEMT n'observe pas *in situ* (Ou 2017) — et les
+nombres sont des ordres de grandeur.
+
+### Performance
+
+SwiftShader, 960 × 540 : 271 ms par image en médiane, 2 277 ms au 95e centile — la génération des
+19 990 nucléosomes à la première descente, et 20 000 ellipsoïdes sur un rasteriseur logiciel. Borne
+haute sans portée. La page de banc matériel est republiée avec la plongée entière ; les mesures de
+la semaine 10 y restent, étiquetées. **Aucune mesure de la semaine 11 sur vrai matériel encore.**
+
+### La semaine 9 tient encore, de justesse
+
+| aperçu 3 Mb, Slow 4G | semaine 9 | semaine 10 | semaine 11 |
+|---|---:|---:|---:|
+| préfixe 16 Kio | 1 412 ms | 1 416 ms | **1 432 ms** |
+| préfixe ajusté | 1 381 ms | 1 381 ms | 1 409 ms |
+| fin du premier rendu | 11 149 o | 11 619 o | 12 182 o |
+
+La marge passe à 68 ms. Elle avait fondu à 62 ms : le shader du tube, gabarit à `${…}` au niveau
+du module, entrait dans la page du premier rendu — 15,1 → 17,4 Kio, le piège de l'occlusion en
+semaine 10. Corrigé de la même façon. Les descriptions longues des liens ont aussi quitté
+l'en-tête, qui fait partie de la première requête : 12 389 → 12 182 octets.
+
+### Ce que ça ne dit pas
+
+**Rien d'une boucle mesurée** : les sites sont plantés, la boucle est celle du modèle. **Rien des
+nucléosomes réels.** **Rien des fps de la vue de boucle sur vrai matériel**, tant que la page n'a
+pas reçu de mesure. **Le raccord S8 n'est pas corrigé** : il est montré. La boucle visée n'est pas
+sur ACTB.
+
+### Reproduire
+
+```console
+$ cd pipeline && make g3d                       # liens, sites CTCF, bilan des boucles imprimé
+$ cd .. && pnpm verify                          # 16 (S4) + 20 (S10) + 13 (S11) assertions
+$ node tools/test-g3d.mjs                       # lecture croisée, liens compris (37)
+$ node tools/loop.mjs                           # lisibilité de la boucle, témoin, raccord S8
+$ node tools/dive.mjs 360                       # continuité de la plongée entière
+$ node tools/loadtime.mjs 10                    # la semaine 9 tient-elle encore
+```
+
+---
+
 ## S10 — La plongée est continue, et tient 60 images par seconde sur un GPU intégré
 
 ### Le critère, et les deux moitiés qu'il contient
