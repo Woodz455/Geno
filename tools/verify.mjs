@@ -28,10 +28,12 @@ if (!chrome) {
 }
 
 // Une suite par page : celle de la semaine 4 (imposteurs, picking) et celle de la
-// semaine 10 (caméra, fondu tramé, occlusion). Chacune se compte à part.
+// semaine 10 (caméra, fondu tramé, occlusion) et celle de la semaine 11 (tubes,
+// nucléosomes). Chacune se compte à part.
 const SUITES = [
   { page: "dist/headless.html", title: "Correction des imposteurs (semaine 4)" },
   { page: "dist/macro.html", title: "Plongée : caméra, fondu tramé, occlusion (semaine 10)" },
+  { page: "dist/fiber.html", title: "Fibre : tubes, nucléosomes (semaine 11)" },
 ];
 
 const decode = (s) =>

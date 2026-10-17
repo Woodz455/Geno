@@ -56,6 +56,7 @@ async function bundle(entry, minify = false) {
 const targets = [
   { entry: "packages/viewer/test/headless.ts", out: "dist/headless.html", title: "Geno — correction des imposteurs" },
   { entry: "packages/viewer/test/macro.ts", out: "dist/macro.html", title: "Geno — correction de la plongée" },
+  { entry: "packages/viewer/test/fiber.ts", out: "dist/fiber.html", title: "Geno — correction de la fibre" },
   { entry: "apps/spike/main.ts", out: "dist/spike.html", title: "Geno — spike de rendu" },
   // Minifiée : sous Slow 4G, chaque kilo-octet de la page coûte ~6 ms avant la première
   // requête de données. Les deux autres pages sont des outils, celle-ci est mesurée.
