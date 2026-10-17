@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from .build import pose
-from .g3d import Attribute, Level, read, write
+from .g3d import Attribute, Level, Links, read, write
 
 
 def _chain(counts, name, bp, seed, step_nm):
@@ -52,6 +52,10 @@ def main(out: str) -> None:
     e1[::97] = np.nan
     nucleus.attributes["compartment"] = Attribute(e1, {"kind": "E1", "source": "témoin"})
     finer = _chain((1500,), "fin", 2_000, 2, 30.0)
+    finer.links = Links(
+        i=np.array([10, 200, 640, 900, 3]), j=np.array([80, 330, 701, 1400, 4]),
+        kind=np.array([0, 1, 1, 1, 0]), weight=np.array([np.nan, 0.19, 0.004, 0.77, np.nan]),
+        kinds=["cohesin_ctcf", "ctcf_pair"], meta={"source": "témoin"})
     anchors = finer.positions_nm[::300][:5]
     m, fit = pose(anchors @ np.diag([1, -1, 1]) + 500.0, anchors)
     finer.transform = m.reshape(-1).tolist()
@@ -93,6 +97,11 @@ def main(out: str) -> None:
             "attributes": {k: [None if np.isnan(x) else float(x) for x in v]
                            for k, v in lv["attributes"].items()},
             "attribute_meta": meta.get("attributes", {}),
+            "links": None if lv["links"] is None else {
+                "i": lv["links"]["i"].tolist(), "j": lv["links"]["j"].tolist(),
+                "kind": lv["links"]["kind"].tolist(), "kinds": lv["links"]["kinds"],
+                "weight": [None if np.isnan(x) else float(x) for x in lv["links"]["weight"]],
+            },
         }
     (d / "expected.json").write_text(json.dumps(expected))
     print(f"{d / 'fixture.g3d'}  {rep['bytes']:,} o  ·  chunks {rep['chunks']}")

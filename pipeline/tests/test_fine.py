@@ -632,3 +632,75 @@ def test_save_and_load_round_trip(tmp_path):
     assert truth is not None and np.array_equal(truth.kind, fine.truth.kind)
     assert meta["evidence"] == "simulated"
     assert meta["ctcf_source"].startswith("planted:")
+
+
+# --------------------------------------------------------------------------
+# Semaine 11 : les jambes de chaque conformation, pour dessiner ses boucles
+# --------------------------------------------------------------------------
+
+
+def test_regenerated_legs_are_exactly_the_ones_that_guided_the_fold(tmp_path):
+    """Le 1D est déterministe : les graines et les sites d'un fichier suffisent à retrouver
+    les jambes de chaque conformation, sans refaire tourner OpenMM."""
+    from geno_pipeline.fine.run import legs
+
+    reg = Region("chrT", 0, 160_000, 2_000)
+    setup = Setup(region=reg, replicates=2, snapshots=3, stride=1,
+                  md_per_step=100, relax=100, burnin_1d=30)
+    fine = build(setup, site_seed=2, first_seed=21, workers=1, mean_domain=60_000,
+                 min_domain=40_000)
+    p = tmp_path / "fine.npz"
+    save(fine, str(p))
+    _, sites, _, meta = load(str(p))
+    again = legs(meta, sites, fine.seeds)
+    assert again.shape == (fine.frames, fine.legs.shape[1], 2)
+    assert np.array_equal(again, fine.legs)
+    assert np.array_equal(np.load(p)["legs"], fine.legs)
+    assert meta["velocity"] == setup.velocity and meta["burnin_1d"] == setup.burnin_1d
+
+
+def test_check_legs_tells_held_pairs_from_any_pair_at_the_same_separation():
+    from geno_pipeline.fine.run import check_legs
+
+    reg = Region("chrT", 0, 300_000, 2_000)
+    setup = Setup(region=reg, replicates=1, snapshots=12, stride=2, separation=60_000,
+                  md_per_step=400, relax=2_000, burnin_1d=200)
+    fine = build(setup, site_seed=3, workers=1, mean_domain=60_000, min_domain=40_000)
+    held, control = check_legs(fine.coords, fine.legs, frames=12)
+    assert held < 1.6, held
+    assert control > 2.0 * held, (held, control)
+
+
+def test_loops_of_a_saved_run_with_and_without_stored_legs(tmp_path):
+    """`export.build.loops` : boucles de la conformation affichée, paires candidates tirées des
+    seuls sites (pas de la vérité), et le même résultat que les jambes soient dans le fichier
+    ou régénérées depuis le 1D."""
+    from geno_pipeline.export.build import LINK_KINDS, loops
+
+    reg = Region("chrT", 0, 400_000, 2_000)
+    setup = Setup(region=reg, replicates=1, snapshots=8, stride=2, separation=80_000,
+                  md_per_step=300, relax=1_500, burnin_1d=200)
+    fine = build(setup, site_seed=5, workers=1, mean_domain=80_000, min_domain=50_000)
+    p = tmp_path / "fine.npz"
+    save(fine, str(p))
+    stored, attrs = loops(p, frame=3)
+
+    # Le même fichier sans les jambes : elles sont régénérées, et le résultat ne change pas.
+    z = dict(np.load(p))
+    z.pop("legs")
+    q = tmp_path / "old.npz"
+    np.savez_compressed(q, **z)
+    (tmp_path / "old.json").write_text((tmp_path / "fine.json").read_text())
+    regen, _ = loops(q, frame=3)
+    for k in ("i", "j", "kind"):
+        assert np.array_equal(getattr(stored, k), getattr(regen, k))
+    assert stored.meta["legs"] == "lues dans le fichier" and regen.meta["legs"] == "régénérées depuis le 1D"
+
+    held = fine.legs[3][fine.legs[3][:, 0] >= 0]
+    cohesin = stored.kind < LINK_KINDS.index("ctcf_pair")
+    assert cohesin.sum() == len(held) and np.isnan(stored.weight[cohesin]).all()
+    pair = ~cohesin
+    fwd, rev = attrs["ctcf_forward"].values, attrs["ctcf_reverse"].values
+    assert np.isfinite(fwd[stored.i[pair]]).all() and np.isfinite(rev[stored.j[pair]]).all()
+    assert (stored.j[pair] > stored.i[pair]).all()
+    assert ((stored.weight[pair] >= 0) & (stored.weight[pair] <= 1)).all()

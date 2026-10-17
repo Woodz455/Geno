@@ -28,7 +28,7 @@ from ..ensemble import medoid
 from ..ensemble import read as read_ensemble
 from ..ensemble.stats import kabsch
 from ..fine.run import load as load_fine
-from .g3d import Attribute, Level
+from .g3d import Attribute, Level, Links
 
 
 def _sha(*arrays: np.ndarray) -> str:
@@ -216,6 +216,107 @@ def pose(target: np.ndarray, local: np.ndarray) -> tuple[np.ndarray, dict]:
     }
 
 
+LINK_KINDS = ["cohesin_ctcf", "cohesin_one_side", "cohesin_free", "ctcf_pair"]
+
+
+def anchor_frequency(legs_: np.ndarray, pairs: np.ndarray, tol: int = 2) -> np.ndarray:
+    """Fraction des conformations où une cohésine tient la paire `(i, j)`, à ±`tol` monomères.
+
+    Même définition que `Extrusion.anchor_frequency` (semaine 8), sur le tableau de jambes
+    de toutes les conformations au lieu d'une seule trajectoire.
+    """
+    lo = np.where(legs_[..., 0] >= 0, np.minimum(legs_[..., 0], legs_[..., 1]), -10**9)
+    hi = np.where(legs_[..., 0] >= 0, np.maximum(legs_[..., 0], legs_[..., 1]), -10**9)
+    out = np.zeros(len(pairs))
+    for p, (i, j) in enumerate(pairs):
+        hit = (np.abs(lo - i) <= tol) & (np.abs(hi - j) <= tol)
+        out[p] = hit.any(axis=1).mean()
+    return out
+
+
+def loops(path: str | Path, frame: int, *, max_span_bp: int = 1_000_000):
+    """Sites CTCF par monomère, boucles de la conformation `frame`, paires d'ancres de l'ensemble.
+
+    Les jambes viennent du fichier si elles y sont (exécutions depuis la semaine 11), sinon
+    elles sont **régénérées** depuis le 1D déterministe et **vérifiées** contre les
+    coordonnées : une paire tenue doit être à ~1 σ, une paire quelconque à même séparation
+    non. Sans cet accord, mieux vaut refaire `make fine` que dessiner des boucles fausses.
+
+    Les paires candidates ne viennent **pas** de la vérité plantée : ce sont toutes les
+    paires (site `+`, site `−` à sa droite) à moins de `max_span_bp`, ce qu'on ferait sur des
+    sites mesurés. La vérité ne sert qu'à juger, après, lesquelles passent le seuil.
+    """
+    from ..fine.run import check_legs, legs as regenerate
+
+    coords, sites, _, meta = load_fine(str(path))
+    z = np.load(str(path))
+    if "legs" in z.files:
+        L, how = z["legs"].astype(np.int64), "lues dans le fichier"
+    else:
+        L, how = regenerate(meta, sites, z["seeds"]), "régénérées depuis le 1D"
+        held, control = check_legs(coords, L)
+        if not (held < 1.6 and control > 2.0 * held):
+            raise ValueError(f"jambes régénérées en désaccord avec le 3D ({held:.2f} σ contre {control:.2f})")
+    n = int(meta["monomers"])
+    bp = int(meta["bp_per_bead"])
+
+    fwd = np.full(n, np.nan)
+    rev = np.full(n, np.nan)
+    for pos, strand, occ in zip(sites.pos, sites.strand, sites.occupancy):
+        target = fwd if strand > 0 else rev
+        target[pos] = np.nanmax([target[pos], occ])
+
+    is_f = np.isfinite(fwd)
+    is_r = np.isfinite(rev)
+    held = L[frame][L[frame][:, 0] >= 0]
+    i_c = np.minimum(held[:, 0], held[:, 1])
+    j_c = np.maximum(held[:, 0], held[:, 1])
+    near = lambda mask, k: mask[max(0, k - 1):k + 2].any()     # pied arrêté sur le site, ±1
+    kind_c = np.array([
+        0 if near(is_f, a) and near(is_r, b) else 1 if near(is_f, a) or near(is_r, b) else 2
+        for a, b in zip(i_c, j_c)
+    ], dtype=np.int64)
+
+    plus = np.flatnonzero(is_f)
+    minus = np.flatnonzero(is_r)
+    pairs = np.array([(a, b) for a in plus for b in minus if 0 < (b - a) * bp <= max_span_bp],
+                     dtype=np.int64).reshape(-1, 2)
+    freq = anchor_frequency(L, pairs)
+    # Les motifs CTCF se groupent (deux sites de même brin sur des monomères voisins, comme
+    # en vrai) : un même domaine donnait deux candidates quasi identiques, 1147–1200 et
+    # 1148–1200. On garde la plus fréquente de toute grappe dont les deux bouts sont à ±2
+    # monomères — la tolérance même de la fréquence d'ancrage.
+    keep: list[int] = []
+    for k in np.argsort(-freq, kind="stable"):
+        if all(abs(pairs[k, 0] - pairs[q, 0]) > 2 or abs(pairs[k, 1] - pairs[q, 1]) > 2 for q in keep):
+            keep.append(int(k))
+    keep_idx = np.sort(np.asarray(keep, dtype=np.int64))
+    pairs, freq = pairs[keep_idx], freq[keep_idx]
+
+    links = Links(
+        i=np.r_[i_c, pairs[:, 0]],
+        j=np.r_[j_c, pairs[:, 1]],
+        kind=np.r_[kind_c, np.full(len(pairs), 3)],
+        weight=np.r_[np.full(len(i_c), np.nan), freq],
+        kinds=LINK_KINDS,
+        meta={
+            # Court : l'en-tête fait partie de la première requête (§ S9). Le sens long des
+            # sortes est dans ARCHITECTURE.md § 3.
+            "weight": f"ctcf_pair : fraction des {len(L)} conformations où une cohésine tient la paire",
+            "legs": how,
+            "frame": int(frame),
+            "candidates": f"paires + / − à moins de {max_span_bp // 1000} kb",
+        },
+    )
+    attrs = {
+        "ctcf_forward": Attribute(fwd, {"kind": "occupancy", "evidence": "simulated",
+                                        "source": sites.source}),
+        "ctcf_reverse": Attribute(rev, {"kind": "occupancy", "evidence": "simulated",
+                                        "source": sites.source}),
+    }
+    return links, attrs
+
+
 def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[Level, dict]:
     """Le médoïde de la semaine 8, posé dans le repère du noyau — et l'écart que ça laisse.
 
@@ -259,6 +360,7 @@ def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[L
         raise ValueError(f"{len(a)} ancre(s) seulement : une pose 3D en demande au moins trois")
 
     m, fit = pose(a, f)
+    links, attrs = loops(path, int(mi))
     level = Level(
         name="fin",
         bp_per_bead=bp,
@@ -278,6 +380,8 @@ def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[L
             "verdict": "le raccord de la semaine 8 ne tient pas (2,2 à 2,4× sur R(s) selon l'exécution, VALIDATION.md § S8 et § S10) ; "
                        "la pose le montre, elle ne le corrige pas",
         },
+        attributes=attrs,
+        links=links,
         notes=[
             f"médoïde de {len(coords)} conformations, extrusion de boucles sous OpenMM",
             "sites CTCF plantés (vérité connue de la semaine 8), pas mesurés",

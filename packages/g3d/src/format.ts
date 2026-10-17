@@ -43,6 +43,16 @@ export interface LevelSpec {
   chunks: ChunkSpec[];
   /** Valeurs par bille au-delà des colonnes de base (semaine 10). Colonne `attr.<nom>` par chunk. */
   attributes?: Record<string, AttributeSpec>;
+  /** Paires de billes typées et pondérées (semaine 11), colonnes paresseuses i, j, kind, weight. */
+  links?: LinksSpec;
+}
+
+export interface LinksSpec {
+  n: number;
+  kinds: string[];
+  weight: { origin: number; step: number; missing: number; max_error: number };
+  columns: Record<"i" | "j" | "kind" | "weight", ColumnSpec>;
+  [k: string]: unknown;
 }
 
 export interface AttributeSpec {

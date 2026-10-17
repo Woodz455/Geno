@@ -425,3 +425,54 @@ def test_coarsening_averages_attributes_and_keeps_missing_copies_missing():
     got = ap.attributes["compartment"].values
     assert got[0] == pytest.approx(0.2)        # moyenne des trois présentes, pas des quatre
     assert np.isnan(got[1])                    # copie entière absente : reste absente
+
+
+# --------------------------------------------------------------------------
+# Liens entre billes (semaine 11)
+# --------------------------------------------------------------------------
+
+
+def with_links(lv: Level) -> Level:
+    from geno_pipeline.export import Links
+
+    i = np.array([5, 40, 100, 7, 300])
+    j = np.array([60, 90, 180, 8, 420])
+    lv.links = Links(i=i, j=j, kind=np.array([0, 0, 1, 1, 1]),
+                     weight=np.array([np.nan, np.nan, 0.31, 0.02, 0.5]),
+                     kinds=["cohesin", "anchor_pair"], meta={"source": "test"})
+    return lv
+
+
+def test_links_round_trip_to_the_same_beads_through_the_stored_order(tmp_path):
+    """Les liens sont écrits dans l'ordre stocké des billes ; relus, ils doivent désigner
+    les mêmes loci qu'à l'écriture — c'est par les coordonnées qu'on le vérifie, pas par
+    les index, qui changent."""
+    lv = with_links(chain_level(n_per_copy=(2000, 1500, 1800)))
+    got = read(write(tmp_path / "a.g3d", [lv], max_beads=700)["path"]).levels["noyau"]
+    L = got["links"]
+    want = {(int(lv.copy[a]), int(lv.start[a]), int(lv.copy[b]), int(lv.start[b]), k)
+            for a, b, k in zip(lv.links.i, lv.links.j, lv.links.kind)}
+    back = {(int(got["copy"][a]), int(got["start"][a]), int(got["copy"][b]), int(got["start"][b]), int(k))
+            for a, b, k in zip(L["i"], L["j"], L["kind"])}
+    assert back == want
+    assert L["kinds"] == ["cohesin", "anchor_pair"]
+    assert np.isnan(L["weight"]).sum() == 2
+    spec = got["meta"]["links"]
+    w = np.sort(L["weight"][np.isfinite(L["weight"])])
+    assert np.abs(w - np.array([0.02, 0.31, 0.5])).max() <= spec["weight"]["max_error"] * (1 + 1e-9)
+    assert spec["source"] == "test"
+
+
+def test_links_are_lazy_and_a_level_without_links_has_none(tmp_path):
+    plain = write(tmp_path / "a.g3d", [chain_level()])
+    rich = write(tmp_path / "b.g3d", [with_links(chain_level())])
+    assert rich["first_frame_end"] - rich["header"] == plain["first_frame_end"] - plain["header"]
+    got = read(plain["path"]).levels["noyau"]
+    assert got["links"] is None and "links" not in got["meta"]
+
+
+def test_a_link_to_a_bead_outside_the_level_is_refused(tmp_path):
+    lv = with_links(chain_level())
+    lv.links.j[0] = lv.n
+    with pytest.raises(ValueError, match="hors du niveau"):
+        write(tmp_path / "a.g3d", [lv])

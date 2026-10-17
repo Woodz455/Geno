@@ -40,6 +40,15 @@ export interface Hit {
   ids: number[];
 }
 
+export interface Links {
+  i: Uint32Array;
+  j: Uint32Array;
+  kind: Uint8Array;
+  /** NaN : sans poids. */
+  weight: Float32Array;
+  kinds: string[];
+}
+
 export interface OpenOptions {
   /** Octets lus d'emblée. Doit couvrir le premier rendu pour qu'il tienne en une requête. */
   prefix?: number;
@@ -199,6 +208,21 @@ export class G3D {
       }
     });
     return out;
+  }
+
+  /** Les liens d'un niveau : index de billes (ordre stocké, 0 en premier), sorte, poids.
+   *  Une seule lecture couvre les quatre colonnes. `null` si le niveau n'en porte pas. */
+  async links(name: string): Promise<Links | null> {
+    const spec = this.level(name).links;
+    if (!spec) return null;
+    const c = spec.columns;
+    const [i, j, kind, w] = await this.columns([c.i, c.j, c.kind, c.weight]);
+    const weight = new Float32Array(spec.n);
+    const q = w as Uint16Array;
+    for (let k = 0; k < spec.n; k++) {
+      weight[k] = q[k] === spec.weight.missing ? NaN : spec.weight.origin + q[k] * spec.weight.step;
+    }
+    return { i: i as Uint32Array, j: j as Uint32Array, kind: kind as Uint8Array, weight, kinds: spec.kinds };
   }
 
   /** Chunks dont la sphère englobante coupe le tronc de vue (plans ax+by+cz+d ≥ 0). */

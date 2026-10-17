@@ -24,6 +24,7 @@ interface Expected {
       variability_step: number;
       queries: { chrom: string; start: number; end: number; hits: { copy: string; ids: number[] }[] }[];
       attributes: Record<string, (number | null)[]>;
+      links: { i: number[]; j: number[]; kind: number[]; kinds: string[]; weight: (number | null)[] } | null;
     }
   >;
 }
@@ -111,6 +112,26 @@ async function main(): Promise<void> {
     }
     if (Object.keys(exp.attributes).length === 0) {
       check(`${name} : aucun attribut, et le lecteur le dit sans lever`, (await g.attribute(name, "compartment")) === null);
+    }
+
+    const links = await g.links(name);
+    if (exp.links === null) {
+      check(`${name} : aucun lien, et le lecteur le dit sans lever`, links === null);
+    } else {
+      const same =
+        links !== null &&
+        JSON.stringify(Array.from(links.i)) === JSON.stringify(exp.links.i) &&
+        JSON.stringify(Array.from(links.j)) === JSON.stringify(exp.links.j) &&
+        JSON.stringify(Array.from(links.kind)) === JSON.stringify(exp.links.kind) &&
+        JSON.stringify(links.kinds) === JSON.stringify(exp.links.kinds);
+      let werr = 0;
+      let gaps = links !== null;
+      exp.links.weight.forEach((w, k) => {
+        if (w === null) gaps &&= Number.isNaN(links!.weight[k]);
+        else werr = Math.max(werr, Math.abs(links!.weight[k] - w));
+      });
+      check(`${name} : liens identiques (paires, sortes)`, same, `${exp.links.i.length} lien(s)`);
+      check(`${name} : poids des liens au flottant près, trous compris`, gaps && werr < 1e-6, `écart ${werr.toExponential(1)}`);
     }
 
     for (const q of exp.queries) {

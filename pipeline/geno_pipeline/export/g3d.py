@@ -169,6 +169,25 @@ MISSING = U16
 
 
 @dataclass
+class Links:
+    """Des paires de billes d'un niveau, typées et pondérées (semaine 11).
+
+    `i`, `j` sont des index de billes du niveau, dans l'ordre où le niveau les reçoit ;
+    l'écriture les traduit dans l'ordre stocké. `kind` indexe `kinds` (au plus 255
+    sortes) ; `weight` est un réel quelconque, NaN pour « sans poids », quantifié comme un
+    attribut. Exemple : les boucles tenues par une cohésine dans la conformation affichée,
+    et les paires d'ancres CTCF avec leur fréquence sur l'ensemble.
+    """
+
+    i: np.ndarray
+    j: np.ndarray
+    kind: np.ndarray
+    weight: np.ndarray
+    kinds: list[str]
+    meta: dict = field(default_factory=dict)
+
+
+@dataclass
 class Level:
     """Une résolution du modèle : des billes, leurs positions, et d'où elles viennent."""
 
@@ -189,6 +208,7 @@ class Level:
     fit: dict | None = None
     notes: list[str] = field(default_factory=list)
     attributes: dict[str, Attribute] = field(default_factory=dict)
+    links: Links | None = None
 
     @property
     def n(self) -> int:
@@ -219,6 +239,15 @@ class Level:
                 raise ValueError(f"{self.name} : nom d'attribut invalide : {key!r}")
             if np.isinf(a.values).any():
                 raise ValueError(f"{self.name} : attribut {key} infini")
+        if self.links is not None:
+            L = self.links
+            m = len(L.i)
+            if not (len(L.j) == len(L.kind) == len(L.weight) == m):
+                raise ValueError(f"{self.name} : colonnes de liens de longueurs différentes")
+            if m and (min(L.i.min(), L.j.min()) < 0 or max(L.i.max(), L.j.max()) >= n):
+                raise ValueError(f"{self.name} : lien vers une bille hors du niveau")
+            if m and (L.kind.min() < 0 or L.kind.max() >= len(L.kinds) or len(L.kinds) > 255):
+                raise ValueError(f"{self.name} : sorte de lien hors de la table")
 
 
 def _attribute_quant(values: np.ndarray) -> tuple[float, float]:
@@ -396,6 +425,26 @@ def _prepare(level: Level, max_beads: int, fraction: float):
         "index": {"copy_offsets": offsets},
         "notes": list(level.notes),
     }
+    if level.links is not None:
+        L = level.links
+        w = np.asarray(L.weight, dtype=np.float64)
+        wlo, wstep = _attribute_quant(w)
+        # Ordre stocké, trié par (sorte, i, j) : le delta y trouve des suites régulières.
+        si, sj = ident[np.asarray(L.i)], ident[np.asarray(L.j)]
+        o = np.lexsort((sj, si, np.asarray(L.kind)))
+        meta["links"] = {
+            **L.meta,
+            "n": int(len(si)),
+            "kinds": list(L.kinds),
+            "ids": "index de billes dans l'ordre stocké, 0 en premier (identifiant de picking = index + 1)",
+            "weight": {"origin": wlo, "step": wstep, "missing": MISSING, "max_error": wstep / 2.0},
+        }
+        meta["_link_columns"] = [
+            _column("i", si[o].astype(np.uint32)),
+            _column("j", sj[o].astype(np.uint32)),
+            _column("kind", np.asarray(L.kind)[o].astype(np.uint8)),
+            _column("weight", _attribute_codes(w[o], wlo, wstep)),
+        ]
     if level.attributes:
         meta["attributes"] = {
             key: {**a.meta, "origin": attr_quant[key][0], "step": attr_quant[key][1],
@@ -441,7 +490,10 @@ def write(
             cm["columns"] = {}
             meta["chunks"].append(cm)
         meta["index"]["columns"] = {}
-        out_levels.append((lv, meta, chunks, index))
+        link_cols = meta.pop("_link_columns", [])
+        if link_cols:
+            meta["links"] = {**meta["links"], "columns": {}}
+        out_levels.append((lv, meta, chunks, index + [("links", c) for c in link_cols]))
 
     def placed(lv_name, group):
         for lv, meta, chunks, index in out_levels:
@@ -452,7 +504,10 @@ def write(
                     blocks.append((cm["columns"], col))
             if group == "lazy":
                 for col in index:
-                    blocks.append((meta["index"]["columns"], col))
+                    if isinstance(col, tuple):          # colonne de liens
+                        blocks.append((meta["links"]["columns"], col[1]))
+                    else:
+                        blocks.append((meta["index"]["columns"], col))
 
     placed("first", "first_frame")
     n_first = len(blocks)
@@ -510,8 +565,11 @@ def write(
                 for k, v in col.sizes.items():
                     agg["chains"][k] = agg["chains"].get(k, 0) + v
         for col in index:
-            cols["index." + col.name] = {"raw": col.raw, "stored": len(col.blob),
-                                         "chains": dict(col.sizes)}
+            prefix = "index."
+            if isinstance(col, tuple):
+                prefix, col = "links.", col[1]
+            cols[prefix + col.name] = {"raw": col.raw, "stored": len(col.blob),
+                                       "chains": dict(col.sizes)}
         report["columns"][lv.name] = cols
 
     report.update(
@@ -584,9 +642,19 @@ def read(path: str | Path) -> Read:
             vals = spec["origin"] + codes.astype(np.float64) * spec["step"]
             vals[codes == spec["missing"]] = np.nan
             attrs[key] = vals
+        links = None
+        if "links" in lv:
+            spec = lv["links"]
+            cols = {k: col(v) for k, v in spec["columns"].items()}
+            w = spec["weight"]
+            weight = w["origin"] + cols["weight"].astype(np.float64) * w["step"]
+            weight[cols["weight"] == w["missing"]] = np.nan
+            links = {"i": cols["i"], "j": cols["j"], "kind": cols["kind"], "weight": weight,
+                     "kinds": spec["kinds"]}
         out[lv["name"]] = {
             "meta": lv,
             "attributes": attrs,
+            "links": links,
             "copy": np.concatenate(parts["copy"]),
             "positions_nm": positions,
             "variability_nm": np.concatenate(parts["variability"]) * lv["variability"]["step"],

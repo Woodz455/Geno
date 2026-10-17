@@ -76,6 +76,10 @@ class Setup:
             "stride": self.stride,
             "replicates": self.replicates,
             "cutoff": self.cutoff,
+            # Écrits depuis la semaine 10 : sans eux, les jambes 1D ne se régénèrent
+            # qu'en supposant les défauts du code, ce qu'un fichier ne doit pas exiger.
+            "velocity": self.velocity,
+            "burnin_1d": self.burnin_1d,
             "trunc_kT": self.field.trunc,
             "stiffness_kT": self.field.stiffness,
             "evidence": "simulated",
@@ -93,6 +97,7 @@ class Fine:
     seeds: np.ndarray         # (replicates,)
     elapsed: float
     lef_occupancy: float
+    legs: np.ndarray | None = None   # (frames, n_lef, 2), -1 = décroché ; semaine 11
 
     @property
     def frames(self) -> int:
@@ -107,7 +112,7 @@ def _init(setup: Setup, sites: Sites) -> None:
     _SHARED["sites"] = sites
 
 
-def _one(args: tuple[int, int]) -> tuple[int, np.ndarray, float]:
+def _one(args: tuple[int, int]) -> tuple[int, np.ndarray, float, np.ndarray]:
     index, seed = args
     setup: Setup = _SHARED["setup"]
     sites: Sites = _SHARED["sites"]
@@ -133,7 +138,7 @@ def _one(args: tuple[int, int]) -> tuple[int, np.ndarray, float]:
         seed=seed,
         threads=1,
     )
-    return index, coords, ex.occupancy
+    return index, coords, ex.occupancy, np.stack(ex.legs)
 
 
 def build(
@@ -162,21 +167,24 @@ def build(
 
     started = time.time()
     chunks: list[np.ndarray | None] = [None] * setup.replicates
+    leg_chunks: list[np.ndarray | None] = [None] * setup.replicates
     occ: list[float] = []
 
     if workers <= 1:
         _init(setup, sites)
         results = (_one(j) for j in jobs)
-        for done, (index, coords, o) in enumerate(results, 1):
+        for done, (index, coords, o, lg) in enumerate(results, 1):
             chunks[index] = coords
+            leg_chunks[index] = lg
             occ.append(o)
             if progress:
                 progress(done, len(jobs))
     else:
         ctx = mp.get_context("spawn")
         with ctx.Pool(workers, initializer=_init, initargs=(setup, sites)) as pool:
-            for done, (index, coords, o) in enumerate(pool.imap_unordered(_one, jobs), 1):
+            for done, (index, coords, o, lg) in enumerate(pool.imap_unordered(_one, jobs), 1):
                 chunks[index] = coords
+                leg_chunks[index] = lg
                 occ.append(o)
                 if progress:
                     progress(done, len(jobs))
@@ -189,6 +197,7 @@ def build(
         seeds=seeds,
         elapsed=time.time() - started,
         lef_occupancy=float(np.mean(occ)) if occ else 0.0,
+        legs=np.concatenate(leg_chunks, axis=0),
     )
 
 
@@ -217,6 +226,7 @@ def save(fine: Fine, path: str) -> None:
         site_strand=fine.sites.strand,
         site_occupancy=fine.sites.occupancy,
         seeds=fine.seeds,
+        **({"legs": fine.legs.astype(np.int16)} if fine.legs is not None else {}),
         **(
             {
                 "truth_left": fine.truth.left,
@@ -260,6 +270,57 @@ def load(path: str) -> tuple[np.ndarray, Sites, Truth | None, dict]:
         else None
     )
     return z["coords"], sites, truth, meta
+
+
+def legs(meta: dict, sites: Sites, seeds) -> np.ndarray:
+    """Les jambes de cohésine de chaque conformation : `(frames, n_lef, 2)`, `-1` = décroché.
+
+    L'étage 1D est du numpy pur à graines fixes : le refaire tourner avec les graines et
+    les sites d'un fichier rend **exactement** les jambes qui ont guidé l'étage 3D, sans
+    refaire tourner OpenMM — qui, lui, ne se reproduit pas au bit (§ S10). L'ordre des
+    conformations est celui de l'empilement de `build` : réplicat par réplicat, dans
+    l'ordre des graines. `check_legs` vérifie l'accord contre les coordonnées elles-mêmes.
+    """
+    region = region_of(meta)
+    out = []
+    for seed in seeds:
+        ex = extrude(
+            region,
+            sites,
+            separation=meta["separation_bp"],
+            processivity=meta["processivity_bp"],
+            velocity=meta.get("velocity", 1.0),
+            release=meta["release"],
+            burnin=meta.get("burnin_1d", 2_000),
+            snapshots=meta["snapshots"],
+            stride=meta["stride"],
+            seed=int(seed),
+        )
+        out.append(np.stack(ex.legs))
+    return np.concatenate(out)
+
+
+def check_legs(coords: np.ndarray, legs_: np.ndarray, *, frames: int = 60, seed: int = 0) -> tuple[float, float]:
+    """Distance médiane (en σ) des paires tenues, et de paires à même séparation non tenues.
+
+    Une cohésine tient ses deux pieds par une liaison de ~1 σ (`lef_wiggle` 0,2) : des
+    jambes qui correspondent aux coordonnées donnent ~1 σ, des jambes décalées d'une seule
+    conformation donnent la distance d'une boucle quelconque, plusieurs σ. Le témoin est
+    construit à même séparation génomique, pour que l'écart ne vienne que de la liaison.
+    """
+    rng = np.random.default_rng(seed)
+    pick = rng.choice(len(coords), size=min(frames, len(coords)), replace=False)
+    held, control = [], []
+    n = coords.shape[1]
+    for f in pick:
+        b = legs_[f]
+        b = b[b[:, 0] >= 0]
+        for i, j in b:
+            held.append(np.linalg.norm(coords[f, i] - coords[f, j]))
+            s = j - i
+            k = int(rng.integers(0, n - s))
+            control.append(np.linalg.norm(coords[f, k] - coords[f, k + s]))
+    return float(np.median(held)), float(np.median(control))
 
 
 def region_of(meta: dict) -> Region:
