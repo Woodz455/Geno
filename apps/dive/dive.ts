@@ -81,6 +81,8 @@ export interface DiveScene {
   last: State & { widthUm: number };
   /** Fondu d'arrivée du noyau (0 → 1), réglé par l'appelant. */
   arrival: number;
+  /** Pour la mesure seulement : impose des grandeurs d'état au lieu de les lire sur la caméra. */
+  override: Partial<State> | null;
   render(o: Orbit): void;
   resize(width: number, height: number): void;
   size(): [number, number];
@@ -140,6 +142,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
     firstRenderMs: 0,
     last: { lod: 0, focus: 0, mix: 0, fiber: 0, loop: 0, nuc: 0, widthUm: 0 },
     arrival: 0,
+    override: null,
 
     render(o: Orbit): void {
       const view = viewMatrix(o);
@@ -151,6 +154,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       const fiber = scene.fiber;
       const st = stateAt({ widthUm, beadPx: fine ? (fine.radiusUm / widthUm) * H : 0 }, opts.hard);
       if (!fiber) st.fiber = st.loop = st.nuc = 0;
+      if (scene.override) Object.assign(st, scene.override);
       // Profondeur de champ utile : tout le noyau tant qu'on le voit, la région fine ensuite.
       const reach = Math.exp((1 - st.loop) * Math.log(Math.hypot(...o.target) + 6) + st.loop * Math.log(1.2));
       const proj = perspective(FOV, W / H, Math.max(0.02 * d, d - reach), d + reach);

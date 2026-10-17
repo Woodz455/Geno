@@ -125,3 +125,71 @@ export function measureLoop(scene: DiveScene): Legibility {
     arcAnchorsInward,
   };
 }
+
+
+/** Le raccord S8, mesuré sur l'image. La plongée ne « saute » pas — le fondu étale le
+ *  changement sur des dizaines d'images —, mais ce qui apparaît n'est pas là où était ce qui
+ *  disparaît. Au milieu du fondu, à la même caméra, on dessine une fois les seules billes de
+ *  750 kb qui couvrent la région fine, une fois la seule fibre, et on compare les deux
+ *  silhouettes : la part de la fibre qui tombe dans celle des billes, et l'écart de leurs
+ *  centres en fraction de la hauteur de l'image. Une pose juste donnerait une fibre
+ *  contenue dans les billes qu'elle détaille. */
+export interface Junction {
+  widthUm: number;
+  beads: number;
+  fiberPx: number;
+  beadPx: number;
+  insideShare: number;
+  centreOffset: number;
+}
+
+export async function measureJunction(scene: DiveScene): Promise<Junction | null> {
+  const F = scene.fiber;
+  const fine = scene.fine;
+  if (!F || !fine) return null;
+  const { divePath } = await import("./bench.js");
+  const path = divePath(scene);
+  // L'image où la fibre est à mi-fondu, cherchée le long de la plongée.
+  let best = 0;
+  let gap = Infinity;
+  for (let k = 0; k <= 400; k++) {
+    scene.override = null;
+    scene.render(path.at((k / 400) * path.length));
+    const g = Math.abs(scene.last.fiber - 0.5);
+    if (g < gap) {
+      gap = g;
+      best = k;
+    }
+  }
+  const o = path.at((best / 400) * path.length);
+  const hits = await scene.g3d.locate(fine.name, "chr7", 4_000_000, 8_000_000);
+  const beadIds = new Set((hits.find((h) => h.copy === "chr7:a")?.ids ?? []).map((i) => i + fine.idBase));
+  const [W, H] = scene.size();
+  const mask = (ids: Uint32Array, keep: (v: number) => boolean) => {
+    const m = new Uint8Array(W * H);
+    ids.forEach((v, i) => (m[i] = keep(v) ? 1 : 0));
+    return m;
+  };
+  scene.override = { fiber: 0, loop: 0, nuc: 0 };
+  scene.render(o);
+  const beads = mask(scene.ids(), (v) => beadIds.has(v));
+  scene.override = { fiber: 1, loop: 0, nuc: 0 };
+  scene.render(o);
+  const fib = mask(scene.ids(), (v) => v > 2_000_000 && v < 3_000_000);
+  scene.override = null;
+  let nf = 0, nb = 0, inside = 0;
+  let fx = 0, fy = 0, bx = 0, by = 0;
+  for (let i = 0; i < W * H; i++) {
+    const x = i % W, y = Math.floor(i / W);
+    if (fib[i]) { nf++; fx += x; fy += y; if (beads[i]) inside++; }
+    if (beads[i]) { nb++; bx += x; by += y; }
+  }
+  return {
+    widthUm: scene.last.widthUm,
+    beads: beadIds.size,
+    fiberPx: nf,
+    beadPx: nb,
+    insideShare: nf ? inside / nf : 0,
+    centreOffset: nf && nb ? Math.hypot(fx / nf - bx / nb, fy / nf - by / nb) / H : 0,
+  };
+}

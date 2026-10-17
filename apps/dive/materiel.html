@@ -75,9 +75,11 @@
 <main>
   <header style="display:grid;gap:6px">
     <h1>Banc matériel Geno</h1>
-    <p class="lede">Ce banc joue une plongée du noyau de GM12878 jusqu'aux compartiments de chr7 : 8&nbsp;082 billes en imposteurs,
-      fondu tramé entre deux niveaux, occlusion ambiante. Le critère de la semaine 10 est de tenir 60 images par seconde
-      sur un appareil moyen. Le serveur de développement ne rend qu'en logiciel, donc ce chiffre ne peut venir que d'ici.</p>
+    <p class="lede">Ce banc joue la plongée entière : du noyau de GM12878 aux compartiments de chr7 (8&nbsp;082 billes),
+      puis à la fibre de 2&nbsp;kb, à une boucle CTCF et jusqu'à ses nucléosomes (jusqu'à 20&nbsp;000 ellipsoïdes et l'ADN qui
+      les relie). Le critère est de tenir 60 images par seconde sur un appareil moyen. Le serveur de développement ne rend
+      qu'en logiciel, donc ce chiffre ne peut venir que d'ici. Les mesures de la semaine 10, plus courtes, restent dans le
+      tableau avec leur étiquette.</p>
   </header>
 
   <div class="scene"><canvas id="scene" aria-label="Rendu de la plongée"></canvas><div class="cap" id="cap">chargement du modèle…</div></div>
@@ -107,8 +109,8 @@
     <h2>Appareils mesurés</h2>
     <div class="table">
       <table>
-        <thead><tr><th>Appareil</th><th>Processeur graphique</th><th>Canevas</th><th style="text-align:right">rAF méd.</th><th style="text-align:right">p95</th><th style="text-align:right">rendu seul</th><th>60 fps</th></tr></thead>
-        <tbody id="runs"><tr><td colspan="7" class="empty">Aucune mesure encore. Lancez-en une ci-dessus ; elle s'ajoutera ici, et Claude pourra la lire.</td></tr></tbody>
+        <thead><tr><th>Plongée</th><th>Appareil</th><th>Processeur graphique</th><th>Canevas</th><th style="text-align:right">rAF méd.</th><th style="text-align:right">p95</th><th style="text-align:right">rendu seul</th><th>60 fps</th></tr></thead>
+        <tbody id="runs"><tr><td colspan="8" class="empty">Aucune mesure encore. Lancez-en une ci-dessus ; elle s'ajoutera ici, et Claude pourra la lire.</td></tr></tbody>
       </table>
     </div>
     <p class="note">Verdict « tenu » : 95 % des intervalles sous 20 ms, sur un écran à 60 Hz ou plus. Le « rendu seul » attend la fin

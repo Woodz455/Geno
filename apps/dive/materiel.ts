@@ -63,6 +63,9 @@ function renderRuns(docs: Doc[]): void {
         tr.appendChild(td);
       };
       const num = (k: string) => (typeof r[k] === "number" ? fmt(r[k] as number) : "–");
+      // Les mesures d'avant la semaine 11 ne portent pas d'étiquette : elles s'arrêtaient aux
+      // compartiments.
+      cell(String(r.scene || "semaine 10"));
       cell(String(r.device || "—"));
       cell(String(r.gpu ?? "?"));
       cell(`${r.width}×${r.height}`);
@@ -145,6 +148,7 @@ async function main(): Promise<void> {
 
       const record = {
         at: new Date().toISOString(),
+        scene: "semaine 11",
         device: ($<HTMLInputElement>("device").value || "").slice(0, 80),
         gpu: r.gpu.slice(0, 200),
         ua: navigator.userAgent.slice(0, 300),

@@ -317,6 +317,40 @@ def loops(path: str | Path, frame: int, *, max_span_bp: int = 1_000_000):
     return links, attrs
 
 
+ARC_THRESHOLD = 0.05   # le même seuil que le client (apps/dive/fiber.ts), fixé avant la mesure
+
+
+def loop_report(path: str | Path, threshold: float = ARC_THRESHOLD) -> dict:
+    """Les paires qui passent le seuil, jugées contre la vérité plantée (±2 monomères).
+
+    Les candidates ne doivent rien à la vérité (`loops`) ; c'est ce qui rend le jugement
+    possible. Rend, par classe plantée, combien passent le seuil, et combien de paires qui
+    passent ne correspondent à aucun domaine planté.
+    """
+    from ..fine.region import KINDS
+
+    links, _ = loops(path, 0)
+    _, _, truth, _ = load_fine(str(path))
+    m = links.kind == LINK_KINDS.index("ctcf_pair")
+    pi, pj, w = links.i[m].astype(np.int64), links.j[m].astype(np.int64), links.weight[m]
+    drawn = w >= threshold
+    out = {"threshold": threshold, "candidates": int(m.sum()), "drawn": int(drawn.sum()),
+           "max_weight": float(w.max()) if len(w) else 0.0, "by_kind": {}, "unplanted": 0}
+    if truth is None:
+        return out
+    matched = np.zeros(len(pi), dtype=bool)
+    for kind_id, name in enumerate(KINDS):
+        sel = truth.kind == kind_id
+        found = 0
+        for l, r in zip(truth.left[sel], truth.right[sel]):
+            hit = drawn & (np.abs(pi - l) <= 2) & (np.abs(pj - r) <= 2)
+            matched |= hit
+            found += int(hit.any())
+        out["by_kind"][name] = {"planted": int(sel.sum()), "drawn": found}
+    out["unplanted"] = int((drawn & ~matched).sum())
+    return out
+
+
 def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[Level, dict]:
     """Le médoïde de la semaine 8, posé dans le repère du noyau — et l'écart que ça laisse.
 

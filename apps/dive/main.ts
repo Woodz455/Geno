@@ -17,7 +17,7 @@
 import { dive, type Orbit, rotate, zoom } from "@geno/viewer";
 import { runBench } from "./bench.js";
 import { FOV, openDive } from "./dive.js";
-import { measureLoop } from "./legibility.js";
+import { measureJunction, measureLoop } from "./legibility.js";
 
 const q = new URLSearchParams(location.search);
 const FILE = q.get("f") ?? "data/gm12878.g3d";
@@ -76,7 +76,8 @@ async function main(): Promise<void> {
   const scene = await openDive(canvas, FILE, { hard: HARD, noIsolate: q.has("noisolate") });
 
   if (q.has("legibility")) {
-    publish({ ...measureLoop(scene), isolate: !q.has("noisolate") });
+    const loop = measureLoop(scene);
+    publish({ ...loop, isolate: !q.has("noisolate"), junction: q.has("noisolate") ? null : await measureJunction(scene) });
     return;
   }
 

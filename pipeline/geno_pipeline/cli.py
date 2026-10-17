@@ -1013,6 +1013,17 @@ def cmd_g3d(args: argparse.Namespace) -> int:
         first = levels[0].name
         rep = write(args.out, levels, first=first, header=header, fraction=args.fraction)
         _print_g3d_report(rep)
+        if args.fine and Path(args.fine).exists():
+            from .export.build import loop_report
+
+            for label, f in (("avec CTCF", Path(args.fine)), ("témoin sans CTCF", Path(args.fine).with_name(Path(args.fine).stem + "-ko.npz"))):
+                if not f.exists():
+                    continue
+                r = loop_report(f)
+                kinds = " · ".join(f"{k} {v['drawn']}/{v['planted']}" for k, v in r["by_kind"].items())
+                print(f"\n  boucles, {label} : {r['drawn']} paires sur {r['candidates']} au-dessus de "
+                      f"{r['threshold']:.0%} (max {r['max_weight']:.3f}) — plantées retrouvées : {kinds} ; "
+                      f"hors vérité : {r['unplanted']}")
         for lv in levels:
             if lv.fit:
                 f = lv.fit
