@@ -111,8 +111,9 @@ volume lisible. Mesurée image par image, la plongée n'a **aucun saut** : chaqu
 l'écran autant que le mouvement de caméra seul, quand les mêmes transitions en marches sèches
 font 1,7 à 3,8 fois plus. Les compartiments sont **ceux du modèle**, appelés sur sa propre carte
 de contacts comme on le ferait sur du Hi-C : un damier fort et reproductible, qui suit la
-position radiale — une prédiction à confronter à Rao 2014, pas une mesure. Les 60 images par
-seconde, elles, ne se mesurent pas ici ; une page de banc matériel les attend
+position radiale — une prédiction à confronter à Rao 2014, pas une mesure. Et les 60 images par
+seconde tiennent sur deux vrais appareils, mesurés par une page de banc : un GPU **intégré** Intel
+Iris Xe (2,6 ms de rendu par image) et un iPhone 14 (3 ms), sans une image perdue
 ([`docs/VALIDATION.md` § S10](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai

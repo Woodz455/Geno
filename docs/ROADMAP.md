@@ -222,7 +222,7 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   (sans elle, un nuage de billes est illisible). Caméra orbitale + transition « plongée ».
 - **Fait quand** : on descend du noyau aux compartiments en plongée continue, à 60 fps sur la
   cible matérielle médiane.
-- **Fait pour la continuité ; les 60 fps attendent une mesure sur vrai matériel.** `dist/dive.html`
+- **Fait — continue, et 60 fps sur un GPU intégré.** `dist/dive.html`
   descend de 80 à 2,6 µm de champ jusqu'à ACTB sur chr7:a, par le chemin de van Wijk et Nuij
   (vitesse perçue constante, testée). Trois transitions — aperçu → noyau, autres chromosomes
   effacés, territoires → compartiments — par **fondu tramé** complémentaire (aucun trou à aucun
@@ -232,8 +232,10 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   appelés sur sa propre carte de contacts : damier fort et reproductible (force croisée 4,76,
   r = 0,98 d'une moitié de l'ensemble à l'autre) qui suit la position radiale — une prédiction,
   pas une mesure. Le saddle habituel trouvait un damier de 2,8 dans un ensemble qui n'en a pas ;
-  il est croisé. SwiftShader rend 8 images/s, borne haute sans portée : la page de banc matériel
-  est publiée et attend ses mesures. En chemin : la semaine 8 n'est reproductible qu'en
+  il est croisé. Les 60 fps, mesurés après coup par la page de banc matériel sur deux vrais
+  appareils : **Intel Iris Xe (intégré) 16,7 / 16,8 ms** d'intervalle médian / p95 et 2,6 ms de rendu
+  seul, **iPhone 14 17 / 17 ms** et 3 ms — aucune image perdue (SwiftShader : 8 images/s, borne
+  haute sans portée). En chemin : la semaine 8 n'est reproductible qu'en
   statistique (OpenMM), et `make fine` ne la reproduisait pas du tout — corrigé
   ([`VALIDATION.md` § S10](VALIDATION.md)).
 

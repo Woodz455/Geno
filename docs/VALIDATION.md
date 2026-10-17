@@ -9,7 +9,7 @@ un rapport qui n'a pas cherché.
 
 ---
 
-## S10 — La plongée est continue ; ses 60 images par seconde attendent un vrai GPU
+## S10 — La plongée est continue, et tient 60 images par seconde sur un GPU intégré
 
 ### Le critère, et les deux moitiés qu'il contient
 
@@ -18,7 +18,8 @@ matérielle médiane.** Deux affirmations de nature différente. « Continue » 
 l'algorithme : elle se mesure ici, image par image, contre un témoin construit pour échouer.
 « 60 fps sur la cible médiane » est une propriété du matériel : l'environnement ne rend que par
 SwiftShader, un rasteriseur logiciel, et aucun chiffre qui en sort ne la prouve ni ne l'infirme.
-La première moitié est tenue ; la seconde est instrumentée et **pas encore mesurée**.
+La première moitié est tenue ici. La seconde l'est sur deux vrais appareils, mesurés après coup
+par la page de banc matériel (dernière section).
 
 ### Ce qui est montré
 
@@ -152,7 +153,7 @@ et ses quatre filles de 750 kb se ressemblent. Ce n'est pas une raison de baisse
 coup ; c'est la raison pour laquelle le tableau par transition est publié — il sépare les deux
 séries partout, d'un facteur 1,8 au moins. Deux exécutions donnent les mêmes écarts au pixel près.
 
-### Les 60 images par seconde : instrumentées, pas mesurées
+### Les 60 images par seconde : mesurées sur deux vrais appareils
 
 | SwiftShader, 960 × 540 | médiane | p95 |
 |---|---:|---:|
@@ -166,10 +167,25 @@ Le chiffre qui manque vient de **la page de banc matériel** (`dist/materiel/ind
 comme page privée sur claude.ai) : elle joue la même plongée, à la résolution de l'appareil qui
 l'ouvre, en deux passes — synchronisée, pour la marge du GPU ; au rythme de
 `requestAnimationFrame` sans aucune relecture, pour ce que voit l'utilisateur — et enregistre le
-résultat là où Claude le relit. Verdict « tenu » si 95 % des intervalles sont sous 20 ms.
-**Aucune mesure n'y est encore enregistrée.** Le budget suggère que la marge est large — 10 114
-billes au plus par image, une passe géométrique, une passe d'occlusion à 16 échantillons, quand
-le spike de la semaine 4 dessinait 620 000 billes —, mais c'est une suggestion, pas une mesure.
+résultat là où Claude le relit. Verdict « tenu » si 95 % des intervalles sont sous 20 ms, seuil
+écrit dans la page avant toute mesure. Deux appareils l'ont ouverte, 240 images par passe :
+
+| appareil | GPU | canevas | intervalle rAF, médiane / p95 | images > 25 ms | rendu seul, médiane / p95 |
+|---|---|---:|---:|---:|---:|
+| iPhone 14 | Apple GPU | 716 × 403, dpr 3 | 17 / 17 ms | 0 % | 3 / 7 ms |
+| PC de bureau | Intel Iris Xe, **intégré** | 960 × 540, dpr 1 | 16,7 / 16,8 ms | 0 % | 2,6 / 4,2 ms |
+
+**Les 60 images par seconde tiennent sur les deux**, sans une image perdue : l'intervalle est celui
+de l'écran à 60 Hz, et le rendu seul en occupe 15 à 20 %. L'Iris Xe est un GPU intégré, la classe
+de la cible médiane (iGPU de portable) ; c'est lui qui tranche le critère. Le budget de la semaine
+4 le laissait attendre — 10 114 billes au plus par image quand le spike en dessinait 620 000 —,
+c'est maintenant mesuré.
+
+Trois réserves, à garder avec ces chiffres. Le canevas de l'iPhone est celui de la mise en page
+(716 × 403), pas l'écran entier (1 170 × 2 532) : la charge de fragments plein écran est environ
+dix fois plus grande, et la marge mesurée (rendu seul 3 ms sur 16,7) dit qu'elle tiendrait
+probablement, pas qu'elle tient. Safari arrondit `performance.now()` à la milliseconde, d'où les
+temps entiers. Aucun GPU dédié n'a été mesuré ; il n'est pas la cible.
 
 ### La semaine 9 tient encore
 
@@ -241,7 +257,8 @@ moyennées, et le nombre de pixels qui basculent d'un échantillon — avec des 
 
 ### Ce que ça ne dit pas
 
-**Rien des fps sur une vraie cible**, tant que la page de banc n'a pas reçu de mesure. **Rien
+**Rien des fps plein écran sur téléphone** ni sur un portable bas de gamme : deux appareils, pas
+une flotte. **Rien
 des compartiments réels** : ceux du modèle sont une prédiction. **L'Xi n'est pas replié
 autrement que l'Xa** : il est montré sans compartiment parce qu'il n'en a pas in vivo, pas parce
 que le modèle l'aurait trouvé. **Le tramage se voit** pendant une transition — un grain fixe à
