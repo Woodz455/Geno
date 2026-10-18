@@ -9,6 +9,192 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S12 — Du noyau à une base de TP53 : la vraie séquence, une hélice qui tient, aucun chargement visible
+
+### Le critère, traduit
+
+**Fait quand : un zoom continu enregistré, du noyau jusqu'à une base précise de TP53, sans
+coupure ni chargement visible.** Quatre mots, quatre mesures, fixées avant de mesurer :
+
+1. **« une base précise de TP53 »** : la base est désignée par l'annotation, pas recopiée — c.818
+   du transcrit MANE de GENCODE, codon 273 — et ce que l'image dessine à cet endroit est la base
+   du génome ;
+2. **« la double hélice »** : la géométrie B est juste — pas, twist, sillons, sens — et le chemin
+   de l'ADN qui la porte a une longueur, à la base près ;
+3. **« sans coupure »** : la plongée, de 80 µm à 4 nm de champ, ne saute jamais — sur le rendu
+   image par image, et sur la vidéo enregistrée elle-même ;
+4. **« sans chargement visible »** : jouée en temps réel, réseau bridé, aucune image ne montre
+   une hélice due sans sa séquence ou des nucléosomes dus pas encore générés — et un témoin sans
+   préchargement, lui, en montre.
+
+### Ce qui a changé sous le projet : le réseau
+
+Le 2026-10-18, les dépôts primaires répondent ; ils renvoyaient 403 depuis la semaine 1. La
+semaine 12 n'en prend que ce dont elle a besoin, verrouillé par le manifeste et confronté à
+l'empreinte publiée par chaque dépôt ([`DATA_SOURCES.md` § 8](DATA_SOURCES.md)) : `hg38.2bit`
+(md5 = celui d'UCSC), GENCODE v50 basic (md5 = celui d'EBI), les longueurs de chromosomes.
+
+| Contrôle | Résultat |
+|---|---|
+| table interne des 24 longueurs contre `hg38.chrom.sizes` | **identiques**, à la base près |
+| fenêtre chr17:7 673 797–7 673 808 lue par notre lecteur `.2bit`, contre l'API UCSC | `AAACACGCACCT` les deux fois |
+| c.818 de TP53 recalculé depuis les CDS de ENST00000269305.9 (MANE Select) | chr17:7 673 802 = rs28934576 (R273H) |
+| codon 273 lu dans le génome, brin codant | **CGT** (Arg) |
+| c.1 de TP53 et d'ACTB | **ATG** les deux |
+
+Un défaut trouvé en chemin : le caryotype cherchait `hg38.chrom.sizes` dans `data/core/`, où
+`make data-core` ne dépose rien (il écrit dans `data/raw/core/`). Le fichier verrouillé n'aurait
+jamais fait foi. Corrigé ; les longueurs étant identiques, aucun modèle n'en change.
+
+### La région fine de TP53 : la méthode de S8, rejouée, et un piège de graine
+
+`make fine-tp53` : chr17:5,67–9,67 Mb, 2 000 monomères de 2 kb, 1 200 conformations, sites CTCF
+**plantés** comme en S8 (décision prise avec l'utilisateur : le rattrapage des données réelles
+est une étape à part).
+
+La première exécution reprenait les graines d'ACTB, et le bilan des boucles était **identique**
+à celui d'ACTB, au dixième près. La cause : le 1D (extrusion, numpy à graines fixes) et le
+placement des sites ne dépendent que des graines, pas de la région — les mêmes sites aux mêmes
+rangs, les mêmes boucles. C'eût été afficher sous TP53 une copie de l'agencement d'ACTB.
+Relancée avec ses propres graines (`--site-seed 17 --first-seed 17000`) :
+
+| | ACTB (S8) | TP53 |
+|---|---:|---:|
+| frontières retrouvées (deux sens bloqués) | 12/13 | 11/13 |
+| points d'angle convergents / hasard | 2,57× | 2,67× |
+| … sans CTCF | 1,06 | 0,96 |
+| arcs au seuil de 5 % : convergents / divergents / tandem | 11/14 · 0/3 · 1/3 | 13/15 · 0/5 · 1/4 |
+| arcs sans CTCF | 0 (max 0,003) | 0 (max 0,011) |
+| raccord, pire rapport R(s) | 2,42× | 2,54× |
+| pose sur le noyau, RMSD | 426 nm | 375 nm |
+
+Le mécanisme se reproduit sur une autre région, et le raccord échoue de la même façon.
+
+### Le chemin de l'ADN : une longueur, à la base près
+
+Mesuré sur 30 monomères (60 000 paires) d'une fibre synthétique à volume exclu, dans la suite
+headless S12 :
+
+| Propriété | Mesure | Critère fixé d'avance |
+|---|---|---|
+| pas sur les liens | 0,34 nm, écart max **0,37 %** | 1 % |
+| pas sur l'ADN enroulé (imposé par 1,67 tour de 4,18 nm) | 0,3017 nm, écart max 0,02 % | 1 % |
+| plus grand coude d'une base à la suivante | **16,7°**, 0 pas au-delà de 20° | 20° |
+| twist sur l'ADN enroulé | 34,29°, écart max 0,45° (torsion de la superhélice) | 0,6° |
+| twist moyen | 34,04° ; tous les pas à droite | 34,29 ± 0,5° |
+| superhélice gauche | 300/300 cœurs | tous |
+| cœurs à moins de 10 nm | 0 dans un monomère, 0 entre voisins | 0 ; ≤ 2 % entre monomères |
+| déterministe, indépendant de l'ordre de calcul | oui ; une autre graine déplace tout | — |
+
+Le chemin y est arrivé par quatre échecs, que le test a vus et que voici, parce que chacun
+aurait produit une hélice fausse à l'écran :
+
+1. **Liens allongés par leurs tangentes** : la première Hermite s'allongeait en grandissant ses
+   tangentes, et rebroussait — 174° d'une base à la suivante, et des pas de 0,1 nm. Remplacée
+   par une bosse en sin²(πu), qui allonge sans toucher aux tangentes d'extrémité.
+2. **Corde visée trop courte** : les cœurs étaient placés au plus près du précédent, et les
+   liens recevaient deux fois leur corde en longueur ; ils se repliaient en épingle (115°). La
+   corde visée est maintenant la longueur moyenne d'un lien moins 15 % de mou, et les pas sont
+   partagés en proportion des cordes.
+3. **Tangentes à rebours** : une sortie de cœur tournée à l'envers de la corde annule la dérivée
+   de l'Hermite près du bout — 97°. Avec des tangentes dans le sens de la corde et λ ≤ corde, la
+   courbe avance toujours le long de celle-ci : c'est maintenant une quasi-contrainte du placement,
+   avec une anticipation vers la cible suivante.
+4. **Régler jusqu'à ce que ça passe** : chaque réglage déplaçait le défaut ailleurs (26°, puis
+   40°, au gré du tirage). La construction juge désormais chaque réalisation de monomère et la
+   retire si un lien se coude de plus de 18° par base. Le critère du test, 20°, n'a pas bougé.
+
+Les cœurs de deux monomères voisins se touchaient dans 19 % des paires avant la contrainte des
+demi-espaces (chaque cœur à au moins 5,5 nm des plans de jonction de son monomère) ; 0 après.
+
+### La double hélice : géométrie, couleurs, picking
+
+| Propriété | Mesure | Référence |
+|---|---|---|
+| rayon des phosphates | 8,91 Å | modèle de fibre B (Arnott) |
+| pas de l'hélice | 3,5700 nm, 10,5 pb/tour | 3,57 nm |
+| petit sillon / grand sillon (P–P le plus court − 5,8 Å) | **5,4 / 11,8 Å** | 5,7 / 11,7 Å publiés |
+| témoin sans décalage axial ±2,85 Å | rapport des sillons 1,11 au lieu de 1,57 | doit s'égaliser |
+| barreaux qui traversent un squelette | 0 | 0 |
+| couleur de chaque pixel de barreau = sa base | **100 %** de 7 236 pixels | > 99 % |
+| témoin : séquence décalée d'une base | 18,8 % | < 50 % |
+| picking d'un barreau, contre un lancer de rayon analytique | **201/203** pixels non ambigus | ≥ 99 % |
+
+Le picking a demandé deux corrections **de l'oracle**, pas du rendu : viser le milieu d'un
+barreau comptait faux quand un voisin à 0,34 nm le cachait légitimement ; puis l'oracle donnait
+tout un segment de squelette à sa première base, quand le tube le partage entre ses deux points
+(« un pixel appartient au point le plus proche »). Ce qui est garanti est qu'un clic sur un
+barreau rend sa base ; le squelette entre deux phosphates n'appartient à une base que par
+convention, et il est compté à part.
+
+**Fidélité dans la plongée elle-même** (`node tools/fidelity.mjs`) : la vue finale, 4 nm de
+champ sur TP53 c.818, chaque pixel de barreau classé par teinte, une lettre votée par base
+visible, contre la séquence relue par Python **directement dans `hg38.2bit`** — ni par le `.g3d`,
+ni par le navigateur : **90/90 bases**, témoin décalé d'une base 23 %. La base visée est dessinée
+C sur le brin + et G sur le brin −, comme dans le génome. Une première version éclaircissait la
+base visée pour la distinguer : son C virait au cyan, lu A par la mesure — et par l'œil. Elle
+garde sa couleur ; seule son épaisseur la marque.
+
+### « Sans coupure »
+
+MESURE_CONTINUITE
+
+### « Sans chargement visible »
+
+MESURE_CHARGEMENT
+
+### L'enregistrement
+
+MESURE_VIDEO
+
+### Le raccord S8, mesuré une seconde fois
+
+Au milieu du fondu billes → fibre (2,1 µm de champ), sur l'image (`node tools/loop.mjs`) :
+
+| Région | Part de la fibre dans la silhouette des billes qu'elle détaille | Écart des centres |
+|---|---:|---:|
+| chr7:a, ACTB | 45 % | 8 % de la hauteur |
+| chr17:a, TP53 | **11 %** | 13 % |
+
+Le fondu tramé rend la plongée continue à l'œil ; il ne rend pas la fibre juste. À TP53, ce qui
+apparaît est presque entièrement **à côté** de ce qui disparaît. C'est le défaut S8, rendu
+visible comme convenu, et la raison de la semaine de modélisation qui reste à planifier.
+
+### Non-régression
+
+MESURE_REGRESSION
+
+### Ce que ça ne dit pas
+
+- **La séquence est réelle ; sa position ne l'est pas.** La base c.818 est où le chemin d'ADN
+  la pose : sur un nucléosome illustratif, sur une fibre simulée, aux CTCF plantés, posée sur un
+  noyau simulé dont le raccord échoue. L'écran le dit à chaque échelle (ligne de provenance).
+- **L'hélice est idéale.** 10,5 pb/tour partout, y compris sur le cœur (10,2 in vivo) ; aucun
+  effet de séquence sur la géométrie locale (roulis, inclinaison, courbure intrinsèque) ; pas de
+  sillons comprimés côté octamère.
+- **Les nucléosomes sont placés, pas positionnés** : répétition de 200 pb en moyenne, liens de
+  longueur variable, aucune MNase-seq lue.
+- **L'enregistrement ne prouve pas l'absence de chargement** : rendu image par image, chaque
+  image attend d'être complète. C'est la mesure en temps réel qui le prouve, sous SwiftShader —
+  donc avec une caméra qui avance par grands pas, et un réseau qui, lui, est réaliste.
+- **Les 60 fps de la plongée jusqu'à la base** ne peuvent venir que du banc matériel.
+
+### Reproduire
+
+```
+cd pipeline && make data-core data-seq && make data-lock     # 9 entrées, empreintes contrôlées
+make fine-tp53 && make g3d && make test
+cd .. && pnpm build && pnpm verify
+node tools/test-g3d.mjs          # lecture croisée, séquence comprise
+node tools/dive.mjs 600          # continuité, 80 µm → 4 nm
+node tools/stream.mjs 9 40       # temps réel, Slow 4G, avec et sans préchargement
+node tools/fidelity.mjs          # les bases dessinées contre hg38.2bit
+node tools/loop.mjs              # S11 inchangée, et le raccord S8 sur chr7 et chr17
+node tools/record.mjs 45         # la vidéo, et sa continuité mesurée sur elle-même
+```
+
+---
+
 ## S11 — Une boucle CTCF se lit, ancres comprises ; le fondu cache le saut du raccord, pas l'écart
 
 ### Le critère, traduit

@@ -32,7 +32,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 const { proc, url, profile } = await launch();
 const browser = await cdp(url);
 const ff = spawn("ffmpeg", ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(FPS), "-i", "-",
-  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium", "-movflags", "+faststart", OUT], { stdio: ["pipe", "inherit", "inherit"] });
+  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", "-preset", "medium", "-movflags", "+faststart", OUT], { stdio: ["pipe", "inherit", "inherit"] });
 const t0 = Date.now();
 try {
   const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });

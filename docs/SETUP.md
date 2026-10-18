@@ -79,7 +79,7 @@ symboles Node dont il a besoin plutôt que d'ajouter `@types/node`.
 ## Vérifier
 
 ```console
-$ make test            # 233 tests (43 socle 1D + 141 conformation + 45 format .g3d + 4 compartiments)
+$ make test            # 242 tests (43 socle 1D + 141 conformation + 49 format .g3d + 4 compartiments + 5 séquence)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```
@@ -90,6 +90,11 @@ absents de l'interpréteur courant — le socle 1D reste testable sans la pile l
 ## Réseau
 
 `make data` a besoin d'un accès sortant vers `hgdownload.soe.ucsc.edu`, `ftp.ebi.ac.uk`,
-`data.4dnucleome.org` et `ftp.ncbi.nlm.nih.gov`. Voir
-[`DATA_SOURCES.md` § 8](DATA_SOURCES.md) pour l'état actuel et les deux façons de débloquer.
-PyPI reste joignable indépendamment de ces quatre hôtes.
+`data.4dnucleome.org` et `ftp.ncbi.nlm.nih.gov`. Depuis le 2026-10-18, ils répondent ; voir
+[`DATA_SOURCES.md` § 8](DATA_SOURCES.md) pour ce qui est récupéré et verrouillé.
+
+La semaine 12 a besoin de `make data-core data-seq` (≈ 1,7 Go : `hg38.2bit` et `hs1.2bit`) et
+de GENCODE (`gencode.annotation.gtf`, 80 Mo). Un téléchargement coupé par le réseau se reprend
+par plage (`curl -C -`) ; c'est l'empreinte, confrontée au `md5sum.txt` du dépôt puis
+verrouillée par `make data-lock`, qui dit que le fichier est entier. Sans `hg38.2bit`, `make g3d`
+écrit un fichier sans séquence, et la plongée s'arrête aux nucléosomes.

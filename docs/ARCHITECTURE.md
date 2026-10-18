@@ -69,10 +69,14 @@ d'accord par une lecture croisée sur un fichier commun (`node tools/test-g3d.mj
 │    chunks[] {first, n, bbox, sphere, columns{nom → offset, length, dtype,     │
 │              planes, filters[], sha256}},  index {copy_offsets, columns},     │
 │    attributes {nom → origin, step, missing, max_error, kind, source, …}       │
+│    links {n, kinds[], weight, columns},  targets[] {gène, position, brin, …}  │
+│  sequences[] {assembly, chrom, start, end, chunk_bp, n_runs, hashes, source}  │
 ├─ colonnes du premier rendu du niveau `first`, tous chunks, contiguës ────────┤
 │  copy u8 · position u16 × 3 plans                                           │
 ├─ le reste : colonnes paresseuses, index, autres niveaux ─────────────────────┤
 │  variability u16 · start u32 · end u32 · attr.<nom> u16 · index u32 × 3     │
+├─ séquence de référence (semaine 12), à la fin ──────────────────────────────┤
+│  par intervalle : table d'empreintes (16 o par bloc) · blocs de 2 bits/base  │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -106,8 +110,8 @@ le maximum de fin par bloc du § 8 servait des gènes, qui se chevauchent. Une r
 
 **Un repère par niveau.** Chaque niveau vit dans son repère et porte la transformation vers
 celui du noyau, **avec le bilan de l'ajustement**. Le niveau fin de la semaine 8 est posé par
-Kabsch sur six billes de chr7:a ; le RMSD restant — 395 nm — est l'échec du raccord de la
-semaine 8, et le fichier le transporte au lieu de le cacher.
+Kabsch sur six billes de chr7:a ; le RMSD restant — 426 nm, et 375 nm pour la région de TP53 sur
+chr17:a — est l'échec du raccord de la semaine 8, et le fichier le transporte au lieu de le cacher.
 
 **Intégrité par bloc.** Un sha256 (tronqué à 128 bits) par colonne, vérifié par le client à
 chaque lecture via `crypto.subtle` ; un sha256 complet de l'en-tête dans le préambule. Une
@@ -139,6 +143,26 @@ pondérées par la fraction des conformations où une cohésine les tient. Les c
 rien à la vérité plantée, ce qui permet de les juger contre elle. Les sites CTCF sont deux
 attributs (`ctcf_forward`, `ctcf_reverse` : occupation, absente sans site). 326 octets de
 colonnes pour 86 liens.
+
+**Séquence de référence (semaine 12).** Rattachée à un intervalle d'assemblage, pas à un niveau :
+`chr7:4–8 Mb` et `chr17:5,67–9,67 Mb`, la séquence sous les deux régions fines, lue dans
+`hg38.2bit` verrouillé (§ 8 de [`DATA_SOURCES.md`](DATA_SOURCES.md)). 2 bits par base (A C G T,
+poids fort d'abord), par **blocs fixes de 16 384 bases** : l'offset d'un bloc se calcule, donc
+l'en-tête ne liste rien bloc par bloc — il ne grandit que de quelques champs par intervalle. Pas
+de compression : l'ADN à 2 bits ne gagne presque rien au deflate. Les N sont empaquetés comme
+des A et listés en plages. L'intégrité passe par une **table d'empreintes** à part (16 octets par
+bloc, elle-même empreinte dans l'en-tête), lue une fois : un client qui ne lit que la fenêtre
+visible vérifie quand même chaque octet qu'il lit. Le lecteur (`packages/g3d/src/sequence.ts`)
+vit **hors de la classe `G3D`**, que la page du premier rendu embarque tout entière : y mettre la
+séquence lui coûtait 2 Kio. Il ne lit que les blocs de la fenêtre demandée, en une lecture pour
+des blocs contigus, et dit de façon synchrone si une fenêtre est déjà là (`has`) — c'est ce qui
+permet au rendu de **compter** une image qui montrerait un chargement. 4 Mb tiennent en 1 Mo ;
+une plongée jusqu'à une base en lit 11,8 Kio.
+
+**Cibles (semaine 12).** Un niveau fin porte les bases que la plongée sait viser, désignées par
+l'annotation plutôt que recopiées : `TP53 c.818` est recalculé à l'écriture depuis les CDS du
+transcrit MANE de GENCODE v50, et la base y est lue dans le génome (C sur le brin +, G sur le
+brin codant). Le client affiche ce que l'en-tête dit, provenance comprise.
 
 **Zéro dépendance de lecture.** `DecompressionStream("deflate-raw")` et `crypto.subtle` sont
 dans tous les navigateurs récents et dans Node 22. Le lecteur n'importe rien.
@@ -212,16 +236,50 @@ arcs, les flèches CTCF (manchon puis pointe), les anneaux de cohésine et l'ADN
 Les arcs sont des Bézier quadratiques entre les deux ancres, bombées hors de la boucle d'au moins
 la moitié de son étendue, d'épaisseur proportionnelle à la fréquence de la paire.
 
-**Nucléosomes.** `packages/viewer/src/disc.ts` : imposteurs d'ellipsoïdes aplatis (11 × 5,5 nm),
-rayon–ellipsoïde dans le repère propre, profondeur du point d'impact et normale de l'ellipsoïde.
-Les positions sont générées dans le client (`apps/dive/nucleosomes.ts`), déterministes par
-monomère, et **illustratives** : aucune donnée de positionnement n'est lisible.
+**Nucléosomes, et un ADN qui a une longueur (semaine 12).** `packages/viewer/src/dna.ts`
+construit l'ADN d'abord : chaque monomère de 2 kb porte 10 nucléosomes de 147 pb, de la jonction
+J(k−1), à mi-chemin du monomère précédent, à J(k). L'ADN enroulé suit une superhélice gauche de
+1,67 tour, rayon 4,18 nm, pas 2,39 nm ; un lien est une Hermite tangente à la sortie d'un cœur
+et à l'entrée du suivant, plus une bosse en sin²(πu) qui l'allonge sans toucher à ses tangentes,
+réglée par bissection pour que sa longueur soit **exactement** `pas × 0,34 nm`. Chaque base a
+donc une position, une tangente et une dyade qui tourne de 360°/10,5 par pas. Les longueurs de
+lien varient (la somme est fixée par monomère), les positions sont **illustratives** — aucun
+positionnement n'est lu — mais la géométrie est tenue, et vérifiée (§ S12) : 0,34 nm à 0,4 %
+près, aucune base coudée de plus de 20°, 0 cœur à moins de 10 nm d'un autre. Une réalisation de
+monomère est **jugée** à la construction et retirée si un lien se coude de plus de 18° par base :
+régler des paramètres jusqu'à ce qu'un tirage passe ne garantissait rien. Les cœurs restent du
+bon côté des deux plans de jonction de leur monomère, ce qui écarte deux voisins d'au moins
+11 nm sans que l'un connaisse l'autre : la génération reste **paresseuse, monomère par monomère**,
+déterministe par rang. Coût : 4,1 ms par monomère (médiane), les repères des liens n'étant
+calculés qu'à la première demande ; la plongée génère la fenêtre isolée par tranches réglées sur
+un quart de l'intervalle entre images, les plus proches du point visé d'abord, et **compte** ce
+qui manque encore quand ça devrait se voir. Dessin : l'octamère en ellipsoïde aplati
+(`disc.ts`, 3,2 × 2,9 nm), l'ADN en tube de 1 nm.
+
+**La double hélice (semaine 12).** `packages/viewer/src/helix.ts` pose, autour de chaque base du
+chemin, les deux phosphates par les coordonnées du modèle de fibre B d'Arnott (rayon 8,91 Å,
+±94,9° autour de la dyade, ±2,85 Å le long de l'axe) : c'est ce décalage, pas un réglage, qui
+ouvre un petit sillon de 5,4 Å et un grand de 11,8 Å (5,7 et 11,7 publiés). Deux squelettes en
+tube passent par les phosphates ; chaque paire est un barreau de phosphate à phosphate, coupé en
+son milieu, chaque moitié de la couleur de sa base (Okabe–Ito : A vert bleuté, C bleu ciel,
+G jaune, T vermillon). Identifiant d'une moitié : `2 × rang + brin`, si bien que le picking nomme
+une base et son brin. La géométrie n'est générée que pour la **fenêtre visible** — les paires dont
+l'axe tombe à moins de ¾ de champ du point visé, au plus 4 000 — quand celle-ci change. La couche
+de séquence (`apps/dive/sequence.ts`) précharge les blocs des monomères proches du point visé dès
+que la fibre apparaît (champ < 3 µm), un à la fois, les plus proches d'abord ; une image qui
+devrait montrer l'hélice sans sa séquence dessine l'ADN de 1 nm et est **comptée** comme un
+chargement visible. Sous 8 nm, la lettre de chaque base assez grande, tournée vers la caméra et
+dans le plan de la base visée, est posée en surimpression 2D ; la base visée porte son étiquette
+GENCODE. Sa couleur reste la sienne : l'éclaircir la faisait lire A au lieu de C, à la mesure
+comme à l'œil. Simplifications dites : 10,5 pb/tour partout, y compris sur le cœur (10,2 in
+vivo) ; le pas de l'ADN enroulé est celui qu'imposent 1,67 tour de 4,18 nm (0,30 nm), pas 0,34.
 
 **Isoler pour lire.** À l'échelle d'une boucle, la pelote de 4 Mb la cache entièrement (0 pixel
 d'ancre visible sans isolement). La boucle visée et 12 kb de contexte restent ; le reste de la
 région, **et ses annotations**, s'effacent par tramage. La caméra de la vue de boucle regarde
 perpendiculairement à l'axe base → boucle, pour que les deux flèches pointent dans le plan de
-l'image.
+l'image. Quand on plonge vers une base (semaine 12), la boucle isolée est celle qui la contient ;
+s'il n'y en a pas, ce sont les 80 kb de part et d'autre de la base.
 
 **Lisibilité du volume.** Occlusion ambiante en espace écran (`packages/viewer/src/ssao.ts`),
 hémisphère orienté par la normale, 16 échantillons, flou 4 × 4 qui respecte la profondeur. La
@@ -241,8 +299,9 @@ groupe (une copie de chromosome) éteint ne coûte rien : son quad sort du volum
 vertex shader.
 
 **Transitions entre niveaux, et l'état visuel comme fonction de la caméra.** Ce qui est montré
-— niveau de détail, chromosomes visibles, palette territoires ou compartiments — se lit sur la
-largeur de champ et la taille des billes à l'écran (`apps/dive/scene.ts`), jamais sur le temps.
+— niveau de détail, chromosomes visibles, palette territoires ou compartiments, fibre, boucle,
+nucléosomes, hélice (40 → 20 nm de champ), lettres (8 → 5 nm) — se lit sur la largeur de champ
+et la taille des billes à l'écran (`apps/dive/scene.ts`), jamais sur le temps.
 Une plongée est donc réversible et un arrêt en chemin est un état stable. Seule l'arrivée d'un
 niveau par le réseau, qui ne dépend pas de la caméra, est fondue sur 400 ms. La caméra suit le
 chemin de van Wijk et Nuij (2003), parcouru à vitesse perçue constante (`camera.ts`).

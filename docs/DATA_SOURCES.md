@@ -154,25 +154,48 @@ donnent pas.
 
 ---
 
-## 8. État au 2026-09-12
+## 8. État au 2026-10-18 : le réseau s'est ouvert
 
-`make status` : **28 entrées** — 15 `unverified`, 13 `unresolved`.
+Jusqu'à la semaine 11, l'environnement d'exécution appliquait une politique d'egress fermée :
+`hgdownload.soe.ucsc.edu`, `ftp.ebi.ac.uk`, `data.4dnucleome.org` et `ftp.ncbi.nlm.nih.gov`
+répondaient **403** au tunnel, et tout ce qui suit dans ce document était écrit sans un octet
+récupéré. Le 2026-10-18, au début de la semaine 12, ils répondent **200** — et ENCODE, 4DN, EBI,
+NCBI, l'API REST d'Ensembl et celle d'UCSC aussi.
 
-Aucune n'est encore `ok`, et ce n'est pas un oubli. L'environnement d'exécution de cette
-session applique une politique d'egress fermée : `hgdownload.soe.ucsc.edu`,
-`ftp.ebi.ac.uk`, `data.4dnucleome.org` et `ftp.ncbi.nlm.nih.gov` répondent tous **403** au
-tunnel. `make data-core` échoue donc correctement sur les six entrées, sans rien laisser
-derrière lui.
+`make status` : **28 entrées** — 9 `ok`, 7 `unverified`, 12 `unresolved`.
 
-Deux façons de débloquer :
+| Entrée | Statut | Contrôle indépendant |
+|---|---|---|
+| `hg38.chrom.sizes`, `hg38.cytoband`, `hg38.gap`, `hs1.chrom.sizes`, chaînes hg38 ↔ hs1 | `ok` | — |
+| `hg38.2bit` (835 Mo) | `ok` | md5 `dcc3ea27…` = `md5sum.txt` publié par UCSC |
+| `hs1.2bit` (812 Mo) | `ok` | md5 `68202ff4…` = `md5sum.txt` publié par UCSC |
+| `gencode.annotation.gtf` — **v50, sous-ensemble basic**, release figée | `ok` | md5 `11e77cf1…` = `MD5SUMS` publié par EBI |
 
-1. autoriser ces quatre hôtes dans la politique réseau de l'environnement ;
-2. exécuter `make data && make data-lock` sur une machine qui a l'accès, et rapatrier le
-   manifeste verrouillé — c'est précisément pour ça que les empreintes sont versionnées et
-   pas les données.
+Le téléchargement de `hg38.2bit` a été coupé deux fois par le tunnel (« connection reset »,
+`ws_closed_mid_exchange` dans l'état du proxy), puis repris par plage (`curl -C -`) : c'est
+l'empreinte, confrontée à celle du dépôt, qui dit que le fichier est entier, pas l'absence
+d'erreur.
 
-Les 13 entrées `unresolved` attendent une accession exacte. Elles ne sont pas inventées : une
-accession plausible mais fausse empoisonnerait la provenance plus sûrement qu'une case vide.
+**Ce que la semaine 12 en fait, et seulement ça.** La séquence des deux régions fines est lue
+dans `hg38.2bit` et écrite dans le `.g3d` ; la fenêtre autour de TP53 c.818 est identique,
+base pour base, à celle que rend l'API UCSC (`AAACACGCACCT` pour chr17:7 673 797–7 673 808).
+TP53 et ACTB sont situés par les CDS de leur transcrit MANE dans GENCODE v50 ; c.818 de TP53
+retombe sur chr17:7 673 802, la position de rs28934576 (R273H) dans dbSNP via Ensembl.
+
+**La table interne des longueurs de chromosomes est revérifiée** : ses 24 valeurs concordent à
+la base près avec `hg38.chrom.sizes`. Le caryotype lisait le fichier à `data/core/`, où rien
+n'arrive jamais — `make data-core` dépose dans `data/raw/core/` ; le chemin est corrigé, et les
+modèles construits désormais portent la provenance du fichier au lieu de `builtin`, pour des
+longueurs identiques. Les modèles déjà écrits (semaines 6 à 8) ne sont pas reconstruits : ils
+n'en changeraient pas d'une base.
+
+**Ce qui reste à faire, et qui est maintenant faisable.** Les 12 entrées `unresolved` attendent
+toujours une accession exacte (4DN, ENCODE, JASPAR) — elles ne sont pas inventées ; les 7
+`unverified` (Hi-C de Rao 2014, ClinVar, GWAS, MONDO) n'ont pas encore été récupérées. Les
+positions du modèle, elles, restent toutes **simulées** : le noyau sur une piste LAD synthétique,
+les régions fines sur des sites CTCF **plantés**. Remplacer cela — DamID publié, CTCF d'ENCODE
+orientés par le motif sur la vraie séquence, Hi-C de Rao 2014 en validation — est le rattrapage
+des semaines 1 à 8, décidé comme une étape à part, après la semaine 12.
 
 ### Ce qui tourne quand même, et à quel prix
 
@@ -181,16 +204,15 @@ chromosome est une propriété déterministe de l'assemblage, pas une mesure, ma
 donnée et la règle du projet est qu'une donnée remonte à un fichier empreint. D'où une
 hiérarchie explicite :
 
-1. si `data/core/hg38.chrom.sizes` existe — donc récupéré et verrouillé par `make data-core` —
+1. si `data/raw/core/hg38.chrom.sizes` existe — donc récupéré et verrouillé par `make data-core` —
    c'est lui qui fait foi ;
 2. sinon, une table interne à `geno_pipeline/nucleus/karyotype.py`, et **tout ce qui en découle
    est estampillé `builtin`**.
 
 L'estampille n'est pas décorative : elle sort dans l'en-tête de `make nucleus` et dans le
-`.json` frère de chaque structure écrite. Aujourd'hui tout est `builtin`, et il faudra
-revérifier la table contre le fichier officiel dès que l'hôte sera joignable.
+`.json` frère de chaque structure écrite.
 
-Même logique pour la piste LAD, qui n'a aucune entrée récupérable pour l'instant : le modèle en
-fabrique une, synthétique, calibrée sur les statistiques publiées de taille et de couverture, et
+Même logique pour la piste LAD, qui n'a toujours aucune entrée résolue : le modèle en fabrique
+une, synthétique, calibrée sur les statistiques publiées de taille et de couverture, et
 l'estampille `lad_source: "synthetic"`. Ce qui s'en déduit est géométrique ; la corrélation avec
-le DamID publié, elle, attend le réseau.
+le DamID publié attend que l'accession soit figée.
