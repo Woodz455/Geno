@@ -275,8 +275,8 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   sous 8 nm, les lettres. Mesures : **0 saut** sur 600 images (transitions à 0,94–1,00× le
   mouvement seul, témoin jusqu'à 7,4×) ; **0 image en attente** jouée en temps réel sous Slow 4G,
   contre 1 pour le témoin sans préchargement, en lisant 11,8 Kio de séquence sur 2 Mo ; **90/90**
-  bases dessinées égales au génome relu par Python. La vidéo enregistrée est mesurée sur
-  elle-même. Le raccord S8, mesuré cette fois sur chr17, est pire qu'à ACTB : 11 % de la fibre
+  bases dessinées égales au génome relu par Python. La vidéo enregistrée (49 s, 1 350 images)
+  est mesurée sur elle-même : 0 saut, lettres comprises. Le raccord S8, mesuré cette fois sur chr17, est pire qu'à ACTB : 11 % de la fibre
   dans ses billes contre 45 % ([`VALIDATION.md` § S12](VALIDATION.md)).
 
 ---

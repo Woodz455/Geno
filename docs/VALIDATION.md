@@ -199,7 +199,17 @@ sept blocs de 4 Ko). À dire avec le résultat :
 
 ### L'enregistrement
 
-MESURE_VIDEO
+`node tools/record.mjs 45` : 1 350 images de la plongée, rendues une à une dans Chromium headless
+en 1 280 × 720 avec leur surimpression (lettres, étiquette de la base visée, légende d'échelle
+et de provenance), capturées par CDP, encodées par ffmpeg en H.264 à 30 i/s — 1,5 s tenue au
+départ, 3 s à l'arrivée. **`dist/plongee-tp53.mp4`, 49,4 s, 21,1 Mo**, rendue en 17 min ; elle
+n'entre pas dans git.
+
+Sa continuité est mesurée **sur la vidéo encodée elle-même** — écart moyen de luminance d'une
+image à la suivante (`tblend` + `signalstats` de ffmpeg), même détecteur qu'au banc : **0 saut**,
+pire rapport 2,11, écart médian 2,49/255. Cette mesure-là voit la surimpression : les lettres
+qui paraissent entre 8 et 5 nm de champ, que le banc WebGL ne voyait pas, ne font pas sauter
+l'image.
 
 ### Le raccord S8, mesuré une seconde fois
 
