@@ -137,7 +137,34 @@ garde sa couleur ; seule son épaisseur la marque.
 
 ### « Sans coupure »
 
-MESURE_CONTINUITE
+`node tools/dive.mjs 600` : la plongée entière, de 80 µm à 4 nm de champ, 600 images à pas
+constant sur le chemin de van Wijk et Nuij, écart moyen de chaque image à la précédente. Même
+détecteur qu'en S10 et S11 — un saut est un écart trois fois plus grand que la médiane de ses 20
+voisines. Le témoin fait les mêmes transitions en marches sèches.
+
+| Transition | Champ | Fondu | Sèche |
+|---|---:|---:|---:|
+| niveau de détail 3 Mb → 750 kb | 19,8 µm | 0,94× | 1,37× |
+| autres chromosomes effacés | 12,5 µm | 0,98× | 2,88× |
+| territoires → compartiments | 5,26 µm | 0,96× | 3,00× |
+| billes 750 kb → fibre 2 kb (raccord S8) | 2,10 µm | 1,00× | 7,41× |
+| la boucle s'isole | 0,91 µm | 0,98× | 4,51× |
+| fibre → nucléosomes | 170 nm | 0,96× | 2,39× |
+| ADN de 1 nm → double hélice | 27,8 nm | **0,96×** | 2,76× |
+| les lettres paraissent | 6,3 nm | 0,97× | 0,97× |
+
+**0 saut** dans la plongée, 3 dans le témoin. Deux lectures honnêtes du tableau :
+
+- le témoin de l'hélice (2,76×) passe **sous** le seuil de 3 fixé en S10, comme celui du niveau
+  de détail (1,37×) : à 28 nm de champ, un ADN de 1 nm et une double hélice de 2 nm occupent
+  presque les mêmes pixels, et une marche sèche ne change que ~3× l'écran. Le seuil, fixé
+  d'avance, n'est pas abaissé pour l'attraper ; le rapport est publié ;
+- les **lettres** sont une surimpression 2D, hors de l'image WebGL que ce banc relit : 0,97× des
+  deux côtés ne prouve rien pour elles. Leur continuité est mesurée sur la vidéo, qui les
+  contient (ci-dessous).
+
+SwiftShader : 246 ms par image en médiane, p95 1 480 ms — une borne haute, sans portée pour les
+fps.
 
 ### « Sans chargement visible »
 
