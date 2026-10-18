@@ -166,8 +166,10 @@ export class HelixRenderer {
           pts.set(from, 3 * o);
           pts.set(m, 3 * (o + 1));
           radii[o] = radii[o + 1] = r;
-          let c = BASE_COLORS[letter] ?? BASE_COLORS.N;
-          if (hot) c = [Math.min(1, c[0] * 1.25 + 0.15), Math.min(1, c[1] * 1.25 + 0.15), Math.min(1, c[2] * 1.25 + 0.15)];
+          // La base visée garde **sa** couleur : seule l'épaisseur la distingue. L'éclaircir,
+          // comme la première version, faisait virer le C au cyan — lu A par la mesure de
+          // fidélité, et par l'œil.
+          const c = BASE_COLORS[letter] ?? BASE_COLORS.N;
           colors.set(c, 3 * o);
           colors.set(c, 3 * (o + 1));
           rid[o] = rid[o + 1] = ids[2 * q + h];

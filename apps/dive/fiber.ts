@@ -10,14 +10,15 @@
  *    plus épais qu'une cohésine les tient souvent sur les 1 200 conformations. Un arc n'est
  *    pas une liaison de la structure affichée : c'est une fréquence de population, dessinée
  *    là où sont ses deux ancres dans cette structure-ci ;
- *  - **les nucléosomes**, illustratifs, quand on descend sous 250 nm de champ.
+ *  - **les nucléosomes**, illustratifs, quand on descend sous 250 nm de champ : l'octamère
+ *    et l'ADN qui s'y enroule, le long d'un chemin dont chaque base a une position
+ *    (`DnaPath`, semaine 12) — c'est sur ce chemin que la double hélice se pose ensuite.
  *
  *  Tout est dans le repère du noyau (la pose de la semaine 9), en µm.
  */
 
 import { type G3D, toNucleus } from "@geno/g3d";
-import { EllipsoidRenderer, TubeRenderer } from "@geno/viewer";
-import { nucleosomes } from "./nucleosomes.js";
+import { type Core, DnaPath, EllipsoidRenderer, OCTAMER_NM, PER_MONOMER, TubeRenderer } from "@geno/viewer";
 
 export const IDS = {
   fiber: 2_000_000,
@@ -25,6 +26,8 @@ export const IDS = {
   ring: 3_100_000,
   arc: 3_200_000,
   nucleosome: 4_000_000,
+  /** Semaine 12 : une base, `2 × rang + brin + 1`, sur la région fine. */
+  base: 5_000_000,
 };
 
 /** Seuil des arcs, fixé avant toute mesure : une paire tenue dans au moins 5 % des
@@ -66,6 +69,8 @@ export interface FiberState {
   loop: number;
   /** 0 → 1 : le tube cède aux nucléosomes. */
   nuc: number;
+  /** 0 → 1 : l'ADN de 1 nm cède à la double hélice (semaine 12, dessinée ailleurs). */
+  helix: number;
 }
 
 export interface Fiber {
@@ -82,8 +87,18 @@ export interface Fiber {
   focus: Loop | null;
   draw(proj: Float32Array, view: Float32Array, height: number, s: FiberState): void;
   describe(id: number): Promise<string | null>;
-  /** Nucléosomes générés (après la première descente sous 250 nm). */
+  /** Nucléosomes générés jusqu'ici. */
   nucleosomeCount(): number;
+  /** Le chemin de l'ADN de la région (semaine 12). */
+  path: DnaPath;
+  /** Monomères de la fenêtre isolée, du plus proche au plus lointain d'un point. */
+  windowNear(p: number[]): number[];
+  /** Génère des monomères de la fenêtre, les plus proches de `p` d'abord, pendant au plus
+   *  `budgetMs`. Rend le nombre de monomères générés. */
+  grow(p: number[], budgetMs: number): number;
+  /** Monomères de la fenêtre à moins de `r` µm de `p` qui ne sont pas encore générés. */
+  missing(p: number[], r: number): number;
+  generated(k: number): boolean;
 }
 
 const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -101,6 +116,8 @@ export async function openFiber(
   name = "fin",
   nearMonomer = 763,
   isolate = true,
+  /** Le monomère de la base visée (semaine 12) : la fenêtre isolée le couvre aussi. */
+  targetMonomer = -1,
 ): Promise<Fiber | null> {
   if (!g3d.header.levels.some((l) => l.name === name)) return null;
   const frame = await g3d.firstFrame(name);
@@ -151,7 +168,14 @@ export async function openFiber(
   const pairWeight = (l: Loop) =>
     Math.max(0, ...arcs.filter((a) => Math.abs(a.i - l.i) <= 2 && Math.abs(a.j - l.j) <= 2).map((a) => a.weight));
   const ctcfHeld = held.filter((l) => l.kind === "cohesin_ctcf").sort((a, b) => dist(a) - dist(b));
-  const focus = ctcfHeld.find((l) => pairWeight(l) >= ARC_THRESHOLD) ?? ctcfHeld[0] ?? null;
+  let focus = ctcfHeld.find((l) => pairWeight(l) >= ARC_THRESHOLD) ?? ctcfHeld[0] ?? null;
+  // Semaine 12 : on plonge vers une base, pas vers une boucle. La boucle visée est alors celle
+  // qui **contient** la base, s'il y en a une ; sinon aucune, et la fenêtre isolée devient le
+  // voisinage génomique de la base — une boucle voisine isolée seule laissait la base hors
+  // champ, sur 12 kb de fibre perdus au milieu de l'image.
+  if (targetMonomer >= 0 && focus && !(targetMonomer >= focus.i && targetMonomer <= focus.j)) {
+    focus = held.filter((l) => targetMonomer >= l.i && targetMonomer <= l.j).sort((a, b) => (a.kind === "cohesin_ctcf" ? 0 : 1) - (b.kind === "cohesin_ctcf" ? 0 : 1) || (a.j - a.i) - (b.j - b.i))[0] ?? null;
+  }
   // La fenêtre de la boucle visée, avec 6 monomères (12 kb) de contexte de part et d'autre
   // pour que ses ancres ne flottent pas dans le vide — 15 masquaient la boucle de face. Fibre **et annotations** s'isolent ensemble :
   // la première version n'effaçait que la fibre, et les 40 flèches, 20 anneaux et 13 arcs de
@@ -159,7 +183,10 @@ export async function openFiber(
   const MARGIN = 6;
   // `isolate = false` est le **témoin** de la mesure de lisibilité : mêmes annotations, rien
   // d'effacé autour.
-  const inWindow = (k: number) => !isolate || !focus || (k >= focus.i - MARGIN && k <= focus.j + MARGIN);
+  const CONTEXT = 40;          // 80 kb de part et d'autre de la base, sans boucle qui la contienne
+  const inWindow = (k: number) =>
+    !isolate || (!focus && targetMonomer < 0) || (focus !== null && k >= focus.i - MARGIN && k <= focus.j + MARGIN) ||
+    (targetMonomer >= 0 && Math.abs(k - targetMonomer) <= (focus ? MARGIN : CONTEXT));
 
   // — La fibre : deux palettes, territoire et « boucle visée » —
   const fiber = new TubeRenderer(gl);
@@ -293,39 +320,60 @@ export async function openFiber(
     }
   }
 
-  // — Nucléosomes et ADN de liaison, générés à la première descente —
-  let nucs: EllipsoidRenderer | null = null;
-  let linker: TubeRenderer | null = null;
-  let nucMonomer: Uint32Array | null = null;
-  let nucOwner: number[] = [];
-  let nucLoop = -1;
-  let nucCount = 0;
-  const makeNucleosomes = () => {
-    const nu = nucleosomes(points, lv.radius_nm[0] / 1000);
-    nucCount = nu.count;
-    nucMonomer = nu.monomer;
-    const colors = new Float32Array(nu.count * 3);
-    for (let q = 0; q < nu.count; q++) {
-      const k = nu.monomer[q];
-      colors.set(focus && k >= focus.i && k <= focus.j ? COLORS.loop : COLORS.core, 3 * q);
-    }
-    nucOwner = Array.from(nu.monomer, (k) => (inWindow(k) ? 1 : 0));
-    nucs = new EllipsoidRenderer(gl);
+  // — Nucléosomes et ADN : le chemin de la semaine 12, généré monomère par monomère —
+  // Un monomère coûte quelques millisecondes : on ne génère que la fenêtre isolée, les plus
+  // proches de la caméra d'abord, par tranches réglées sur un budget par image. Ce qui n'est
+  // pas encore là quand il devrait se voir est **compté** (`missing`) — un chargement visible.
+  const path = new DnaPath(points, lv.bp_per_bead, lv.radius_nm[0], 0.001);
+  const windowList: number[] = [];
+  for (let k = 0; k < n; k++) if (inWindow(k)) windowList.push(k);
+  const done = new Uint8Array(n);
+  const doneList: number[] = [];
+  const nucs = new EllipsoidRenderer(gl);
+  const dna = new TubeRenderer(gl);
+  let uploaded = 0;
+  let nucCores: Core[] = [];
+  const AXIS_EVERY = 6;
+  const rebuild = () => {
+    const ordered = doneList.slice().sort((a, b) => a - b);
+    nucCores = ordered.flatMap((k) => path.monomer(k).cores);
+    const m = nucCores.length;
+    const centers = new Float32Array(m * 3);
+    const axes = new Float32Array(m * 3);
+    const radii = new Float32Array(m * 2);
+    const colors = new Float32Array(m * 3);
+    nucCores.forEach((c, q) => {
+      centers.set(c.center, 3 * q);
+      axes.set(c.axis, 3 * q);
+      radii.set([OCTAMER_NM[0] / 1000, OCTAMER_NM[1] / 1000], 2 * q);
+      colors.set(focus && c.monomer >= focus.i && c.monomer <= focus.j ? COLORS.loop : COLORS.core, 3 * q);
+    });
     nucs.upload({
-      centers: nu.centers,
-      axes: nu.axes,
-      radii: nu.radii,
-      ids: Uint32Array.from({ length: nu.count }, (_, q) => IDS.nucleosome + q + 1),
-      colors,
-      count: nu.count,
+      centers, axes, radii, colors, count: m,
+      ids: Uint32Array.from(nucCores, (c) => IDS.nucleosome + c.index + 1),
     });
-    linker = new TubeRenderer(gl);
-    linker.upload({
-      points: nu.centers,
-      radii: new Float32Array(nu.count).fill(0.001),
-      colors: Float32Array.from(Array.from({ length: nu.count }, () => COLORS.dna).flat()),
-    });
+    // L'ADN de 1 nm : une polyligne par suite de monomères contigus déjà générés.
+    const pts: number[] = [];
+    const breaks: number[] = [];
+    let prev = -2;
+    for (const k of ordered) {
+      if (k !== prev + 1 && pts.length) breaks.push(pts.length / 3);
+      const ax = path.axis(k * lv.bp_per_bead, (k + 1) * lv.bp_per_bead, AXIS_EVERY);
+      for (let i = 0; i < ax.length; i += 3) pts.push(ax[i], ax[i + 1], ax[i + 2]);
+      prev = k;
+    }
+    const np = pts.length / 3;
+    if (np >= 2) {
+      dna.upload({
+        points: Float32Array.from(pts),
+        radii: new Float32Array(np).fill(0.001),
+        colors: Float32Array.from(Array.from({ length: np }, () => COLORS.dna).flat()),
+        breaks,
+      });
+    }
+    uploaded = doneList.length;
   };
+  const dist2 = (k: number, p: number[]) => (points[3 * k] - p[0]) ** 2 + (points[3 * k + 1] - p[1]) ** 2 + (points[3 * k + 2] - p[2]) ** 2;
 
   const fade = new Float32Array(n);
   let lastLoop = -1;
@@ -339,7 +387,29 @@ export async function openFiber(
     held,
     arcs,
     focus,
-    nucleosomeCount: () => nucCount,
+    nucleosomeCount: () => doneList.length * PER_MONOMER,
+    path,
+    windowNear: (p) => windowList.slice().sort((a, b) => dist2(a, p) - dist2(b, p)),
+    grow(p, budgetMs) {
+      const t0 = performance.now();
+      let made = 0;
+      if (doneList.length === windowList.length) return 0;
+      const todo = windowList.filter((k) => !done[k]).sort((a, b) => dist2(a, p) - dist2(b, p));
+      for (const k of todo) {
+        if (made && performance.now() - t0 > budgetMs) break;
+        path.monomer(k);
+        done[k] = 1;
+        doneList.push(k);
+        made++;
+      }
+      return made;
+    },
+    missing(p, r) {
+      let m = 0;
+      for (const k of windowList) if (!done[k] && dist2(k, p) < r * r) m++;
+      return m;
+    },
+    generated: (k) => done[k] === 1,
 
     draw(proj, view, height, s) {
       if (s.fiber <= 0) return;
@@ -365,22 +435,21 @@ export async function openFiber(
         if (symbols > 0) arcTube.draw(proj, { view, height, fade: symbols, idBase: IDS.arc });
       }
       if (s.nuc > 0) {
-        if (!nucs) makeNucleosomes();
-        if (s.loop !== nucLoop) {
-          const a = Float32Array.from(ownerFade(nucOwner, s.loop));
-          nucs!.setAlpha(a);
-          linker!.setFade(a);
-          nucLoop = s.loop;
+        if (doneList.length !== uploaded) rebuild();
+        // Les nucléosomes complètent le tube (h ≥ 1 − nuc), puis cèdent eux-mêmes à la double
+        // hélice, qui garde h < helix : à nuc = 1, les deux masques se partagent l'image.
+        const f = s.nuc * (1 - s.helix);
+        if (nucCores.length && f > 0) {
+          nucs.draw(proj, { view, fade: f, invert: true });
+          dna.draw(proj, { view, height, fade: f, invert: true, idBase: IDS.nucleosome });
         }
-        nucs!.draw(proj, { view, fade: s.nuc, invert: true });
-        linker!.draw(proj, { view, height, fade: s.nuc, invert: true, idBase: IDS.nucleosome });
       }
     },
 
     async describe(id) {
-      if (id >= IDS.nucleosome) {
+      if (id >= IDS.nucleosome && id < IDS.base) {
         const q = id - IDS.nucleosome - 1;
-        const k = nucMonomer ? nucMonomer[Math.max(0, q)] : 0;
+        const k = Math.floor(q / PER_MONOMER);
         return `nucléosome illustratif sur le monomère ${k} — position tirée, pas mesurée`;
       }
       if (id >= IDS.arc) {

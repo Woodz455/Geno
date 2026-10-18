@@ -75,11 +75,11 @@
 <main>
   <header style="display:grid;gap:6px">
     <h1>Banc matériel Geno</h1>
-    <p class="lede">Ce banc joue la plongée entière : du noyau de GM12878 aux compartiments de chr7 (8&nbsp;082 billes),
-      puis à la fibre de 2&nbsp;kb, à une boucle CTCF et jusqu'à ses nucléosomes (jusqu'à 20&nbsp;000 ellipsoïdes et l'ADN qui
-      les relie). Le critère est de tenir 60 images par seconde sur un appareil moyen. Le serveur de développement ne rend
-      qu'en logiciel, donc ce chiffre ne peut venir que d'ici. Les mesures de la semaine 10, plus courtes, restent dans le
-      tableau avec leur étiquette.</p>
+    <p class="lede">Ce banc joue la plongée entière de la semaine 12 : du noyau de GM12878 (8&nbsp;082 billes) à la fibre de
+      2&nbsp;kb autour de TP53 sur chr17, à ses nucléosomes, puis à la double hélice sur la séquence hg38 réelle, jusqu'à une
+      seule base — c.818, codon 273. Le critère est de tenir 60 images par seconde sur un appareil moyen. Le serveur de
+      développement ne rend qu'en logiciel, donc ce chiffre ne peut venir que d'ici. Les mesures des semaines 10 et 11, plus
+      courtes, restent dans le tableau avec leur étiquette.</p>
   </header>
 
   <div class="scene"><canvas id="scene" aria-label="Rendu de la plongée"></canvas><div class="cap" id="cap">chargement du modèle…</div></div>
@@ -115,7 +115,7 @@
     </div>
     <p class="note">Verdict « tenu » : 95 % des intervalles sous 20 ms, sur un écran à 60 Hz ou plus. Le « rendu seul » attend la fin
       du GPU après chaque image ; il dit la marge disponible, pas les fps. Données : modèle simulé (médoïde de 200 repliements),
-      compartiments appelés sur la carte de contacts du modèle.</p>
+      compartiments appelés sur la carte de contacts du modèle, nucléosomes illustratifs, séquence de référence hg38.</p>
   </section>
 </main>
 <script>/*SCRIPT*/</script>

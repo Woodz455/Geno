@@ -64,7 +64,7 @@ function renderRuns(docs: Doc[]): void {
       };
       const num = (k: string) => (typeof r[k] === "number" ? fmt(r[k] as number) : "–");
       // Les mesures d'avant la semaine 11 ne portent pas d'étiquette : elles s'arrêtaient aux
-      // compartiments.
+      // compartiments. Celles de la semaine 11 s'arrêtaient aux nucléosomes d'ACTB.
       cell(String(r.scene || "semaine 10"));
       cell(String(r.device || "—"));
       cell(String(r.gpu ?? "?"));
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   if (!embedded) throw new Error("le fichier du modèle manque à la page");
   const bytes = Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0));
   const scene = await openDive(canvas, new BufferSource(bytes));
-  $("cap").textContent = `${scene.preview.frame.count.toLocaleString("fr")} puis ${(scene.fine?.frame.count ?? 0).toLocaleString("fr")} billes · ${canvas.width}×${canvas.height}`;
+  $("cap").textContent = `${scene.preview.frame.count.toLocaleString("fr")} puis ${(scene.fine?.frame.count ?? 0).toLocaleString("fr")} billes, jusqu'à ${scene.target?.name ?? "la fibre"} · ${canvas.width}×${canvas.height}`;
 
   // Arrivée du noyau en fondu, puis une rotation lente : la scène est vivante sans être mesurée.
   const t0 = performance.now();
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
 
       const record = {
         at: new Date().toISOString(),
-        scene: "semaine 11",
+        scene: "semaine 12",
         device: ($<HTMLInputElement>("device").value || "").slice(0, 80),
         gpu: r.gpu.slice(0, 200),
         ua: navigator.userAgent.slice(0, 300),

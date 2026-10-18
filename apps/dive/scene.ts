@@ -29,6 +29,10 @@ export interface State {
   loop: number;
   /** 0 → 1 : le tube cède aux nucléosomes et à l'ADN de liaison. */
   nuc: number;
+  /** 0 → 1 : l'ADN de 1 nm cède à la double hélice, sur la séquence réelle (semaine 12). */
+  helix: number;
+  /** 0 → 1 : les lettres des bases paraissent. */
+  bases: number;
 }
 
 /** Les seuils, en unités qui ont un sens : des pixels pour le détail, des µm pour le sujet. */
@@ -48,6 +52,11 @@ export const SCHEDULE = {
   loopUm: [1.4, 0.6] as const,
   // Sous 250 nm, un monomère de 2 kb fait plus de 100 px : ses ~10 nucléosomes se voient.
   nucUm: [0.25, 0.12] as const,
+  // Semaine 12. Sous 40 nm de champ, le diamètre de 2 nm de l'ADN dépasse 25 px sur un écran
+  // de 540 px : les deux brins et leurs barreaux se séparent. À 20 nm, l'hélice est seule.
+  helixUm: [0.04, 0.02] as const,
+  // Sous 8 nm, un barreau fait plus de 60 px : une lettre y tient. À 5 nm, elles sont toutes là.
+  basesUm: [0.008, 0.005] as const,
 };
 
 export function smoothstep(a: number, b: number, x: number): number {
@@ -71,6 +80,8 @@ export function stateAt(v: View, hard = false): State {
     fiber: zoomIn(SCHEDULE.fiberUm),
     loop: zoomIn(SCHEDULE.loopUm),
     nuc: zoomIn(SCHEDULE.nucUm),
+    helix: zoomIn(SCHEDULE.helixUm),
+    bases: zoomIn(SCHEDULE.basesUm),
   };
 }
 

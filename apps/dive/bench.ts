@@ -24,15 +24,16 @@ export interface BenchResult {
   diffs: number[];
   frameMs: number[];
   rafMs: number[];
-  states: { w: number; lod: number; focus: number; mix: number; fiber: number; loop: number; nuc: number }[];
+  states: { w: number; lod: number; focus: number; mix: number; fiber: number; loop: number; nuc: number; helix: number; bases: number }[];
 }
 
-/** La plongée entière, étape par étape : vue d'ensemble → ACTB (semaine 10) → la boucle
- *  CTCF visée → son ancre, à l'échelle des nucléosomes (semaine 11). Chaque étape est un
- *  chemin de van Wijk et Nuij ; la longueur totale est leur somme, si bien qu'un pas
- *  constant en `s` garde la vitesse perçue constante d'une étape à l'autre aussi. */
+/** La plongée entière, étape par étape : vue d'ensemble → la bille visée (semaine 10) → la
+ *  boucle CTCF → son ancre (semaine 11) ; ou, en semaine 12, → la fibre → les nucléosomes →
+ *  l'hélice → une base. Chaque étape est un chemin de van Wijk et Nuij ; la longueur totale
+ *  est leur somme, si bien qu'un pas constant en `s` garde la vitesse perçue constante d'une
+ *  étape à l'autre aussi. */
 export function divePath(scene: DiveScene): { length: number; at(s: number): Orbit; stops: number[] } {
-  const orbits = [scene.start, scene.final, scene.loopView, scene.anchorView].filter((o): o is Orbit => !!o);
+  const orbits = scene.stops.length ? scene.stops : [scene.start, scene.final, scene.loopView, scene.anchorView].filter((o): o is Orbit => !!o);
   const legs = orbits.slice(1).map((o, i) => dive(orbits[i], o, FOV));
   const stops: number[] = [0];
   for (const l of legs) stops.push(stops[stops.length - 1] + l.length);
@@ -62,6 +63,11 @@ export async function runBench(scene: DiveScene, frames: number, opts: BenchOpti
   const frameMs: number[] = [];
   const states: BenchResult["states"] = [];
   scene.arrival = 1;            // le fondu d'arrivée réseau ne dépend pas de la caméra : neutralisé
+  // La passe synchronisée ne rend jamais la main : ce qui vient du réseau ou se génère par
+  // tranches doit être là avant, sinon ses dernières images seraient chronométrées sans
+  // hélice. Le chargement, lui, se mesure à part, en temps réel (`tools/stream.mjs`).
+  await scene.preload();
+  if (opts.continuity) scene.growBudgetMs = Infinity;
 
   for (let k = 0; k < 5; k++) {
     scene.render(path.at(0));
@@ -73,7 +79,7 @@ export async function runBench(scene: DiveScene, frames: number, opts: BenchOpti
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one);
     frameMs.push(performance.now() - t0);
     const st = scene.last;
-    states.push({ w: st.widthUm, lod: st.lod, focus: st.focus, mix: st.mix, fiber: st.fiber, loop: st.loop, nuc: st.nuc });
+    states.push({ w: st.widthUm, lod: st.lod, focus: st.focus, mix: st.mix, fiber: st.fiber, loop: st.loop, nuc: st.nuc, helix: st.helix, bases: st.bases });
     if (px && prev) {
       gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
       if (k > 0) {

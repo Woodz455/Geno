@@ -200,3 +200,22 @@ _COMPLEMENT = str.maketrans("ACGTN", "TGCAN")
 
 def revcomp(s: str) -> str:
     return s.translate(_COMPLEMENT)[::-1]
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m geno_pipeline.sequence <fichier.2bit> <chrom> <début> <fin>` : les bases de
+    `[début, fin)`, 0-based. Pour les outils qui comparent ce que le navigateur dessine à ce
+    que le génome dit, par un autre chemin que le `.g3d`."""
+    import sys
+
+    a = sys.argv[1:] if argv is None else argv
+    if len(a) != 4:
+        print(main.__doc__, file=sys.stderr)
+        return 2
+    with TwoBit(a[0]) as tb:
+        print(tb.fetch(a[1], int(a[2]), int(a[3])))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

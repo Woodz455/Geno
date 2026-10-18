@@ -135,6 +135,7 @@ export function measureLoop(scene: DiveScene): Legibility {
  *  centres en fraction de la hauteur de l'image. Une pose juste donnerait une fibre
  *  contenue dans les billes qu'elle détaille. */
 export interface Junction {
+  region: string;
   widthUm: number;
   beads: number;
   fiberPx: number;
@@ -146,7 +147,9 @@ export interface Junction {
 export async function measureJunction(scene: DiveScene): Promise<Junction | null> {
   const F = scene.fiber;
   const fine = scene.fine;
-  if (!F || !fine) return null;
+  const region = scene.region;
+  if (!F || !fine || !region) return null;
+  scene.arrival = 1;              // le fondu d'arrivée réseau n'est pas l'objet de la mesure
   const { divePath } = await import("./bench.js");
   const path = divePath(scene);
   // L'image où la fibre est à mi-fondu, cherchée le long de la plongée.
@@ -162,8 +165,8 @@ export async function measureJunction(scene: DiveScene): Promise<Junction | null
     }
   }
   const o = path.at((best / 400) * path.length);
-  const hits = await scene.g3d.locate(fine.name, "chr7", 4_000_000, 8_000_000);
-  const beadIds = new Set((hits.find((h) => h.copy === "chr7:a")?.ids ?? []).map((i) => i + fine.idBase));
+  const hits = await scene.g3d.locate(fine.name, region.chrom, region.start, region.end);
+  const beadIds = new Set((hits.find((h) => h.copy === region.copy)?.ids ?? []).map((i) => i + fine.idBase));
   const [W, H] = scene.size();
   const mask = (ids: Uint32Array, keep: (v: number) => boolean) => {
     const m = new Uint8Array(W * H);
@@ -185,6 +188,7 @@ export async function measureJunction(scene: DiveScene): Promise<Junction | null
     if (beads[i]) { nb++; bx += x; by += y; }
   }
   return {
+    region: `${region.copy}:${region.start.toLocaleString("fr")}-${region.end.toLocaleString("fr")}`,
     widthUm: scene.last.widthUm,
     beads: beadIds.size,
     fiberPx: nf,

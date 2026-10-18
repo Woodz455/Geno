@@ -76,6 +76,27 @@ function rotate(v: V, k: V, angle: number): V {
   return add(add(mul(v, c), mul(cross(k, v), s)), mul(k, dot(k, v) * (1 - c)));
 }
 
+/** Position et tangente d'un lien au paramètre u : Hermite + bosse, dérivée analytique. */
+function linkerPoint(L: Linker, u: number): V {
+  const u2 = u * u;
+  const bump = Math.sin(Math.PI * u) ** 2;
+  return add(add(add(mul(L.p0, 2 * u2 * u - 3 * u2 + 1), mul(L.t0, L.lambda * (u2 * u - 2 * u2 + u))),
+                 add(mul(L.p1, -2 * u2 * u + 3 * u2), mul(L.t1, L.lambda * (u2 * u - u2)))), mul(L.w, L.beta * bump));
+}
+function linkerTangent(L: Linker, u: number): V {
+  const u2 = u * u;
+  const dp = add(add(add(mul(L.p0, 6 * u2 - 6 * u), mul(L.t0, L.lambda * (3 * u2 - 4 * u + 1))),
+                     add(mul(L.p1, -6 * u2 + 6 * u), mul(L.t1, L.lambda * (3 * u2 - 2 * u)))),
+                 mul(L.w, L.beta * Math.PI * Math.sin(2 * Math.PI * u)));
+  return len(dp) < 1e-12 ? norm(sub(L.p1, L.p0)) : norm(dp);
+}
+/** Longueur d'arc au paramètre u, par la table. */
+function arcAt(table: Float64Array, u: number): number {
+  const x = u * SAMPLES;
+  const q = Math.min(SAMPLES - 1, Math.floor(x));
+  return table[q] + (table[q + 1] - table[q]) * (x - q);
+}
+
 export interface Core {
   /** Rang global du nucléosome (monomère × PER_MONOMER + rang). */
   index: number;
@@ -100,9 +121,12 @@ interface Linker {
   w: V;
   /** Longueurs cumulées aux échantillons de u. */
   table: Float64Array;
-  /** Normales transportées aux échantillons, et l'écart final à répartir. */
-  normals: V[];
+  /** Normales transportées aux échantillons, et l'écart final à répartir — calculées à la
+   *  première demande d'un repère : le tube de 1 nm n'a besoin que des positions. */
+  normals: V[] | null;
   delta: number;
+  start: { n: V };
+  end: { n: V };
 }
 
 interface Monomer {
@@ -261,7 +285,7 @@ export class DnaPath {
         const nextT = m < PER_MONOMER - 1 ? this.spline(k - 0.5 + (m + 1.5) / PER_MONOMER).p : J1.p;
         let pick: { c: Core; chord: number; score: number } | null = null;
         let crowded: { c: Core; chord: number; room: number } | null = null;
-        for (let attempt = 0; attempt < 160 && !(pick && attempt >= 40); attempt++) {
+        for (let attempt = 0; attempt < 160 && !(pick && attempt >= 16); attempt++) {
           // Si la place manque, on élargit le tirage, jusqu'à 0,75 rayon de monomère : un
           // cœur de 5,5 nm y reste entier.
           const reach = Math.min(0.75 * this.monomerRadiusNm * nm, jitter * (1 + 0.1 * Math.floor(attempt / 20)));
@@ -271,7 +295,7 @@ export class DnaPath {
           // construit sans connaître l'autre — la paresse est gardée.
           if (dot(sub(center, J1.p), J1.t) > -margin || dot(sub(center, J0.p), J0.t) < margin) continue;
           const room = Math.min(Infinity, ...cores.map((o) => len(sub(o.center, center))));
-          for (let o = 0; o < 12; o++) {
+          for (let o = 0; o < 8; o++) {
             const axis = unit();
             const [e1, e2] = frame(axis);
             const c: Core = { index: k * PER_MONOMER + m, monomer: k, center, axis, e1, e2, firstBp: 0 };
@@ -446,34 +470,49 @@ export class DnaPath {
       beta = bisect((x) => length(chord, x), 0, hi);
     }
     const table = new Float64Array(SAMPLES + 1);
-    const normals: V[] = [start.n];
     let a = p0;
-    let n = start.n;
-    let tPrev = t0;
-    let bend = 0;
     for (let q = 1; q <= SAMPLES; q++) {
       const b = curve(lambda, beta, q / SAMPLES);
       table[q] = table[q - 1] + len(sub(b, a));
-      // Transport parallèle de la normale : la rotation qui amène la tangente précédente sur
-      // la suivante, appliquée à la normale.
-      const t = q === SAMPLES ? t1 : norm(sub(curve(lambda, beta, Math.min(1, (q + 0.5) / SAMPLES)), curve(lambda, beta, (q - 0.5) / SAMPLES)));
+      a = b;
+    }
+    // Le coude par base, sur la dérivée analytique : l'angle entre deux tangentes voisines,
+    // rapporté à 0,34 nm de chemin.
+    const L0: Linker = { firstBp, steps, p0, t0, n0: start.n, p1, t1, n1: end.n, lambda, beta, w, table, normals: null, delta: 0, start, end };
+    let bend = 0;
+    const COARSE = 64;
+    let tPrev = t0;
+    for (let q = 1; q <= COARSE; q++) {
+      const u = q / COARSE;
+      const t = q === COARSE ? t1 : linkerTangent(L0, u);
+      const ds = Math.max(1e-30, arcAt(table, u) - arcAt(table, (q - 1) / COARSE));
+      bend = Math.max(bend, (Math.acos(Math.max(-1, Math.min(1, dot(tPrev, t)))) * RISE_NM * nm) / ds);
+      tPrev = t;
+    }
+    return { L: L0, bend: (bend * 180) / Math.PI, infeasible };
+  }
+
+  /** Les normales transportées d'un lien, à la première demande d'un repère. */
+  private frames(L: Linker): void {
+    if (L.normals) return;
+    const normals: V[] = [L.start.n];
+    let n = L.start.n;
+    let tPrev = L.t0;
+    for (let q = 1; q <= SAMPLES; q++) {
+      const t = q === SAMPLES ? L.t1 : linkerTangent(L, q / SAMPLES);
       const axis = cross(tPrev, t);
       const s = len(axis);
-      const turn = Math.atan2(s, dot(tPrev, t));
-      // Coude par base : l'angle entre deux échantillons, rapporté à 0,34 nm de chemin.
-      bend = Math.max(bend, (turn * RISE_NM * nm) / Math.max(1e-30, table[q] - table[q - 1]));
-      if (s > 1e-12) n = rotate(n, mul(axis, 1 / s), turn);
+      if (s > 1e-12) n = rotate(n, mul(axis, 1 / s), Math.atan2(s, dot(tPrev, t)));
       n = norm(sub(n, mul(t, dot(n, t))));
       normals.push(n);
       tPrev = t;
-      a = b;
     }
     // L'écart, autour de t1, entre la normale transportée et celle qu'attend l'arrivée.
     const nT = normals[SAMPLES];
-    const delta = Math.atan2(dot(cross(nT, end.n), t1), dot(nT, end.n));
-    const L: Linker = { firstBp, steps, p0, t0, n0: start.n, p1, t1, n1: end.n, lambda, beta, w, table, normals, delta };
-    return { L, bend: (bend * 180) / Math.PI, infeasible };
+    L.delta = Math.atan2(dot(cross(nT, L.end.n), L.t1), dot(nT, L.end.n));
+    L.normals = normals;
   }
+
 
   /** La base `b` (rang dans la région) : position, tangente, dyade. */
   basePair(b: number): BasePair {
@@ -491,7 +530,20 @@ export class DnaPath {
         return finish(w.p, w.t, w.n);
       }
     }
-    // Sur un lien : lequel ?
+    const { L, s, u, q, f } = this.onLinker(k, b);
+    const p = linkerPoint(L, u);
+    const t = linkerTangent(L, u);
+    this.frames(L);
+    const n0 = L.normals![q - 1], n1 = L.normals![q];
+    let nref = norm(add(mul(n0, 1 - f), mul(n1, f)));
+    nref = norm(sub(nref, mul(t, dot(nref, t))));
+    nref = rotate(nref, t, L.delta * (s / L.steps));
+    return finish(p, t, nref);
+  }
+
+  /** Le lien qui porte la base `b`, et son paramètre. */
+  private onLinker(k: number, b: number): { L: Linker; s: number; u: number; q: number; f: number } {
+    const mono = this.monomer(k);
     let i = 0;
     while (i < PER_MONOMER && b >= mono.cores[i].firstBp) i++;
     const L = this.linker(k, i);
@@ -500,20 +552,18 @@ export class DnaPath {
     let q = 1;
     while (q < SAMPLES && L.table[q] < want) q++;
     const f = (want - L.table[q - 1]) / Math.max(1e-30, L.table[q] - L.table[q - 1]);
-    const u = (q - 1 + f) / SAMPLES;
-    const u2 = u * u;
-    const bump = Math.sin(Math.PI * u) ** 2;
-    const p = add(add(add(mul(L.p0, 2 * u2 * u - 3 * u2 + 1), mul(L.t0, L.lambda * (u2 * u - 2 * u2 + u))),
-                      add(mul(L.p1, -2 * u2 * u + 3 * u2), mul(L.t1, L.lambda * (u2 * u - u2)))), mul(L.w, L.beta * bump));
-    const dp = add(add(add(mul(L.p0, 6 * u2 - 6 * u), mul(L.t0, L.lambda * (3 * u2 - 4 * u + 1))),
-                       add(mul(L.p1, -6 * u2 + 6 * u), mul(L.t1, L.lambda * (3 * u2 - 2 * u)))),
-                   mul(L.w, L.beta * Math.PI * Math.sin(2 * Math.PI * u)));
-    const t = len(dp) < 1e-12 ? norm(sub(L.p1, L.p0)) : norm(dp);
-    const n0 = L.normals[q - 1], n1 = L.normals[q];
-    let nref = norm(add(mul(n0, 1 - f), mul(n1, f)));
-    nref = norm(sub(nref, mul(t, dot(nref, t))));
-    nref = rotate(nref, t, L.delta * (s / L.steps));
-    return finish(p, t, nref);
+    return { L, s, u: (q - 1 + f) / SAMPLES, q, f };
+  }
+
+  /** La position seule de la base `b` : sans repère, donc sans transport de normales. */
+  basePoint(b: number): V {
+    const k = Math.max(0, Math.min(this.n - 1, Math.floor(b / this.bpPerMonomer)));
+    const mono = this.monomer(k);
+    for (const c of mono.cores) {
+      if (b >= c.firstBp && b < c.firstBp + WRAP_BP) return this.wrapped(c, b - c.firstBp).p;
+    }
+    const { L, u } = this.onLinker(k, b);
+    return linkerPoint(L, u);
   }
 
   /** Les bases `[b0, b1)` en un tableau : p, t, d (9 flottants par base). */
@@ -531,8 +581,8 @@ export class DnaPath {
   /** L'axe de l'ADN de `[b0, b1)` échantillonné tous les `every` pas, pour le tube de 1 nm. */
   axis(b0: number, b1: number, every = 6): Float32Array {
     const pts: number[] = [];
-    for (let b = b0; b < b1; b += every) pts.push(...this.basePair(b).p);
-    pts.push(...this.basePair(b1 - 1).p);
+    for (let b = b0; b < b1; b += every) pts.push(...this.basePoint(b));
+    pts.push(...this.basePoint(b1 - 1));
     return Float32Array.from(pts);
   }
 }

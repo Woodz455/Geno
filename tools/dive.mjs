@@ -12,19 +12,19 @@
  *  Temps par image : SwiftShader, rasteriseur logiciel, donc une borne **haute** sans valeur
  *  pour dire « 60 fps ». Ce chiffre-là ne vient que de vrai matériel (VALIDATION.md § S10).
  *
- *    node tools/dive.mjs [images]
+ *    node tools/dive.mjs [images] [cible]      cible : tp53 (défaut, semaine 12) ou actb
  */
 
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cdp, launch, shutdown } from "./cdp.mjs";
+import { jumps, ratios } from "./jumps.mjs";
 import { serve } from "./serve.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FRAMES = Number(process.argv[2] ?? 240);
-const RATIO = 3;
-const WINDOW = 10;
+const TARGET = process.argv[3] ?? "tp53";
 
 if (!existsSync(resolve(ROOT, "dist/dive.html"))) {
   console.error("dist/dive.html absent — lancer `pnpm build`.");
@@ -40,21 +40,6 @@ const median = (xs) => {
   return s.length ? s[s.length >> 1] : NaN;
 };
 const pct = (xs, q) => xs.slice().sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * q))];
-
-/** Rapport de chaque écart à la médiane de ses voisines (la valeur elle-même exclue). */
-export function ratios(diffs) {
-  return diffs.map((d, k) => {
-    const around = [];
-    for (let j = Math.max(0, k - WINDOW); j <= Math.min(diffs.length - 1, k + WINDOW); j++) if (j !== k) around.push(diffs[j]);
-    return d / Math.max(median(around), 1e-3);
-  });
-}
-
-/** Images dont l'écart à la précédente dépasse RATIO × la médiane de leurs voisines. */
-export function jumps(diffs) {
-  return ratios(diffs).flatMap((ratio, k) =>
-    ratio > RATIO && diffs[k] > 0.5 ? [{ frame: k + 1, diff: diffs[k], ratio }] : []);
-}
 
 async function run(browser, url) {
   const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
@@ -85,9 +70,9 @@ const browser = await cdp(url);
 const rows = [];
 let failed = false;
 try {
-  console.log(`\n  Plongée noyau → compartiments — ${FRAMES} images, Chromium headless (SwiftShader)\n`);
+  console.log(`\n  Plongée ${TARGET === "actb" ? "noyau → nucléosomes d'ACTB" : "noyau → une base de TP53"} — ${FRAMES} images, Chromium headless (SwiftShader)\n`);
   for (const [name, flag] of [["fondus (la plongée)", ""], ["témoin : transitions sèches", "&hard"]]) {
-    const r = await run(browser, `${base}/dive.html?f=data/gm12878.g3d&bench=${FRAMES}${flag}`);
+    const r = await run(browser, `${base}/dive.html?f=data/gm12878.g3d&target=${TARGET}&bench=${FRAMES}${flag}`);
     if (!r.ok) {
       console.log(`  ${name} : ÉCHEC ${JSON.stringify(r).slice(0, 300)}`);
       failed = true;
@@ -105,7 +90,8 @@ try {
       const st = r.states[x.frame];
       console.log(
         `      image ${String(x.frame).padStart(3)} : écart ${x.diff.toFixed(2)} (×${x.ratio.toFixed(1)})  ` +
-          `champ ${st.w.toFixed(1)} µm, détail ${st.lod.toFixed(2)}, sujet ${st.focus.toFixed(2)}, palette ${st.mix.toFixed(2)}`,
+          `champ ${st.w >= 0.1 ? `${st.w.toFixed(2)} µm` : `${(st.w * 1000).toFixed(1)} nm`}, détail ${st.lod.toFixed(2)}, sujet ${st.focus.toFixed(2)}, ` +
+          `palette ${st.mix.toFixed(2)}, fibre ${st.fiber.toFixed(2)}, nuc ${st.nuc.toFixed(2)}, hélice ${st.helix.toFixed(2)}, lettres ${st.bases.toFixed(2)}`,
       );
     }
   }
@@ -122,7 +108,7 @@ const hard = rows.find((r) => r.hard);
 // son écart à la médiane des 20 voisines. C'est la lecture la plus directe : une transition
 // invisible a le rapport du mouvement seul, ~1.
 const transitions = (r) =>
-  ["lod", "focus", "mix", "fiber", "loop", "nuc"].map((key) => {
+  ["lod", "focus", "mix", "fiber", "loop", "nuc", "helix", "bases"].map((key) => {
     const s = r.result.states;
     const k = s.findIndex((x, i) => i > 0 && s[i - 1][key] < 0.5 && x[key] >= 0.5);
     if (k < 1) return { key, frame: null };
@@ -135,6 +121,8 @@ const NAMES = {
   fiber: "billes 750 kb → fibre 2 kb (raccord S8)",
   loop: "la boucle CTCF s'isole",
   nuc: "fibre → nucléosomes",
+  helix: "ADN de 1 nm → double hélice (séquence)",
+  bases: "les lettres des bases paraissent",
 };
 if (smooth && hard) {
   const ts = transitions(smooth);
@@ -142,7 +130,8 @@ if (smooth && hard) {
   console.log(`\n  ${"transition".padEnd(40)} ${"image".padStart(5)} ${"champ".padStart(9)}   fondu   sèche`);
   ts.forEach((t, i) => {
     if (t.frame === null) return;
-    console.log(`  ${NAMES[t.key].padEnd(40)} ${String(t.frame).padStart(5)} ${t.width.toFixed(2).padStart(6)} µm   ${t.ratio.toFixed(2)}×   ${th[i].ratio.toFixed(2)}×`);
+    const w = t.width >= 0.1 ? `${t.width.toFixed(2).padStart(6)} µm` : `${(t.width * 1000).toFixed(1).padStart(6)} nm`;
+    console.log(`  ${NAMES[t.key].padEnd(40)} ${String(t.frame).padStart(5)} ${w}   ${t.ratio.toFixed(2)}×   ${th[i].ratio?.toFixed(2) ?? "–"}×`);
   });
   smooth.transitions = ts;
   hard.transitions = th;

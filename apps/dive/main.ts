@@ -1,4 +1,4 @@
-/** La plongée : du noyau entier aux compartiments d'un chromosome, sans coupure.
+/** La plongée : du noyau entier jusqu'à une base de TP53, sans coupure (semaines 10 à 12).
  *
  *  Deux niveaux du même `.g3d` — l'aperçu à 3 Mb, puis le noyau à 750 kb —, fondus l'un
  *  dans l'autre par tramage complémentaire ; les 45 autres copies qui s'effacent autour de
@@ -10,20 +10,32 @@
  *    bench=N    plongée scriptée de N images, mesurée, puis résultat publié dans window.__geno
  *    hard       témoin : transitions sèches au lieu de fondus (la mesure doit y voir des sauts)
  *    w, h       taille du canevas en mode mesure (défaut 960 × 540)
- *    view=…     une seule image, à une étape de la plongée : final, loop ou anchor
+ *    view=…     une seule image, à une étape de la plongée : final, loop, anchor ; et, en
+ *               semaine 12, fibre, nuc, helix, base
  *    legibility mesure la lisibilité de la boucle visée ; noisolate : le témoin sans isolement
+ *    junction   le raccord S8 seul, sur la région de la cible (chr7 ou chr17)
+ *    target=…   tp53 (défaut, semaine 12) ou actb (la plongée des semaines 10 et 11)
+ *    stream=S   la plongée jouée en temps réel en S secondes, caméra réglée sur l'horloge, et
+ *               le compte des images qui montrent un chargement ; noprefetch : le témoin
+ *    fidelity   les lettres des barreaux visibles, relues sur les pixels de la vue finale
+ *    labels     dessine la surimpression des lettres même en mode mesure (pour l'enregistrement)
+ *    record=N   N images de la plongée, rendues une à une sur demande (`tools/record.mjs`)
  */
 
-import { dive, type Orbit, rotate, zoom } from "@geno/viewer";
-import { runBench } from "./bench.js";
-import { FOV, openDive } from "./dive.js";
+import { BASE_COLORS, baseOf, dive, type Orbit, rotate, zoom } from "@geno/viewer";
+import { divePath, runBench } from "./bench.js";
+import { type DiveScene, FOV, openDive, type TargetName } from "./dive.js";
+import { IDS } from "./fiber.js";
 import { measureJunction, measureLoop } from "./legibility.js";
 
 const q = new URLSearchParams(location.search);
 const FILE = q.get("f") ?? "data/gm12878.g3d";
 const BENCH = Number(q.get("bench") ?? 0);
 const HARD = q.has("hard");
-const VIEW = q.get("view") ?? (q.has("legibility") ? "loop" : null);
+const VIEW = q.get("view") ?? (q.has("legibility") ? "loop" : q.has("fidelity") ? "base" : null);
+const TARGET = (q.get("target") ?? "tp53") as TargetName;
+const STREAM = Number(q.get("stream") ?? 0);
+const RECORD = Number(q.get("record") ?? 0);
 
 declare global {
   interface Window {
@@ -42,21 +54,27 @@ style.textContent = `
   #hud .k { color: #8b98aa; }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px -1px 8px; }
   #info { margin-top: 6px; white-space: pre-wrap; }
+  #evidence { margin-top: 6px; color: #c9d3df; }
   canvas { touch-action: none; }
+  #overlay { position: fixed; left: 0; top: 0; pointer-events: none; }
 `;
 document.head.appendChild(style);
 
 const canvas = document.createElement("canvas");
 document.body.appendChild(canvas);
+const overlay = document.createElement("canvas");
+overlay.id = "overlay";
+document.body.appendChild(overlay);
 
 function fit(): [number, number] {
-  if (BENCH || VIEW) {
+  if (BENCH || VIEW || STREAM || RECORD) {
     const w = Number(q.get("w") ?? 960);
     const h = Number(q.get("h") ?? 540);
     canvas.width = w;
     canvas.height = h;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
+    sizeOverlay(w, h, w, h);
     return [w, h];
   }
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -64,7 +82,127 @@ function fit(): [number, number] {
   canvas.height = Math.round(window.innerHeight * dpr);
   canvas.style.width = `${window.innerWidth}px`;
   canvas.style.height = `${window.innerHeight}px`;
+  sizeOverlay(canvas.width, canvas.height, window.innerWidth, window.innerHeight);
   return [canvas.width, canvas.height];
+}
+
+function sizeOverlay(w: number, h: number, cssW: number, cssH: number): void {
+  overlay.width = w;
+  overlay.height = h;
+  overlay.style.width = `${cssW}px`;
+  overlay.style.height = `${cssH}px`;
+}
+
+/** Les lettres des bases et l'étiquette de la base visée, par-dessus le rendu WebGL. */
+function drawLabels(scene: DiveScene): void {
+  const ctx = overlay.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  const scale = overlay.width / Math.max(1, overlay.clientWidth || overlay.width);
+  // L'étiquette de la base visée en dernier : au-dessus des lettres.
+  for (const l of scene.labels().sort((a, b) => Number(!!a.target) - Number(!!b.target))) {
+    ctx.globalAlpha = l.alpha;
+    if (l.target) {
+      const lines = l.text.split("\n");
+      const fs = Math.round(13 * scale);
+      ctx.font = `600 ${fs}px system-ui, sans-serif`;
+      const w = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 16 * scale;
+      const h = lines.length * fs * 1.35 + 10 * scale;
+      // Dans le coin haut droit, reliée à la base par un trait : posée à côté de la base, elle
+      // couvrait les barreaux voisins à 4 nm de champ.
+      const x = overlay.width - w - 16 * scale;
+      const y = 16 * scale;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = 1.5 * scale;
+      ctx.beginPath();
+      ctx.moveTo(l.x, l.y);
+      ctx.lineTo(x + w / 2, y + h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(l.x, l.y, 4 * scale, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(14,18,24,0.88)";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = "#fff";
+      lines.forEach((t, i) => {
+        ctx.font = `${i === 0 ? 600 : 400} ${fs}px system-ui, sans-serif`;
+        ctx.fillText(t, x + 8 * scale, y + 6 * scale + (i + 0.85) * fs * 1.35);
+      });
+      continue;
+    }
+    const [r, g, b] = l.color.map((c) => Math.round(c * 255));
+    ctx.font = `700 ${Math.round(l.size)}px ui-monospace, monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(2, l.size / 6);
+    ctx.strokeStyle = "rgba(10,12,16,0.85)";
+    ctx.strokeText(l.text, l.x, l.y);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillText(l.text, l.x, l.y);
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** La légende de l'enregistrement : ce qu'on regarde, à quelle échelle, et d'où ça vient. */
+function drawCaption(scene: DiveScene): void {
+  const ctx = overlay.getContext("2d");
+  if (!ctx) return;
+  const w = scene.last.widthUm;
+  const field = w >= 1 ? `${w.toLocaleString("fr", { maximumFractionDigits: 1 })} µm` : `${(w * 1000).toLocaleString("fr", { maximumFractionDigits: w < 0.01 ? 1 : 0 })} nm`;
+  const k = overlay.height / 720;
+  const lines = [`Geno · GM12878 · du noyau à une base de TP53 · champ ${field}`, scene.evidence()];
+  ctx.font = `${Math.round(14 * k)}px system-ui, sans-serif`;
+  const bw = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 20 * k;
+  const bh = lines.length * 20 * k + 12 * k;
+  ctx.fillStyle = "rgba(14,18,24,0.78)";
+  ctx.fillRect(14 * k, overlay.height - bh - 14 * k, bw, bh);
+  lines.forEach((t, i) => {
+    ctx.fillStyle = i ? "#c9d3df" : "#ffffff";
+    ctx.font = `${i ? 400 : 600} ${Math.round(14 * k)}px system-ui, sans-serif`;
+    ctx.fillText(t, 24 * k, overlay.height - bh - 14 * k + (i + 1) * 20 * k);
+  });
+}
+
+/** Fidélité : chaque pixel de barreau de la vue finale, classé par teinte, puis un vote par
+ *  base. Rend { rang: lettre } pour chaque brin ; l'outil compare à la séquence lue par
+ *  Python dans le .2bit, par un autre chemin que celui du navigateur. */
+function readLetters(scene: DiveScene): Record<string, string> {
+  const gl = scene.gl;
+  const [W, H] = scene.size();
+  const ids = scene.ids();
+  const rgb = new Uint8Array(W * H * 4);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, rgb);
+  const hue = (r: number, g: number, b: number) => {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (!d || d / mx < 0.35) return -1;
+    let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h *= 60;
+    return h < 0 ? h + 360 : h;
+  };
+  const ref = Object.fromEntries((["A", "C", "G", "T"] as const).map((k) => [k, hue(...(BASE_COLORS[k].map((x) => x * 255) as [number, number, number]))]));
+  const votes = new Map<string, Record<string, number>>();
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (id < IDS.base || id === 0xffffffff) continue;
+    const h = hue(rgb[4 * i], rgb[4 * i + 1], rgb[4 * i + 2]);
+    if (h < 0) continue;
+    let best = "N", gap = Infinity;
+    for (const [k, v] of Object.entries(ref)) {
+      const dh = Math.min(Math.abs(h - v), 360 - Math.abs(h - v));
+      if (dh < gap) [best, gap] = [k, dh];
+    }
+    const { rank, strand } = baseOf(id - IDS.base);
+    const key = `${rank}:${strand}`;
+    const v = votes.get(key) ?? {};
+    v[best] = (v[best] ?? 0) + 1;
+    votes.set(key, v);
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of votes) out[k] = Object.entries(v).sort((a, b) => b[1] - a[1])[0][0];
+  return out;
 }
 
 function publish(r: Record<string, unknown>): void {
@@ -73,7 +211,12 @@ function publish(r: Record<string, unknown>): void {
 
 async function main(): Promise<void> {
   fit();
-  const scene = await openDive(canvas, FILE, { hard: HARD, noIsolate: q.has("noisolate") });
+  const scene = await openDive(canvas, FILE, { hard: HARD, noIsolate: q.has("noisolate"), target: TARGET, noPrefetch: q.has("noprefetch") });
+
+  if (q.has("junction")) {
+    publish({ ok: true, junction: await measureJunction(scene) });
+    return;
+  }
 
   if (q.has("legibility")) {
     const loop = measureLoop(scene);
@@ -82,12 +225,67 @@ async function main(): Promise<void> {
   }
 
   if (VIEW) {
-    const o = { final: scene.final, loop: scene.loopView, anchor: scene.anchorView }[VIEW];
+    const st = scene.stops;
+    const o = ({ final: scene.final, loop: scene.loopView, anchor: scene.anchorView, fibre: st[2], nuc: st[3], helix: st[4], base: st[5] } as Record<string, Orbit | null | undefined>)[VIEW];
     scene.arrival = 1;
-    if (o) scene.render(o);
+    await scene.preload();
+    scene.growBudgetMs = Infinity;
+    if (o) {
+      scene.render(o);
+      scene.render(o);      // la seconde image a sa fenêtre d'hélice
+    }
+    if (q.has("labels")) drawLabels(scene);
     publish({ ok: !!o, view: VIEW, state: scene.last, focus: scene.fiber?.focus ?? null,
               arcs: scene.fiber?.arcs.length ?? 0, held: scene.fiber?.held.length ?? 0,
-              nucleosomes: scene.fiber?.nucleosomeCount() ?? 0 });
+              nucleosomes: scene.fiber?.nucleosomeCount() ?? 0, target: scene.target,
+              region_start: scene.sequence?.regionStart ?? null, target_rank: scene.sequence?.targetRank ?? null,
+              letters: q.has("fidelity") ? readLetters(scene) : null, evidence: scene.evidence(),
+              loading: scene.sequence?.stats ?? null });
+    return;
+  }
+
+  if (RECORD) {
+    // Image par image, sur demande de l'outil : `render(k)` dessine l'image k et sa
+    // surimpression ; l'outil capture l'écran et passe à la suivante.
+    const path = divePath(scene);
+    scene.arrival = 1;
+    await scene.preload();
+    scene.growBudgetMs = Infinity;
+    (window as unknown as { __record: unknown }).__record = {
+      frames: RECORD,
+      render(k: number): Record<string, unknown> {
+        const o = path.at((Math.min(RECORD - 1, k) / (RECORD - 1)) * path.length);
+        scene.render(o);
+        drawLabels(scene);
+        drawCaption(scene);
+        return { ...scene.last };
+      },
+    };
+    publish({ ok: true, record: RECORD, stops: scene.stops.length });
+    return;
+  }
+
+  if (STREAM) {
+    // Temps réel : la caméra suit l'horloge, le réseau fait ce qu'il peut, et chaque image
+    // dit si elle montre un chargement. Le chronomètre part au premier rendu de la plongée.
+    const path = divePath(scene);
+    scene.arrival = 1;
+    const frames: { t: number; w: number; helix: number; loading: boolean }[] = [];
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const tick = () => {
+        const t = (performance.now() - t0) / 1000;
+        const k = Math.min(1, t / STREAM);
+        const before = scene.sequence?.stats.loading ?? 0;
+        scene.render(path.at(k * path.length));
+        frames.push({ t, w: scene.last.widthUm, helix: scene.last.helix, loading: (scene.sequence?.stats.loading ?? 0) > before });
+        if (k < 1) requestAnimationFrame(tick);
+        else done();
+      };
+      requestAnimationFrame(tick);
+    });
+    publish({ ok: true, seconds: STREAM, prefetch: !q.has("noprefetch"), frames, stats: scene.sequence?.stats ?? null,
+              sequence_bytes: scene.sequence?.bytes ?? 0, requests: scene.g3d.requests, first_render_ms: scene.firstRenderMs });
     return;
   }
 
@@ -120,9 +318,9 @@ async function main(): Promise<void> {
 
   const hud = document.createElement("div");
   hud.id = "hud";
-  hud.innerHTML = `<h1>Geno — plongée du noyau aux compartiments</h1>
+  hud.innerHTML = `<h1>Geno — du noyau à une base de TP53</h1>
     <div class="k">GM12878 · modèle simulé (médoïde de 200 repliements) · compartiments appelés sur la
-    carte de contacts du modèle, pas sur du Hi-C mesuré</div>
+    carte de contacts du modèle, pas sur du Hi-C mesuré · séquence hg38 de référence</div>
     <div><span class="sw" style="background:rgb(224,107,51)"></span>A
          <span class="sw" style="background:rgb(56,107,219)"></span>B
          <span class="sw" style="background:rgb(128,133,140)"></span>sans compartiment (Xi)</div>`;
@@ -136,12 +334,26 @@ async function main(): Promise<void> {
     };
     hud.appendChild(b);
   };
-  go("Plonger vers ACTB", () => scene.final);
+  if (scene.stops.length > 4) {
+    // La plongée entière, étape par étape, comme la mesure la joue.
+    const b = document.createElement("button");
+    b.textContent = `Plonger vers ${scene.target?.name ?? "la base"}`;
+    b.onclick = () => {
+      const path = divePath({ ...scene, stops: [orbit, ...scene.stops.slice(1)] });
+      anim = { path, t0: performance.now(), duration: 900 * Math.max(0.5, path.length) };
+    };
+    hud.appendChild(b);
+  } else {
+    go("Plonger vers ACTB", () => scene.final);
+  }
   go("Remonter", () => scene.overview);
   const status = document.createElement("div");
+  const evidence = document.createElement("div");
+  evidence.id = "evidence";
   const info = document.createElement("div");
   info.id = "info";
   hud.appendChild(status);
+  hud.appendChild(evidence);
   hud.appendChild(info);
 
   let drag: { x: number; y: number; moved: number } | null = null;
@@ -169,7 +381,7 @@ async function main(): Promise<void> {
     "wheel",
     (e) => {
       e.preventDefault();
-      orbit = zoom(orbit, Math.exp(e.deltaY * 0.0015), 0.4, 150);
+      orbit = zoom(orbit, Math.exp(e.deltaY * 0.0015), 0.003, 150);
       anim = null;
       dirty = true;
     },
@@ -191,18 +403,24 @@ async function main(): Promise<void> {
       if (k >= 1) anim = null;
       dirty = true;
     }
+    // Les nucléosomes se génèrent par tranches et la séquence arrive par le réseau : tant que
+    // la fenêtre n'est pas complète, l'image suivante peut montrer plus.
+    if (scene.last.loop > 0 || scene.last.helix > 0) dirty = true;
     if (dirty) {
       scene.render(orbit);
+      drawLabels(scene);
+      evidence.textContent = scene.evidence();
       dirty = false;
       frameTimes.push(now - lastFrame);
       if (frameTimes.length > 60) frameTimes.shift();
       const sorted = frameTimes.slice().sort((a, b) => a - b);
       const s = scene.last;
       status.innerHTML =
-        `<span class="k">champ</span> ${s.widthUm.toFixed(1)} µm · ` +
+        `<span class="k">champ</span> ${s.widthUm >= 1 ? `${s.widthUm.toFixed(1)} µm` : `${(s.widthUm * 1000).toFixed(s.widthUm < 0.01 ? 1 : 0)} nm`} · ` +
         `<span class="k">750 kb</span> ${(s.lod * 100).toFixed(0)} % · ` +
         `<span class="k">autres copies</span> ${((1 - s.focus) * 100).toFixed(0)} % · ` +
         `<span class="k">compartiments</span> ${(s.mix * 100).toFixed(0)} % · ` +
+        `<span class="k">hélice</span> ${(s.helix * 100).toFixed(0)} % · ` +
         `<span class="k">image</span> ${sorted[sorted.length >> 1]?.toFixed(1) ?? "–"} ms<br>` +
         `<span class="k">${scene.gpu}</span>`;
     }
