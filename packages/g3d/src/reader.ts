@@ -225,6 +225,17 @@ export class G3D {
     return { i: i as Uint32Array, j: j as Uint32Array, kind: kind as Uint8Array, weight, kinds: spec.kinds };
   }
 
+  /** Une plage absolue du fichier, depuis le préfixe si possible. Pour les lecteurs de
+   *  sections à part (la séquence, `sequence.ts`), qui ne doivent pas alourdir cette classe :
+   *  la page du premier rendu l'embarque tout entière. */
+  readSpan(offset: number, length: number): Promise<Uint8Array> {
+    return this.span(offset, length);
+  }
+
+  get verifying(): boolean {
+    return this.verify;
+  }
+
   /** Chunks dont la sphère englobante coupe le tronc de vue (plans ax+by+cz+d ≥ 0). */
   visibleChunks(name: string, planes: [number, number, number, number][]): number[] {
     return this.level(name).chunks.flatMap((c, k) => {

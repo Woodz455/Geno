@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import struct
 import zlib
 from dataclasses import dataclass, field
@@ -187,6 +188,55 @@ class Links:
     meta: dict = field(default_factory=dict)
 
 
+SEQ_CHUNK_BP = 16_384
+_PACK = {"A": 0, "C": 1, "G": 2, "T": 3}
+
+
+@dataclass
+class Sequence:
+    """La séquence de référence d'un intervalle (semaine 12) — rattachée à l'assemblage,
+    pas à un niveau : deux niveaux qui couvrent la même région la partagent.
+
+    Stockée à 2 bits par base (A C G T, bits de poids fort d'abord), par blocs fixes de
+    `SEQ_CHUNK_BP` bases : l'offset d'un bloc se calcule, l'en-tête ne liste rien bloc
+    par bloc. Pas de compression — l'ADN à 2 bits ne gagne presque rien au deflate — et
+    une empreinte par bloc, dans une petite table lue une fois : un client qui ne lit que
+    la fenêtre visible vérifie quand même chaque octet qu'il lit. Les N sont empaquetés
+    comme des A et listés à part, en plages.
+    """
+
+    assembly: str
+    chrom: str
+    start: int
+    end: int
+    bases: str
+    source: dict = field(default_factory=dict)
+
+    def check(self) -> None:
+        if len(self.bases) != self.end - self.start:
+            raise ValueError(f"{self.chrom}:{self.start}-{self.end} : {len(self.bases)} bases")
+        bad = set(self.bases) - set("ACGTN")
+        if bad:
+            raise ValueError(f"bases inattendues : {sorted(bad)}")
+
+
+def _pack(bases: str) -> bytes:
+    codes = np.frombuffer(bases.replace("N", "A").encode("ascii"), dtype=np.uint8)
+    lut = np.zeros(256, dtype=np.uint8)
+    for ch, v in _PACK.items():
+        lut[ord(ch)] = v
+    v = lut[codes]
+    pad = (-len(v)) % 4
+    v = np.concatenate([v, np.zeros(pad, dtype=np.uint8)]).reshape(-1, 4)
+    return (v[:, 0] << 6 | v[:, 1] << 4 | v[:, 2] << 2 | v[:, 3]).astype(np.uint8).tobytes()
+
+
+def _unpack(data: bytes, n: int) -> str:
+    b = np.frombuffer(data, dtype=np.uint8)
+    v = np.stack([b >> 6, (b >> 4) & 3, (b >> 2) & 3, b & 3], axis=1).reshape(-1)[:n]
+    return np.frombuffer(b"ACGT", dtype=np.uint8)[v].tobytes().decode("ascii")
+
+
 @dataclass
 class Level:
     """Une résolution du modèle : des billes, leurs positions, et d'où elles viennent."""
@@ -209,6 +259,7 @@ class Level:
     notes: list[str] = field(default_factory=list)
     attributes: dict[str, Attribute] = field(default_factory=dict)
     links: Links | None = None
+    targets: list[dict] = field(default_factory=list)
 
     @property
     def n(self) -> int:
@@ -425,6 +476,8 @@ def _prepare(level: Level, max_beads: int, fraction: float):
         "index": {"copy_offsets": offsets},
         "notes": list(level.notes),
     }
+    if level.targets:
+        meta["targets"] = list(level.targets)
     if level.links is not None:
         L = level.links
         w = np.asarray(L.weight, dtype=np.float64)
@@ -462,11 +515,13 @@ def write(
     max_beads: int = 16_384,
     fraction: float = 0.01,
     header: dict | None = None,
+    sequences: list[Sequence] | None = None,
 ) -> dict:
     """Écrit le fichier et rend un compte des octets, colonne par colonne.
 
     `first` désigne le niveau du premier rendu : ses colonnes `copy` et `position` sont
     placées juste après l'en-tête, contiguës, et le préambule dit où elles finissent.
+    Les `sequences` vont tout à la fin : rien de ce qui précède n'en a besoin.
     """
     if not levels:
         raise ValueError("un .g3d sans niveau ne sert à rien")
@@ -530,6 +585,36 @@ def write(
         offset += len(col.blob)
     first_frame_data = sum(len(c.blob) for _, c in blocks[:n_first])
 
+    seq_meta, seq_blobs = [], []
+    for s in sequences or []:
+        s.check()
+        chunk_bytes = SEQ_CHUNK_BP // 4
+        packed = [_pack(s.bases[k:k + SEQ_CHUNK_BP]) for k in range(0, len(s.bases), SEQ_CHUNK_BP)]
+        table = b"".join(bytes.fromhex(digest(p)) for p in packed)
+        body = b"".join(packed)
+        runs = [[s.start + m.start(), s.start + m.end()] for m in re.finditer("N+", s.bases)]
+        seq_meta.append({
+            "assembly": s.assembly,
+            "chrom": s.chrom,
+            "start": s.start,
+            "end": s.end,
+            "chunk_bp": SEQ_CHUNK_BP,
+            "chunk_bytes": chunk_bytes,
+            "chunks": len(packed),
+            "encoding": "2 bits par base, A=0 C=1 G=2 T=3, poids fort d'abord ; N stocké comme A",
+            "n_runs": runs,
+            "hashes": {"offset": offset, "length": len(table), "sha256": digest(table),
+                       "each": "sha256 tronqué à 16 octets, un par bloc, dans l'ordre"},
+            "offset": offset + len(table),
+            "length": len(body),
+            "evidence": "reference",
+            "source": s.source,
+        })
+        seq_blobs += [table, body]
+        offset += len(table) + len(body)
+        report.setdefault("sequences", {})[f"{s.chrom}:{s.start}-{s.end}"] = {
+            "bases": len(s.bases), "stored": len(table) + len(body), "chunks": len(packed)}
+
     hdr = {
         "format": "geno-g3d",
         "version": VERSION,
@@ -537,6 +622,8 @@ def write(
         "first": first,
         "levels": [meta for _, meta, _, _ in out_levels],
     }
+    if seq_meta:
+        hdr["sequences"] = seq_meta
     hbytes = _deflate(json.dumps(hdr, ensure_ascii=False, separators=(",", ":")).encode())
     data_start = PREAMBLE + len(hbytes)
     first_end = data_start + first_frame_data
@@ -554,6 +641,8 @@ def write(
         fh.write(hbytes)
         for _, col in blocks:
             fh.write(col.blob)
+        for blob in seq_blobs:
+            fh.write(blob)
 
     for lv, meta, chunks, index in out_levels:
         cols = {}
@@ -614,6 +703,7 @@ def read_header(blob: bytes) -> tuple[dict, int, int]:
 class Read:
     header: dict
     levels: dict[str, dict]
+    sequences: list[dict] = field(default_factory=list)
 
 
 def read(path: str | Path) -> Read:
@@ -662,4 +752,22 @@ def read(path: str | Path) -> Read:
             "end": np.concatenate(parts["end"]),
             "index": {k: col(v) for k, v in lv["index"]["columns"].items()},
         }
-    return Read(hdr, out)
+
+    seqs = []
+    for s in hdr.get("sequences", []):
+        h = s["hashes"]
+        table = blob[base + h["offset"]: base + h["offset"] + h["length"]]
+        if digest(table) != h["sha256"]:
+            raise CorruptError("séquence : table d'empreintes divergente")
+        parts = []
+        for k in range(s["chunks"]):
+            lo = base + s["offset"] + k * s["chunk_bytes"]
+            data = blob[lo: min(lo + s["chunk_bytes"], base + s["offset"] + s["length"])]
+            if bytes.fromhex(digest(data)) != table[16 * k: 16 * k + 16]:
+                raise CorruptError(f"séquence : bloc {k} divergent")
+            parts.append(data)
+        bases = list(_unpack(b"".join(parts), s["end"] - s["start"]))
+        for a, b in s["n_runs"]:
+            bases[a - s["start"]: b - s["start"]] = "N" * (b - a)
+        seqs.append({**s, "bases": "".join(bases)})
+    return Read(hdr, out, seqs)

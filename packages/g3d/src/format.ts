@@ -45,6 +45,40 @@ export interface LevelSpec {
   attributes?: Record<string, AttributeSpec>;
   /** Paires de billes typées et pondérées (semaine 11), colonnes paresseuses i, j, kind, weight. */
   links?: LinksSpec;
+  /** Lieux nommés du niveau (semaine 12) : la base visée par la plongée, d'où elle vient. */
+  targets?: TargetSpec[];
+}
+
+export interface TargetSpec {
+  name: string;
+  gene: string;
+  chrom: string;
+  /** 1-based, comme l'annotation dont elle vient. */
+  position: number;
+  strand: "+" | "-";
+  transcript: string;
+  codon?: number;
+  coding?: string;
+  source: string;
+  [k: string]: unknown;
+}
+
+/** Séquence de référence d'un intervalle (semaine 12). 2 bits par base, blocs fixes,
+ *  une table d'empreintes à part ; rien n'est listé bloc par bloc dans l'en-tête. */
+export interface SequenceSpec {
+  assembly: string;
+  chrom: string;
+  start: number;
+  end: number;
+  chunk_bp: number;
+  chunk_bytes: number;
+  chunks: number;
+  n_runs: [number, number][];
+  hashes: { offset: number; length: number; sha256: string };
+  offset: number;
+  length: number;
+  evidence: string;
+  source: Record<string, unknown>;
 }
 
 export interface LinksSpec {
@@ -77,6 +111,7 @@ export interface Header {
   karyotype?: string;
   provenance?: { pipeline: string; sources: Record<string, unknown>[] };
   warnings?: string[];
+  sequences?: SequenceSpec[];
 }
 
 export interface Preamble {
@@ -107,11 +142,11 @@ export async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-async function sha256(data: Uint8Array): Promise<Uint8Array> {
+export async function sha256(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", data as BufferSource));
 }
 
-const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+export const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 
 export async function parseHeader(bytes: Uint8Array, pre: Preamble, verify = true): Promise<Header> {
   if (verify) {

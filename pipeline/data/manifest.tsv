@@ -10,15 +10,15 @@
 # tier    core seq annot hic nuclear clinical
 #
 id	tier	status	license	url	sha256	bytes	notes
-hg38.chrom.sizes	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes	PENDING	0	Tailles de chromosomes, référentiel primaire
-hg38.cytoband	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBandIdeo.txt.gz	PENDING	0	Bandes G pour l'idéogramme
-hg38.gap	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/gap.txt.gz	PENDING	0	Trous d'assemblage — délimite les regions non mesurables
-hs1.chrom.sizes	core	unverified	public-domain	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.chrom.sizes	PENDING	0	T2T-CHM13v2.0 sous son nom UCSC hs1
-chain.hg38.to.hs1	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHs1.over.chain.gz	PENDING	0	Conversion de coordonnées, sens hg38 vers T2T
-chain.hs1.to.hg38	core	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/liftOver/hs1ToHg38.over.chain.gz	PENDING	0	Conversion en sens inverse
-hg38.2bit	seq	unverified	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit	PENDING	0	Séquence de référence pour le niveau 6 (double hélice)
-hs1.2bit	seq	unverified	public-domain	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.2bit	PENDING	0	Séquence T2T — centromères et ADNr
-gencode.annotation.gtf	annot	unresolved	gencode-free	UNRESOLVED	PENDING	0	Numéro de release à figer. Base ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/
+hg38.chrom.sizes	core	ok	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes	e1d9152418038457a959e949d99c9caf7ae3e4f87cfbb4ffe7d8b9a54ba1202b	11672	Tailles de chromosomes, référentiel primaire
+hg38.cytoband	core	ok	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBandIdeo.txt.gz	c092fd7f0c1d0a3a543d1d826b3ae07a55bc9c8a9818580232ff9c8f13c60865	12122	Bandes G pour l'idéogramme
+hg38.gap	core	ok	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/gap.txt.gz	c466135bf8553f007960b3bd7d747343d014143a0415c127d1452bbe484bf1c1	12368	Trous d'assemblage — délimite les regions non mesurables
+hs1.chrom.sizes	core	ok	public-domain	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.chrom.sizes	acd8997731252a8315286f89ac12a4f03d6cf84f2848189bba41463386cf9be7	375	T2T-CHM13v2.0 sous son nom UCSC hs1
+chain.hg38.to.hs1	core	ok	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHs1.over.chain.gz	926d4583eda8f90c88434293859b06906573f2469630e898b8b475ac8751327a	2678042	Conversion de coordonnées, sens hg38 vers T2T
+chain.hs1.to.hg38	core	ok	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/liftOver/hs1ToHg38.over.chain.gz	24fc084cacd12c78b52a6827f1e876eb4968174e2bac8646b4f12ad622829b5f	2882482	Conversion en sens inverse
+hg38.2bit	seq	ok	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit	1f67aaa17a77b327738fe750ab37430a85dddf73c7d9189385ad1839259acec0	835393456	Séquence de référence pour le niveau 6 (double hélice)
+hs1.2bit	seq	ok	public-domain	https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.2bit	cc9de47ce524d49fb7b85bbd915d50e2a3d3c7ca5bfbc1f8f155fa339e4044cf	812327608	Séquence T2T — centromères et ADNr
+gencode.annotation.gtf	annot	ok	gencode-free	https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_50/gencode.v50.basic.annotation.gtf.gz	5b9ad9aa71f6ab5d55123c51f74723644a895bc0cbaa9cee8fbc11bb9dec0bf7	79970394	GENCODE v50, sous-ensemble basic, hg38 — release figée le 2026-10-18
 encode.ccres	annot	unresolved	encode	UNRESOLVED	PENDING	0	cCREs SCREEN. Accession de fichier ENCODE à figer
 chromhmm.gm12878	annot	unresolved	encode	UNRESOLVED	PENDING	0	Segmentation 18 etats sur GM12878
 ctcf.peaks.gm12878	annot	unresolved	encode	UNRESOLVED	PENDING	0	ChIP-seq CTCF GM12878 — accession ENCSR a figer

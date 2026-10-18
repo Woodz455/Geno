@@ -476,3 +476,61 @@ def test_a_link_to_a_bead_outside_the_level_is_refused(tmp_path):
     lv.links.j[0] = lv.n
     with pytest.raises(ValueError, match="hors du niveau"):
         write(tmp_path / "a.g3d", [lv])
+
+
+# ---------------------------------------------------------------------------
+# Semaine 12 — la séquence de référence
+# ---------------------------------------------------------------------------
+
+def _seq(n: int, seed: int = 0, gap: tuple[int, int] | None = None) -> str:
+    rng = np.random.default_rng(seed)
+    s = list(np.array(list("ACGT"))[rng.integers(0, 4, n)])
+    if gap:
+        s[gap[0]:gap[1]] = "N" * (gap[1] - gap[0])
+    return "".join(s)
+
+
+def test_a_sequence_round_trips_base_for_base_with_its_gaps(tmp_path):
+    from geno_pipeline.export.g3d import SEQ_CHUNK_BP, Sequence
+
+    # Une longueur qui ne tombe ni sur un bloc ni sur un octet, et un trou à cheval sur deux blocs.
+    n = 3 * SEQ_CHUNK_BP + 1_234 + 3
+    bases = _seq(n, gap=(SEQ_CHUNK_BP - 50, SEQ_CHUNK_BP + 70))
+    write(tmp_path / "s.g3d", [chain_level()],
+          sequences=[Sequence("hg38", "chr17", 1_000_003, 1_000_003 + n, bases, {"file": "test"})])
+    r = read(tmp_path / "s.g3d")
+    (s,) = r.sequences
+    assert s["bases"] == bases
+    assert s["chunks"] == 4
+    assert s["n_runs"] == [[1_000_003 + SEQ_CHUNK_BP - 50, 1_000_003 + SEQ_CHUNK_BP + 70]]
+    assert s["length"] == (n + 3) // 4, "2 bits par base, sans compression"
+
+
+def test_a_sequence_does_not_touch_the_first_render(tmp_path):
+    from geno_pipeline.export.g3d import Sequence
+
+    a = write(tmp_path / "a.g3d", [chain_level()])
+    b = write(tmp_path / "b.g3d", [chain_level()],
+              sequences=[Sequence("hg38", "chr7", 0, 100_000, _seq(100_000), {})])
+    assert b["first_frame_end"] - b["header"] == a["first_frame_end"] - a["header"]
+    assert b["header"] - a["header"] < 400, "l'en-tête ne liste rien bloc par bloc"
+
+
+def test_a_corrupted_sequence_block_is_caught(tmp_path):
+    from geno_pipeline.export.g3d import Sequence
+
+    write(tmp_path / "c.g3d", [chain_level()],
+          sequences=[Sequence("hg38", "chr7", 0, 50_000, _seq(50_000), {})])
+    blob = bytearray((tmp_path / "c.g3d").read_bytes())
+    blob[-100] ^= 0x01
+    (tmp_path / "c.g3d").write_bytes(bytes(blob))
+    with pytest.raises(CorruptError):
+        read(tmp_path / "c.g3d")
+
+
+def test_a_sequence_with_a_foreign_letter_is_refused(tmp_path):
+    from geno_pipeline.export.g3d import Sequence
+
+    with pytest.raises(ValueError):
+        write(tmp_path / "x.g3d", [chain_level()],
+              sequences=[Sequence("hg38", "chr7", 0, 4, "ACGU", {})])

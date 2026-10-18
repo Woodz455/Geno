@@ -952,8 +952,9 @@ def cmd_fine(args: argparse.Namespace) -> int:
     print(
         "\n  Sites CTCF : "
         + (
-            f"**plantés** ({sites.source}) — aucune piste publiée n'est lisible ici,\n"
-            "  le réseau est fermé. Comme à la semaine 3, la vérité plantée valide la\n"
+            f"**plantés** ({sites.source}) — aucune piste publiée n'est lue ici. Le\n"
+            "  réseau est ouvert depuis la semaine 12, mais le passage aux données réelles\n"
+            "  est une étape à part. Comme à la semaine 3, la vérité plantée valide la\n"
             "  méthode et rien de biologique. `make fine CTCF=motifs.bed` attend un fichier."
             if sites.source.startswith("planted")
             else sites.source
@@ -976,11 +977,19 @@ def _g3d_levels(args: argparse.Namespace):
     sources = [src_n]
     if not args.no_preview:
         levels.insert(0, build.coarsen(nuc, ens, k=4))
-    if args.fine and Path(args.fine).exists():
-        fin, src_f = build.fine(args.fine, nuc)
+    fines = build.fine_regions(args.fine_dir, nuc) if args.fine_dir else []
+    for fin, src_f, _ in fines:
         levels.append(fin)
         sources.append(src_f)
-    return levels, build.header(sources, warnings=build.WARNINGS)
+    seqs = []
+    fine_levels = [f for f, _, _ in fines]
+    if fine_levels and Path(args.genome).exists():
+        seqs = build.sequences(fine_levels, args.genome, args.manifest)
+        sources.append({"kind": "sequence", **seqs[0].source,
+                        "intervals": [f"{q.chrom}:{q.start}-{q.end}" for q in seqs]})
+    if fine_levels and Path(args.gtf).exists():
+        build.targets(fine_levels, args.gtf, args.manifest, args.genome)
+    return levels, build.header(sources, warnings=build.WARNINGS), seqs, fines
 
 
 def _print_g3d_report(rep: dict) -> None:
@@ -1009,21 +1018,29 @@ def cmd_g3d(args: argparse.Namespace) -> int:
     from .export import read, read_header, write
 
     if args.action == "build":
-        levels, header = _g3d_levels(args)
+        levels, header, seqs, fines = _g3d_levels(args)
         first = levels[0].name
-        rep = write(args.out, levels, first=first, header=header, fraction=args.fraction)
+        rep = write(args.out, levels, first=first, header=header, fraction=args.fraction,
+                    sequences=seqs)
         _print_g3d_report(rep)
-        if args.fine and Path(args.fine).exists():
-            from .export.build import loop_report
+        from .export.build import loop_report
 
-            for label, f in (("avec CTCF", Path(args.fine)), ("témoin sans CTCF", Path(args.fine).with_name(Path(args.fine).stem + "-ko.npz"))):
+        for lv, _, path in fines:
+            for label, f in (("avec CTCF", path), ("témoin sans CTCF", path.with_name(path.stem + "-ko.npz"))):
                 if not f.exists():
                     continue
                 r = loop_report(f)
                 kinds = " · ".join(f"{k} {v['drawn']}/{v['planted']}" for k, v in r["by_kind"].items())
-                print(f"\n  boucles, {label} : {r['drawn']} paires sur {r['candidates']} au-dessus de "
+                print(f"\n  boucles « {lv.name} », {label} : {r['drawn']} paires sur {r['candidates']} au-dessus de "
                       f"{r['threshold']:.0%} (max {r['max_weight']:.3f}) — plantées retrouvées : {kinds} ; "
                       f"hors vérité : {r['unplanted']}")
+            for t in lv.targets:
+                print(f"\n  cible « {t['name']} » sur « {lv.name} » : {t['chrom']}:{t['position']:,} "
+                      f"({t['transcript']}, {t['coding']}, codon {t['codon']}) — base {t.get('base_plus', '?')} "
+                      f"sur le brin +, {t.get('base_coding', '?')} sur le brin codant ({t['strand']}) · {t['source']}")
+        for q in seqs:
+            print(f"\n  séquence {q.chrom}:{q.start:,}-{q.end:,} ({q.end - q.start:,} pb, "
+                  f"{q.bases.count('N'):,} N) · {q.source['file']} {q.source['sha256'][:12]}…")
         for lv in levels:
             if lv.fit:
                 f = lv.fit
@@ -1046,6 +1063,9 @@ def cmd_g3d(args: argparse.Namespace) -> int:
               f"premier rendu jusqu'à {first_end:,}")
         print(f"  {hdr.get('assembly')} · {hdr.get('cell_type')} · {hdr.get('karyotype')} · "
               f"pipeline {hdr.get('provenance', {}).get('pipeline')}")
+        for sq in hdr.get("sequences", []):
+            print(f"  séquence {sq['assembly']} {sq['chrom']}:{sq['start']:,}-{sq['end']:,} · "
+                  f"{sq['chunks']} blocs de {sq['chunk_bp']:,} pb · {sq['length']:,} o")
         for lv in hdr["levels"]:
             q = lv["quant"]
             print(f"\n  « {lv['name']} »  {lv['n_beads']:,} billes de "
@@ -1237,7 +1257,12 @@ def main(argv: list[str] | None = None) -> int:
     g3 = sub.add_parser("g3d", help="écrit, inspecte ou mesure le format .g3d")
     g3.add_argument("action", choices=["build", "inspect", "bench"])
     g3.add_argument("--ensemble", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
-    g3.add_argument("--fine", default=str(ROOT / "data" / "fine" / "actb.npz"))
+    g3.add_argument("--fine-dir", default=str(ROOT / "data" / "fine"),
+                    help="dossier des régions fines (actb.npz, tp53.npz) ; vide : aucune")
+    g3.add_argument("--genome", default=str(ROOT / "data" / "raw" / "seq" / "hg38.2bit"),
+                    help="génome de référence verrouillé, pour la séquence des régions fines")
+    g3.add_argument("--gtf", default=str(ROOT / "data" / "raw" / "annot" / "gencode.annotation.gtf"))
+    g3.add_argument("--manifest", default=str(ROOT / "data" / "manifest.tsv"))
     # L'aperçu est inclus par défaut en vertu d'une règle fixée avant la mesure : il
     # n'entre que s'il fait passer un profil réseau nommé sous 1,5 s. Il fait passer
     # Slow 4G (1 412 ms médian avec un préfixe de 16 Kio, contre 1 602 ms pour le noyau

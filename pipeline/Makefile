@@ -5,7 +5,7 @@ LOCK  := $(HERE)/scripts/lock.sh
 PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
 GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine g3d g3d-bench
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine fine-tp53 g3d g3d-bench
 
 help:
 	@echo "Geno — pipeline de données"
@@ -39,9 +39,11 @@ help:
 	@echo "                       reprend un magasin existant ; DAMID=… ajoute la corrélation"
 	@echo "  make fine            extrusion de boucles sous le TAD, et son raccord au noyau"
 	@echo "                       CTCF=motifs.bed utilise des sites mesurés au lieu de plantés"
+	@echo "  make fine-tp53       la même chose autour de TP53 (chr17:5,67–9,67 Mb), ses propres graines"
 	@echo
 	@echo "Format et streaming"
-	@echo "  make g3d             écrit data/g3d/gm12878.g3d depuis les ensembles S7 et S8"
+	@echo "  make g3d             écrit data/g3d/gm12878.g3d depuis les ensembles S7 et S8,"
+	@echo "                       la séquence hg38 des régions fines et leurs cibles GENCODE"
 	@echo "                       (et gm12878-noyau.g3d, sans aperçu, pour comparaison)"
 	@echo "                       COMPARTMENTS=e1.bedGraph affiche un E1 mesuré"
 	@echo "  make g3d-bench       octets écrits de 6 000 à 600 000 billes (cache des noyaux)"
@@ -70,6 +72,9 @@ ensemble:       ; @$(GENO) ensemble $(if $(N),--n $(N),) $(if $(DAMID),--damid $
 g3d:            ; @$(GENO) g3d build $(if $(COMPARTMENTS),--compartments $(COMPARTMENTS),) && $(GENO) g3d build --no-preview $(if $(COMPARTMENTS),--compartments $(COMPARTMENTS),) --out $(HERE)/data/g3d/gm12878-noyau.g3d >/dev/null && $(GENO) g3d inspect
 g3d-bench:      ; @$(GENO) g3d bench
 fine:           ; @$(GENO) fine $(if $(N),--bp-per-bead $(N),) $(if $(CTCF),--ctcf $(CTCF),)
+# Semaine 12. D'autres graines que la région ACTB : avec les mêmes, le 1D (numpy pur, graines
+# fixes) planterait exactement les mêmes sites aux mêmes rangs, et rendrait les mêmes boucles.
+fine-tp53:      ; @$(GENO) fine --chrom chr17 --start 5670000 --end 9670000 --site-seed 17 --first-seed 17000 --out $(HERE)/data/fine/tp53.npz $(if $(CTCF),--ctcf $(CTCF),)
 
 query:
 	@test -n "$(Q)" || { echo "usage : make query Q=chr7:5,527,000-5,530,600" >&2; exit 2; }

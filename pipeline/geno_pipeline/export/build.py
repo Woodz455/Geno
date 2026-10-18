@@ -14,11 +14,17 @@ Trois niveaux :
 - **fin** (2 kb, chr7:4–8 Mb) — le médoïde de la semaine 8, posé dans le repère du
   noyau. La pose ne raccorde pas les deux modèles, elle **mesure** à quel point ils ne
   se raccordent pas : la semaine 8 a établi l'échec, le fichier le transporte.
+- **fin-tp53** (2 kb, chr17:5,67–9,67 Mb) — la même méthode autour de TP53 (semaine 12).
+
+Et, à la fin du fichier, la **séquence de référence** des régions fines (semaine 12), lue
+dans le `.2bit` verrouillé du manifeste, avec les **cibles** de la plongée situées par
+l'annotation GENCODE plutôt que recopiées.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from pathlib import Path
 
@@ -28,7 +34,7 @@ from ..ensemble import medoid
 from ..ensemble import read as read_ensemble
 from ..ensemble.stats import kabsch
 from ..fine.run import load as load_fine
-from .g3d import Attribute, Level, Links
+from .g3d import Attribute, Level, Links, Sequence
 
 
 def _sha(*arrays: np.ndarray) -> str:
@@ -351,7 +357,7 @@ def loop_report(path: str | Path, threshold: float = ARC_THRESHOLD) -> dict:
     return out
 
 
-def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[Level, dict]:
+def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a", name: str = "fin") -> tuple[Level, dict]:
     """Le médoïde de la semaine 8, posé dans le repère du noyau — et l'écart que ça laisse.
 
     **Pose.** Pour chaque bille du noyau couverte à moitié au moins par la région fine,
@@ -364,7 +370,7 @@ def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[L
     absorberait cet écart dans un facteur d'échelle et le rendrait invisible ; on calcule
     ce facteur, on l'écrit, et on ne l'applique pas.
 
-    **Pourquoi chr7:a.** Le modèle fin n'a pas d'haplotype : il ne sait rien des deux
+    **Pourquoi la copie `a`.** Le modèle fin n'a pas d'haplotype : il ne sait rien des deux
     homologues. Le poser sur `a` plutôt que sur `b` est arbitraire, et le fichier le dit.
     """
     coords, sites, _, meta = load_fine(str(path))
@@ -396,7 +402,7 @@ def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[L
     m, fit = pose(a, f)
     links, attrs = loops(path, int(mi))
     level = Level(
-        name="fin",
+        name=name,
         bp_per_bead=bp,
         positions_nm=local,
         copy=np.zeros(n, dtype=np.int64),
@@ -432,6 +438,88 @@ def fine(path: str | Path, nuc: Level, *, copy_label: str = "chr7:a") -> tuple[L
     return level, source
 
 
+#: Les régions fines et leur niveau. `actb` garde le nom « fin » des semaines 9 à 11.
+FINE = (("actb", "fin"), ("tp53", "fin-tp53"))
+
+#: Les bases que la plongée sait viser, désignées par l'annotation et pas par une coordonnée.
+TARGETS = (
+    {"name": "TP53 c.818", "transcript": "ENST00000269305", "coding": 818, "codon": 273,
+     "why": "codon 273 (CGT, Arg) ; R273H, c.818G>A, est le point chaud le plus fréquent des cancers"},
+    {"name": "ACTB c.1", "transcript": "ENST00000646664", "coding": 1, "codon": 1,
+     "why": "le A de l'ATG d'ACTB, cible des semaines 10 et 11"},
+)
+
+
+def fine_regions(fine_dir: str | Path, nuc: Level) -> list[tuple[Level, dict, Path]]:
+    """Chaque région fine présente, posée sur la copie `a` de son chromosome."""
+    out = []
+    for stem, name in FINE:
+        path = Path(fine_dir) / f"{stem}.npz"
+        if not path.exists():
+            continue
+        chrom = load_fine(str(path))[3]["chrom"]
+        level, source = fine(path, nuc, copy_label=f"{chrom}:a", name=name)
+        out.append((level, source, path))
+    return out
+
+
+def manifest_entry(manifest: str | Path, ident: str) -> dict:
+    for line in Path(manifest).read_text(encoding="utf-8").splitlines():
+        col = line.split("\t")
+        if col and col[0] == ident and len(col) >= 7:
+            return {"id": ident, "status": col[2], "url": col[4], "sha256": col[5], "bytes": int(col[6])}
+    raise KeyError(f"{ident} absent du manifeste")
+
+
+def sequences(levels: list[Level], genome: str | Path, manifest: str | Path) -> list[Sequence]:
+    """La séquence de référence sous chaque niveau fin, du `.2bit` verrouillé."""
+    from ..sequence import TwoBit
+
+    entry = manifest_entry(manifest, Path(genome).name)
+    if entry["status"] != "ok":
+        raise ValueError(f"{entry['id']} n'est pas verrouillé dans le manifeste ({entry['status']})")
+    out = []
+    with TwoBit(genome) as tb:
+        for lv in levels:
+            chrom = lv.copies[0].split(":")[0]
+            start, end = int(lv.start.min()), int(lv.end.max())
+            out.append(Sequence("hg38", chrom, start, end, tb.fetch(chrom, start, end),
+                                {"file": entry["id"], "url": entry["url"], "sha256": entry["sha256"]}))
+    return out
+
+
+def targets(levels: list[Level], gtf: str | Path, manifest: str | Path,
+            genome: str | Path | None = None) -> None:
+    """Attache à chaque niveau fin les cibles qu'il couvre, recalculées depuis GENCODE.
+
+    La base est lue dans le génome si on l'a : la cible porte alors la base du brin +,
+    et celle du brin codant, de quoi vérifier l'étiquette affichée sans autre source.
+    """
+    from ..sequence import TwoBit, read_transcript
+
+    tb = TwoBit(genome) if genome and Path(genome).exists() else None
+    entry = manifest_entry(manifest, "gencode.annotation.gtf")
+    release = re.search(r"gencode\.(v\d+)", entry["url"])
+    source = f"GENCODE {release.group(1) if release else '?'} basic, sha256 {entry['sha256'][:12]}…"
+    for t in TARGETS:
+        tr = read_transcript(gtf, t["transcript"])
+        pos = tr.coding_position(t["coding"])
+        for lv in levels:
+            if lv.copies[0].split(":")[0] == tr.chrom and lv.start.min() < pos <= lv.end.max():
+                spec = {"name": t["name"], "gene": tr.gene, "chrom": tr.chrom, "position": pos,
+                        "strand": tr.strand, "transcript": tr.transcript, "codon": t["codon"],
+                        "coding": f"c.{t['coding']}", "why": t["why"],
+                        "tags": [x for x in tr.tags if x in ("MANE_Select", "Ensembl_canonical")],
+                        "source": source}
+                if tb:
+                    plus = tb.fetch(tr.chrom, pos - 1, pos)
+                    spec["base_plus"] = plus
+                    spec["base_coding"] = plus if tr.strand == "+" else plus.translate(str.maketrans("ACGT", "TGCA"))
+                lv.targets.append(spec)
+    if tb:
+        tb.close()
+
+
 def header(sources: list[dict], *, warnings: list[str]) -> dict:
     return {
         "assembly": "GRCh38",
@@ -444,7 +532,7 @@ def header(sources: list[dict], *, warnings: list[str]) -> dict:
 
 WARNINGS = [
     "Toutes les positions sont simulées : aucune donnée de conformation ne les contraint "
-    "(réseau fermé, cf. DATA_SOURCES.md § 8).",
+    "encore (cf. DATA_SOURCES.md § 8). La séquence, elle, est la référence hg38.",
     "Une structure n'est pas « le » génome : c'est le médoïde d'un ensemble, et la "
     "variabilité par bille dit de combien un tirage s'en écarte.",
     "Le niveau fin ne se raccorde pas au noyau (VALIDATION.md § S8).",

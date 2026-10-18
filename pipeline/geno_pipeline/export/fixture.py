@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from .build import pose
-from .g3d import Attribute, Level, Links, read, write
+from .g3d import SEQ_CHUNK_BP, Attribute, Level, Links, Sequence, read, write
 
 
 def _chain(counts, name, bp, seed, step_nm):
@@ -60,11 +60,19 @@ def main(out: str) -> None:
     m, fit = pose(anchors @ np.diag([1, -1, 1]) + 500.0, anchors)
     finer.transform = m.reshape(-1).tolist()
     finer.fit = fit
+    # Une séquence sur plusieurs blocs, de longueur quelconque, avec un trou à cheval.
+    rng = np.random.default_rng(9)
+    n_seq = 5 * SEQ_CHUNK_BP + 777
+    bases = list(np.array(list("ACGT"))[rng.integers(0, 4, n_seq)])
+    bases[2 * SEQ_CHUNK_BP - 30: 2 * SEQ_CHUNK_BP + 45] = "N" * 75
+    seq = Sequence("hg38", "chr1", 10_001, 10_001 + n_seq, "".join(bases), {"file": "témoin"})
     rep = write(d / "fixture.g3d", [nucleus, finer], first="noyau", max_beads=500,
-                header={"assembly": "GRCh38", "warnings": ["témoin synthétique"]})
+                header={"assembly": "GRCh38", "warnings": ["témoin synthétique"]}, sequences=[seq])
     got = read(d / "fixture.g3d")
 
-    expected = {"bytes": rep["bytes"], "first_frame_end": rep["first_frame_end"], "levels": {}}
+    expected = {"bytes": rep["bytes"], "first_frame_end": rep["first_frame_end"], "levels": {},
+                "sequences": [{"chrom": q["chrom"], "start": q["start"], "end": q["end"],
+                               "chunk_bp": q["chunk_bp"], "bases": q["bases"]} for q in got.sequences]}
     for name, lv in got.levels.items():
         meta = lv["meta"]
         hom = np.c_[lv["positions_nm"], np.ones(len(lv["positions_nm"]))]

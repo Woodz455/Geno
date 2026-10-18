@@ -5,7 +5,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { BufferSource, CorruptError, G3D, HttpSource, type Source, toNucleus } from "../src/index.js";
+import { BufferSource, CorruptError, G3D, HttpSource, SequenceReader, type Source, toNucleus } from "../src/index.js";
 
 interface Expected {
   bytes: number;
@@ -27,6 +27,7 @@ interface Expected {
       links: { i: number[]; j: number[]; kind: number[]; kinds: string[]; weight: (number | null)[] } | null;
     }
   >;
+  sequences: { chrom: string; start: number; end: number; chunk_bp: number; bases: string }[];
 }
 
 const [, , filePath, expectedPath] = process.argv;
@@ -150,6 +151,54 @@ async function main(): Promise<void> {
   const half = g.visibleChunks("noyau", [[1, 0, 0, -median - 1e6]]);
   check("culling : tout dans un demi-espace qui contient tout", all.length === lv.chunks.length);
   check("culling : rien au-delà de toutes les sphères", half.length === 0);
+
+  // — Semaine 12 : la séquence, lue par fenêtre, bloc par bloc. —
+  const sq = expected.sequences[0];
+  const cs = new Counting(new BufferSource(bytes));
+  const gs = await G3D.open(cs, { prefix: expected.first_frame_end });
+  const before = cs.reads.length;
+  const sAll = await new SequenceReader(gs).read(sq.chrom, sq.start, sq.end);
+  check("séquence : l'intervalle entier, base pour base, N compris", sAll === sq.bases, `${sAll.length} bases`);
+  const gw = new SequenceReader(await G3D.open(new Counting(new BufferSource(bytes)), { prefix: expected.first_frame_end }));
+  const windows: [number, number][] = [
+    [sq.start, sq.start + 1],
+    [sq.start + 2 * sq.chunk_bp - 40, sq.start + 2 * sq.chunk_bp + 60],     // à cheval sur un trou et deux blocs
+    [sq.end - 13, sq.end],
+    [sq.start + 3 * sq.chunk_bp + 5, sq.start + 3 * sq.chunk_bp + 5],      // vide
+  ];
+  let same = true;
+  for (const [a, b] of windows) same &&= (await gw.read(sq.chrom, a, b)) === sq.bases.slice(a - sq.start, b - sq.start);
+  check("séquence : fenêtres quelconques identiques au lecteur Python", same);
+  const sOne = new SequenceReader(await G3D.open(new BufferSource(bytes), { prefix: expected.first_frame_end }));
+  const w0 = sq.start + sq.chunk_bp + 100;
+  check("séquence : rien n'est là avant qu'on le demande", !sOne.has(sq.chrom, w0, w0 + 200) && sOne.now(sq.chrom, w0, w0 + 200) === null);
+  await sOne.prefetch(sq.chrom, w0, w0 + 200);
+  check(
+    "séquence : une fenêtre ne lit que son bloc et la table d'empreintes",
+    sOne.has(sq.chrom, w0, w0 + 200) && sOne.bytes <= sq.chunk_bp / 4 + 16 * 6,
+    `${sOne.bytes} o lus pour 200 bases`,
+  );
+  check("séquence : le bloc voisin n'est pas lu", !sOne.has(sq.chrom, w0 + sq.chunk_bp, w0 + sq.chunk_bp + 1));
+  await Promise.all([sOne.prefetch(sq.chrom, w0, w0 + 10), sOne.prefetch(sq.chrom, w0, w0 + 10)]);
+  check("séquence : redemander un bloc présent ne relit rien", sOne.bytes <= sq.chunk_bp / 4 + 16 * 6);
+  check("séquence : les lectures du premier rendu n'en contiennent rien", before === 1);
+  let outside = false;
+  try {
+    await sOne.read(sq.chrom, sq.end - 5, sq.end + 5);
+  } catch {
+    outside = true;
+  }
+  check("séquence : une fenêtre qui déborde est refusée, pas tronquée", outside);
+  const badSeq = bytes.slice();
+  badSeq[badSeq.length - 50] ^= 1;
+  const gc = new SequenceReader(await G3D.open(new BufferSource(badSeq), { prefix: expected.first_frame_end }));
+  let seqCaught = false;
+  try {
+    await gc.read(sq.chrom, sq.end - 100, sq.end);
+  } catch (e) {
+    seqCaught = e instanceof CorruptError;
+  }
+  check("séquence : un octet altéré dans un bloc est détecté", seqCaught);
 
   // — Corruption : un octet changé dans le premier rendu doit être vu. —
   const bad = bytes.slice();

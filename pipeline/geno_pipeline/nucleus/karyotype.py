@@ -11,7 +11,7 @@ pour que la semaine où on la modélisera n'ait pas à réécrire le modèle de 
 Sur la provenance des longueurs : une taille de chromosome est une propriété
 déterministe de l'assemblage, pas une mesure. Elle reste néanmoins une donnée, et
 la règle du projet est qu'une donnée remonte à un fichier empreint. D'où la
-hiérarchie : si `data/core/hg38.chrom.sizes` existe (récupéré et verrouillé par
+hiérarchie : si `data/raw/core/hg38.chrom.sizes` existe (récupéré et verrouillé par
 `make data-core`), c'est lui qui fait foi ; sinon on retombe sur la table interne,
 et **tout ce qui en découle est estampillé `builtin`** jusqu'à ce que le réseau
 s'ouvre. Ça ne se devine pas dans les sorties : c'est imprimé.
@@ -24,9 +24,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
-# GRCh38 / hg38, assemblage primaire. Transcrit ; à revérifier contre
-# hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes dès que
-# l'hôte est joignable — d'où l'estampille `builtin`.
+# GRCh38 / hg38, assemblage primaire. Transcrit, puis revérifié le 2026-10-18 contre
+# hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes : les 24 longueurs
+# concordent à la base près. La table reste le repli quand le fichier manque.
 HG38: dict[str, int] = {
     "chr1": 248_956_422,
     "chr2": 242_193_529,
@@ -106,7 +106,9 @@ def chrom_sizes(path: Path | None = None) -> tuple[dict[str, int], str]:
     et un modèle construit sur le fichier officiel ne se valent pas et ne doivent
     pas se ressembler dans les sorties.
     """
-    path = path or ROOT / "data" / "core" / "hg38.chrom.sizes"
+    # Là où `make data-core` le dépose. Jusqu'à la semaine 12 le chemin lu ici était
+    # `data/core/`, où rien n'arrive jamais : le fichier verrouillé n'aurait jamais fait foi.
+    path = path or ROOT / "data" / "raw" / "core" / "hg38.chrom.sizes"
     if path.exists():
         sizes: dict[str, int] = {}
         for line in path.read_text(encoding="utf-8").splitlines():
