@@ -216,7 +216,29 @@ visible comme convenu, et la raison de la semaine de modélisation qui reste à 
 
 ### Non-régression
 
-MESURE_REGRESSION
+| Mesure | Semaine 11 | Semaine 12 |
+|---|---:|---:|
+| `make test` | 233 | **242** (+ 5 séquence, + 4 format) |
+| `pnpm verify` | 49 | **70** (+ 21 hélice) |
+| lecture croisée `.g3d` | 37 | **46** (+ 9 séquence) |
+| lisibilité S11 (`target=actb`) : ancres, anneau, arc, corps, flèches | 269 · 131 · 1 662 · 2 961 · 85 % · 0,95/0,93 | **identiques** |
+| premier rendu S9, aperçu, préfixe 16 Kio, Slow 4G | 1 432 ms | **1 418 ms** (marge 82 ms) |
+| page du premier rendu | 15,4 Kio | **15,1 Kio** |
+| en-tête du `.g3d` / fin du premier rendu | 12 182 o | 13 854 o |
+
+Deux défauts trouvés en chemin, l'un et l'autre corrigés avant la mesure :
+
+- **La lisibilité S11 avait changé** — boucle 692–777 au lieu de 1527–1621, 0 pixel d'ancre +.
+  ACTB porte désormais une cible (c.1), et la nouvelle règle « la boucle visée contient la base »
+  remplaçait celle de S11. `target=actb` ne passe plus de base visée : la semaine 11 est rejouée
+  à l'identique.
+- **La page du premier rendu grossissait de 2 Kio** : les méthodes de séquence vivaient dans la
+  classe `G3D`, qu'aucun élagage ne découpe. Elles sont dans `SequenceReader`, à part.
+
+La variante « noyau seul » de S9, déjà en échec (1 602 ms), passe à 2 263 ms : son fichier porte
+maintenant deux niveaux fins et la séquence dans l'en-tête, qui ne tient plus dans le préfixe de
+16 Kio. C'est le fichier de comparaison, pas celui que sert la plongée ; la règle de S9 — l'aperçu
+est le niveau du premier rendu — en sort renforcée.
 
 ### Ce que ça ne dit pas
 
