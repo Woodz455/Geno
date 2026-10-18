@@ -9,14 +9,14 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 11.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–2, semaine 12.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
 entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration —, un **ensemble de
 200 repliements** du même génome, une **descente sous le TAD** par extrusion de boucles, un **format de fichier** qui
-les sert par morceaux, et une **plongée continue** du noyau jusqu'aux nucléosomes d'une boucle
-CTCF.
+les sert par morceaux, et une **plongée continue** du noyau jusqu'à une seule base de TP53, sur la
+séquence hg38 réelle.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -127,15 +127,30 @@ où la pelote de 4 Mb les cache entièrement sans isolement. Les arcs sont les b
 noyau, lui, ne tient toujours pas : le fondu le rend continu à l'œil, mais seule 45 % de la
 fibre tombe là où étaient les billes qu'elle détaille ([`docs/VALIDATION.md` § S11](docs/VALIDATION.md)).
 
+Et elle descend maintenant **jusqu'à la base**. La plongée vise chr17:7 673 802 — c.818 de TP53,
+codon 273, le site de la mutation R273H — désigné par l'annotation GENCODE et non recopié : du
+noyau à la fibre de chr17, aux nucléosomes, puis, sous 40 nm de champ, à la **double hélice** sur
+la séquence de référence, lue dans `hg38.2bit` depuis que le réseau s'est ouvert, et sous 8 nm
+aux lettres. La géométrie B est juste et mesurée (10,5 pb/tour, sillons de 5,4 et 11,8 Å), et
+l'ADN qui la porte a une longueur à la base près : chaque nucléosome est construit pour.
+La plongée n'a **aucun saut** sur 600 images ; jouée **en temps réel sous Slow 4G**, aucune image
+n'attend sa séquence — on n'en lit que la fenêtre, 11,8 Kio sur 2 Mo —, quand le témoin sans
+préchargement attend ; et chacune des 90 bases visibles à l'arrivée a la couleur de la base du
+génome. Ce qui est réel et ce qui ne l'est pas est dit à l'écran à chaque échelle : la séquence
+est la référence, l'hélice est idéale, la position est celle de nucléosomes illustratifs sur une
+fibre simulée ([`docs/VALIDATION.md` § S12](docs/VALIDATION.md)).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
 Ce verdict porte sur la correction seulement — l'environnement ne rend que via SwiftShader,
 un rasteriseur logiciel, donc les images par seconde attendent du vrai matériel.
 
-> Les données affichées viennent de **fixtures**, pas de sources scientifiques — l'accès
-> réseau aux dépôts est fermé dans l'environnement de développement. Toute fiche issue des
-> fixtures le dit en en-tête. Voir [`docs/DATA_SOURCES.md` § 8](docs/DATA_SOURCES.md).
+> Les fiches du socle 1D viennent encore de **fixtures**, pas de sources scientifiques, et toute
+> fiche qui en vient le dit en en-tête. Le réseau vers les dépôts s'est ouvert à la semaine 12 :
+> la séquence hg38 et GENCODE sont réels et verrouillés ; les positions du modèle restent
+> simulées, et leur passage aux données réelles est la prochaine étape. Voir
+> [`docs/DATA_SOURCES.md` § 8](docs/DATA_SOURCES.md).
 
 ## Ce qu'on construit
 
@@ -185,6 +200,7 @@ TypeScript et Three.js/WebGL2 pour le moteur. `igv.js` et HiGlass pour les vues 
 ```
 make help            toutes les cibles
 make data            télécharge et vérifie les jeux de données du manifeste
+make data-seq        génomes de référence en 2bit (la séquence de la double hélice)
 make selftest        prouve la vérification d'empreintes, sans réseau
 make build-store     construit le magasin d'intervalles
 make query Q=…       interroge une région
@@ -194,7 +210,8 @@ make recon           balaie l'exposant contact → distance contre une géométr
 make nucleus         construit un noyau diploïde complet de billes TAD
 make ensemble        200 repliements du même génome, et ce qui s'y reproduit
 make fine            extrusion de boucles sous le TAD, et son raccord au noyau
-make g3d             écrit le fichier .g3d multi-niveaux, compartiments compris, et le relit
+make fine-tp53       la même chose autour de TP53, sur chr17
+make g3d             écrit le fichier .g3d multi-niveaux, compartiments, séquence et cibles compris, et le relit
                      COMPARTMENTS=e1.bedGraph affiche un E1 mesuré à la place de celui du modèle
 make g3d-bench       octets écrits par bille, de 1 Mb à 10 kb
 make test            suite de tests
@@ -203,11 +220,16 @@ make test            suite de tests
 Côté rendu (Node 22, pnpm) :
 
 ```
-pnpm verify          49 assertions : imposteurs (S4), caméra, tramage, occlusion (S10), tubes, nucléosomes (S11)
+pnpm verify          70 assertions : imposteurs (S4), caméra, tramage, occlusion (S10), tubes, nucléosomes (S11),
+                     chemin de l'ADN, double hélice, couleurs et picking à la base (S12)
 pnpm typecheck       TypeScript strict
 pnpm build           produit dist/dive.html (la plongée), les pages de mesure et le banc matériel
 node tools/test-g3d.mjs   lecture croisée du .g3d, Python → TypeScript, HTTP Range compris
 node tools/loadtime.mjs   premier rendu sous bridage Fast 4G / Slow 4G, dans Chromium
 node tools/dive.mjs       continuité de la plongée, image par image, contre un témoin qui saute
-node tools/loop.mjs       lisibilité de la boucle CTCF, témoin sans isolement, raccord S8 sur l'image
+node tools/loop.mjs       lisibilité de la boucle CTCF, témoin sans isolement, raccord S8 sur l'image (chr7, chr17)
+node tools/stream.mjs     la plongée en temps réel sous Slow 4G : images en attente, avec et sans préchargement
+node tools/fidelity.mjs   les bases dessinées à l'arrivée, contre hg38.2bit relu par Python
+node tools/record.mjs     la vidéo de la plongée, et sa continuité mesurée sur la vidéo
+node tools/shot.mjs       une image PNG par étape de la plongée
 ```

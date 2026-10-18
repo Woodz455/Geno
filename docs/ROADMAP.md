@@ -265,6 +265,19 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   grand et petit sillon) depuis la séquence réelle de la fenêtre visible uniquement.
 - **Fait quand** : un zoom continu enregistré, du noyau jusqu'à une base précise de TP53,
   sans coupure ni chargement visible.
+- **Fait.** Le réseau s'est ouvert en début de semaine : `hg38.2bit` et GENCODE v50 sont
+  récupérés, verrouillés et confrontés à l'empreinte de leur dépôt. La plongée va de 80 µm à
+  4 nm de champ et s'arrête sur **chr17:7 673 802**, c.818 de TP53 (codon 273, CGT), recalculé
+  depuis les CDS du transcrit MANE — sur la région fine de TP53 simulée comme en S8, CTCF
+  plantés. Sous 40 nm, l'ADN de 1 nm cède à la double hélice B (10,5 pb/tour, 3,57 nm de pas,
+  sillons mesurés 5,4 et 11,8 Å contre 5,7 et 11,7 publiés) posée sur un chemin d'ADN dont chaque
+  base a une position — 0,34 nm par pas à 0,4 % près, à travers des nucléosomes illustratifs ;
+  sous 8 nm, les lettres. Mesures : **0 saut** sur 600 images (transitions à 0,94–1,00× le
+  mouvement seul, témoin jusqu'à 7,4×) ; **0 image en attente** jouée en temps réel sous Slow 4G,
+  contre 1 pour le témoin sans préchargement, en lisant 11,8 Kio de séquence sur 2 Mo ; **90/90**
+  bases dessinées égales au génome relu par Python. La vidéo enregistrée est mesurée sur
+  elle-même. Le raccord S8, mesuré cette fois sur chr17, est pire qu'à ACTB : 11 % de la fibre
+  dans ses billes contre 45 % ([`VALIDATION.md` § S12](VALIDATION.md)).
 
 ---
 
