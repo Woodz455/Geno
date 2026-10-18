@@ -168,7 +168,34 @@ fps.
 
 ### « Sans chargement visible »
 
-MESURE_CHARGEMENT
+`node tools/stream.mjs 9 40` : la plongée jouée **en temps réel** — la caméra suit l'horloge, une
+image en retard a quand même avancé —, réseau bridé par CDP au profil Slow 4G de la semaine 9
+(562,5 ms de latence, 180 ko/s), cache désactivé. Chaque image dit si elle montre un chargement :
+hélice due sans sa séquence, ou nucléosomes dus pas encore générés.
+
+| Durée | | Images | Chargement visible | dont séquence | dont nucléosomes | Séquence lue |
+|---:|---|---:|---:|---:|---:|---:|
+| 9 s (vitesse du bouton) | préchargement | 41 | **0** | 0 | 0 | 11,8 Kio |
+| 9 s | témoin : à la demande | 41 | **1** (à 7,7 s, 18 nm de champ) | 1 | 0 | 7,8 Kio |
+| 40 s | préchargement | 178 | **0** | 0 | 0 | 31,8 Kio |
+| 40 s | témoin : à la demande | 183 | 0 | 0 | 0 | 7,8 Kio |
+
+**Aucune image en attente avec préchargement**, aux deux vitesses ; et **seule la fenêtre est
+lue** : 11,8 à 31,8 Kio de séquence sur les 2 Mo du fichier (la table d'empreintes, puis un à
+sept blocs de 4 Ko). À dire avec le résultat :
+
+- le témoin ne discrimine qu'à la vitesse rapide. À 40 s, la descente de 60 à 40 nm de champ
+  laisse à une requête à la demande le temps d'arriver (≈ 0,7 s en Slow 4G) : il ne montre rien,
+  et ce zéro-là ne prouve rien. À 9 s, il attend une fois — c'est cette ligne qui donne son sens
+  au zéro de la plongée ;
+- un premier essai, avant correction, comptait **1 image** de nucléosomes non générés à 248 nm
+  de champ : la génération commençait à l'échelle de la boucle et coûtait 11 ms par monomère.
+  Elle commence désormais dès la fibre, autour de la base visée dès l'ouverture, à 4,1 ms par
+  monomère, sur un budget d'un quart d'intervalle entre images ;
+- SwiftShader rend 4 à 5 images par seconde : la caméra avance par grands pas et la génération
+  a moins d'images pour se faire. Sur du matériel à 60 images par seconde, la marge est plus
+  grande, pas plus petite ; le réseau, lui, est simulé de façon réaliste, sans TCP ni TLS
+  (même réserve qu'en S9).
 
 ### L'enregistrement
 
