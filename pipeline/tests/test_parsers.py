@@ -63,3 +63,16 @@ def test_comment_and_header_lines_are_skipped(fixtures_dir):
     # Les fixtures commencent toutes par des lignes # ; aucune ne doit être parsée.
     for row in parse_bed(fixtures_dir / "chromhmm.fixture.bed"):
         assert not row[0].startswith("#")
+
+
+def test_gzip_without_suffix_is_read_by_its_magic_bytes(fixtures_dir, tmp_path):
+    # `fetch.sh` nomme les fichiers d'après leur identifiant : `hg38.cytoband`, gzippé, sans `.gz`.
+    import gzip
+
+    src = fixtures_dir / "cytoband.tsv"
+    if not src.exists():
+        src = next(fixtures_dir.glob("cytoband*"))
+    plain = list(parse_cytoband(src))
+    packed = tmp_path / "hg38.cytoband"
+    packed.write_bytes(gzip.compress(src.read_bytes()))
+    assert list(parse_cytoband(packed)) == plain and plain

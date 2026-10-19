@@ -28,6 +28,10 @@ hic = [
     "zarr>=2.16,<3",
 ]
 
+# Semaine 13 : les pistes bigWig de la fiche (Repli-seq, pA-DamID, TSA-seq). Optionnel
+# pour la même raison : le socle 1D n'en a pas besoin.
+fiche = ["pyBigWig>=0.3.22"]
+
 [project.scripts]
 geno = "geno_pipeline.cli:main"
 

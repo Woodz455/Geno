@@ -22,9 +22,12 @@ _GTF_ATTR = re.compile(r'(\S+)\s+"([^"]*)"')
 
 
 def _open(path: Path):
+    """Gzip reconnu à ses octets magiques, pas à son suffixe : `fetch.sh` nomme chaque
+    fichier d'après son identifiant de manifeste (`hg38.cytoband`, sans `.gz`)."""
     path = Path(path)
-    if path.suffix == ".gz":
-        return gzip.open(path, "rt", encoding="utf-8")
+    with path.open("rb") as fh:
+        if fh.read(2) == b"\x1f\x8b":
+            return gzip.open(path, "rt", encoding="utf-8")
     return path.open("r", encoding="utf-8")
 
 

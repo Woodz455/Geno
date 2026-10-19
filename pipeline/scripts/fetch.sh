@@ -7,7 +7,8 @@
 #   - une empreinte inscrite qui diverge fait échouer le fetch. On ne réécrit jamais
 #     silencieusement un sha256 : il faut passer par `lock.sh`, qui est explicite.
 #
-# Variables : MANIFEST, RAW, TIERS (liste séparée par des espaces).
+# Variables : MANIFEST, RAW, TIERS (liste séparée par des espaces), ONLY (identifiants, séparés
+# par des espaces : ne récupère que ceux-là — pour ne pas tirer 30 Go de .hic avec le reste du tier).
 
 set -euo pipefail
 
@@ -15,6 +16,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="${MANIFEST:-$ROOT/data/manifest.tsv}"
 RAW="${RAW:-$ROOT/data/raw}"
 TIERS="${TIERS:-core}"
+ONLY="${ONLY:-}"
 
 [[ -f $MANIFEST ]] || { echo "manifeste introuvable : $MANIFEST" >&2; exit 2; }
 
@@ -24,11 +26,18 @@ want_tier() {
   return 1
 }
 
+want_id() {
+  [[ -z $ONLY ]] && return 0
+  local w
+  for w in $ONLY; do [[ $w == "$1" ]] && return 0; done
+  return 1
+}
+
 n_ok=0 n_new=0 n_skip=0 n_bad=0 n_unresolved=0
 
 while IFS=$'\t' read -r id tier status license url sha bytes notes || [[ -n ${id:-} ]]; do
   [[ -z ${id:-} || $id == \#* || $id == id ]] && continue
-  want_tier "$tier" || { n_skip=$((n_skip + 1)); continue; }
+  want_tier "$tier" && want_id "$id" || { n_skip=$((n_skip + 1)); continue; }
 
   if [[ $status == unresolved || $url == UNRESOLVED ]]; then
     printf '  UNRESOLVED  %-34s %s\n' "$id" "$notes" >&2
