@@ -31,7 +31,7 @@ export interface Frame {
 export interface Intervals {
   start: Uint32Array;
   end: Uint32Array;
-  variabilityNm: Float32Array;
+  variabilityNm: Float64Array;
 }
 
 export interface Bead {
@@ -189,7 +189,7 @@ export class G3D {
     const cols = await this.columns(lv.chunks.flatMap((c) => [c.columns.start, c.columns.end, c.columns.variability]));
     const start = new Uint32Array(lv.n_beads);
     const end = new Uint32Array(lv.n_beads);
-    const variabilityNm = new Float32Array(lv.n_beads);
+    const variabilityNm = new Float64Array(lv.n_beads);
     lv.chunks.forEach((c, k) => {
       start.set(cols[3 * k] as Uint32Array, c.first);
       end.set(cols[3 * k + 1] as Uint32Array, c.first);
