@@ -23,7 +23,7 @@
  *  l'occlusion ; même opacité tramée, ici par point (fondu d'un intervalle génomique).
  */
 
-import { link } from "./gl.js";
+import { KIND, link } from "./gl.js";
 
 const TEX_W = 1024;
 const SUBDIV = [1, 2, 4, 8, 16] as const;
@@ -119,6 +119,7 @@ uniform bool uInvert;
 uniform float uFade;
 
 layout(location = 0) out vec4 oColor;
+uniform uint uKind;
 layout(location = 1) out uvec4 oId;
 layout(location = 2) out vec4 oDepth;
 
@@ -134,7 +135,7 @@ void main() {
   if (!gl_FrontFacing) n = -n;
   float lambert = max(dot(n, normalize(uLight)), 0.0);
   oColor = vec4(vColor * (0.25 + 0.75 * lambert), 1.0);
-  oId = uvec4(vId, 0u, 0u, 0u);
+  oId = uvec4(vId, uKind, 0u, 0u);
   oDepth = vec4(gl_FragCoord.z, n);
 }
 `;
@@ -161,6 +162,8 @@ export interface TubeDrawOptions {
   invert?: boolean;
   mix?: number;
   idBase?: number;
+  /** Écrit dans le canal G de la cible d'identifiants. `KIND.tube` par défaut. */
+  kind?: number;
   /** **Témoin de test seulement** : un nombre de côtés par gabarit au lieu d'un par image —
    *  la conception qui fend la surface entre deux segments voisins. */
   sidesPerLevel?: boolean;
@@ -372,6 +375,7 @@ export class TubeRenderer {
     gl.uniform1f(loc("uFade"), o.fade ?? 1);
     gl.uniform1i(loc("uInvert"), o.invert ? 1 : 0);
     gl.uniform1ui(loc("uIdBase"), o.idBase ?? 0);
+    gl.uniform1ui(loc("uKind"), o.kind ?? KIND.tube);
     gl.uniform1i(loc("uCount"), this.count);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LESS);

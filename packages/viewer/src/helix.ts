@@ -17,6 +17,7 @@
  *  paires, jamais la région entière.
  */
 
+import { KIND } from "./gl.js";
 import { TubeRenderer } from "./tube.js";
 
 export const B_DNA = {
@@ -181,7 +182,8 @@ export class HelixRenderer {
 
   draw(proj: Float32Array, o: HelixDrawOptions): void {
     if (this.empty) return;
-    const opts = { view: o.view, height: o.height, fade: o.fade ?? 1, invert: o.invert ?? false, idBase: o.idBase ?? 0 };
+    const opts = { view: o.view, height: o.height, fade: o.fade ?? 1, invert: o.invert ?? false, idBase: o.idBase ?? 0,
+      kind: KIND.helix };
     this.backbone.draw(proj, opts);
     this.rungs.draw(proj, opts);
   }

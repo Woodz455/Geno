@@ -47,6 +47,10 @@ help:
 	@echo "                       (et gm12878-noyau.g3d, sans aperçu, pour comparaison)"
 	@echo "                       COMPARTMENTS=e1.bedGraph affiche un E1 mesuré"
 	@echo "  make g3d-bench       octets écrits de 6 000 à 600 000 billes (cache des noyaux)"
+	@echo
+	@echo "Fiches (semaine 13)"
+	@echo "  make fiche           écrit data/g3d/gm12878.fiche — une fiche par bille, sources réelles"
+	@echo "                       du manifeste — puis la vérifie (complétude, exactitude, faits)"
 
 data:           ; @TIERS="core annot" $(FETCH)
 data-core:      ; @TIERS="core" $(FETCH)
@@ -71,6 +75,7 @@ nucleus:        ; @$(GENO) nucleus $(if $(N),--bp-per-bead $(N),)
 ensemble:       ; @$(GENO) ensemble $(if $(N),--n $(N),) $(if $(DAMID),--damid $(DAMID),)
 g3d:            ; @$(GENO) g3d build $(if $(COMPARTMENTS),--compartments $(COMPARTMENTS),) && $(GENO) g3d build --no-preview $(if $(COMPARTMENTS),--compartments $(COMPARTMENTS),) --out $(HERE)/data/g3d/gm12878-noyau.g3d >/dev/null && $(GENO) g3d inspect
 g3d-bench:      ; @$(GENO) g3d bench
+fiche:          ; @$(GENO) fiche build && $(GENO) fiche check
 fine:           ; @$(GENO) fine $(if $(N),--bp-per-bead $(N),) $(if $(CTCF),--ctcf $(CTCF),)
 # Semaine 12. D'autres graines que la région ACTB : avec les mêmes, le 1D (numpy pur, graines
 # fixes) planterait exactement les mêmes sites aux mêmes rangs, et rendrait les mêmes boucles.

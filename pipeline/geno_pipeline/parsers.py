@@ -82,7 +82,7 @@ def parse_cytoband(path: Path) -> Iterator[tuple[str, int, int, dict]]:
             "name": f"{chrom.removeprefix('chr')}{band}",
             "band": band,
             "stain": f[4],
-            "arm": band[0] if band[:1] in "pq" else "",
+            "arm": band[0] if band[:1] in ("p", "q") else "",   # "" in "pq" serait vrai
         }
 
 

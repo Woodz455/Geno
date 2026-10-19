@@ -1,8 +1,9 @@
-export { compile, createTargets, link, perspective } from "./gl.js";
+export { compile, createTargets, KIND, link, perspective } from "./gl.js";
 export type { Targets } from "./gl.js";
 export { ImpostorRenderer, MAX_GROUPS } from "./impostors.js";
 export type { Beads, DrawOptions } from "./impostors.js";
 export { NO_HIT, Picker } from "./picking.js";
+export type { Hit } from "./picking.js";
 export {
   dive,
   distanceFor,

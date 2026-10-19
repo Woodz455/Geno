@@ -1090,6 +1090,85 @@ def cmd_g3d(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fiche(args: argparse.Namespace) -> int:
+    """Les fiches d'information de chaque bille (semaine 13) : écrire, relire, vérifier."""
+    try:
+        import pyBigWig  # noqa: F401
+        import zarr  # noqa: F401
+    except ImportError as exc:
+        print(f"dépendance absente ({exc.name}) — pip install -e '.[hic,fiche]', voir docs/SETUP.md",
+              file=sys.stderr)
+        return 2
+    from .fiche.build import Fiche, build
+
+    if args.action == "build":
+        rep = build(Path(args.g3d), Path(args.out), Path(args.ensemble) if args.ensemble else None)
+        print(f"\n{rep['path']} : {rep['bytes'] / 1e6:.2f} Mo (en-tête {rep['header'] / 1e3:.1f} ko), "
+              f"{rep['seconds']:.0f} s")
+        for name, r in rep["levels"].items():
+            print(f"  {name:9s} {r['records']:5d} fiches pour {r['beads']:5d} billes · "
+                  f"{r['stored'] / 1e6:5.2f} Mo stockés pour {r['raw_json'] / 1e6:6.2f} Mo de JSON")
+        return 0
+
+    f = Fiche(args.out)
+    if args.action == "inspect":
+        h = f.header
+        print(f"{args.out} · {h['assembly']} · {h['cell_type']} · pipeline {h['pipeline']} · "
+              f"{len(h['sources'])} sources")
+        for lv in h["levels"]:
+            print(f"  {lv['name']:9s} {lv['records']:5d} fiches, {lv['n_beads']:5d} billes, "
+                  f"{len(lv['blocks'])} blocs")
+        if args.region:
+            chrom, rest = args.region.split(":")
+            pos = int(rest.replace(",", "")) - 1
+            for lv in h["levels"]:
+                for r in f.records(lv["name"]):
+                    v = r["hg38"]["v"]
+                    if v["chrom"] == chrom and v["start"] <= pos < v["end"]:
+                        print(f"\n[{lv['name']}] {chrom}:{v['start'] + 1:,}-{v['end']:,}")
+                        print(json.dumps(r, ensure_ascii=False, indent=1)[:args.chars])
+        return 0
+
+    if args.action == "dump":
+        from .fiche.check import dump_expected
+
+        dump_expected(f, Path(args.dump))
+        print(f"attendus de la lecture croisée : {args.dump}")
+        return 0
+
+    from .fiche.check import completeness, exactness, facts
+
+    print("complétude (toutes les billes)")
+    c = completeness(f)
+    for name, r in c.items():
+        if name == "control":
+            print(f"  témoin : un champ retiré est vu → {r}")
+            continue
+        mute = sum(r["mute"].values())
+        print(f"  {name:9s} {r['beads']:5d} billes · champs muets {mute}"
+              + (f" {r['mute']}" if mute else "") + f" · absences motivées {r['absent']}")
+    print("\nexactitude (recomposée par le magasin S2 et un balayage brut)")
+    for label, shift in (("", False), ("témoin décalé d'une bille", True)):
+        e = exactness(f, n=args.n, shift=shift)
+        n = e.pop("beads")
+        diff = e.pop("first_diff")
+        print(f"  {label or 'mesure':26s} " + " · ".join(f"{k} {v}/{n}" for k, v in e.items())
+              + (f"\n    premiers écarts : {diff}" if diff and not shift else ""))
+    print("\nfaits connus")
+    for name, ok, detail in facts(f):
+        print(f"  {'ok  ' if ok else 'ÉCHEC'} {name} — {detail}")
+    if args.kmers:
+        from .fiche.check import liftover_kmers
+
+        print("\nchaîne hg38 → T2T, contrôlée par les deux séquences (sans UCSC)")
+        for label, shift in (("mesure", 0), ("témoin décalé de 1 kb", 1000)):
+            k = liftover_kmers(args.kmers, shift=shift)
+            print(f"  {label:22s} {k['lifted']}/{k['tried']} positions levées · 21-mer identique "
+                  f"{k['kmer']}/{k['lifted']} ({100 * k['kmer'] / max(1, k['lifted']):.1f} %) · "
+                  f"base identique {k['base']}/{k['lifted']} ({100 * k['base'] / max(1, k['lifted']):.2f} %)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1278,6 +1357,19 @@ def main(argv: list[str] | None = None) -> int:
     g3.add_argument("--cache", default=str(ROOT / "data" / "g3d" / "bench"))
     g3.add_argument("--out", default=str(ROOT / "data" / "g3d" / "gm12878.g3d"))
     g3.set_defaults(fn=cmd_g3d)
+
+    fc = sub.add_parser("fiche", help="les fiches d'information de chaque bille (semaine 13)")
+    fc.add_argument("action", choices=["build", "inspect", "check", "dump"])
+    fc.add_argument("--dump", default=str(ROOT.parent / "dist" / "fiche-expected.json"),
+                    help="dump : où écrire les fiches attendues de la lecture croisée")
+    fc.add_argument("--g3d", default=str(ROOT / "data" / "g3d" / "gm12878.g3d"))
+    fc.add_argument("--ensemble", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
+    fc.add_argument("--out", default=str(ROOT / "data" / "g3d" / "gm12878.fiche"))
+    fc.add_argument("--region", default=None, help="inspect : la fiche qui contient chr:pos (1-based)")
+    fc.add_argument("--chars", type=int, default=4000)
+    fc.add_argument("--n", type=int, default=200, help="check : billes recomposées")
+    fc.add_argument("--kmers", type=int, default=10_000, help="check : positions du contrôle T2T (0 : sans)")
+    fc.set_defaults(fn=cmd_fiche)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

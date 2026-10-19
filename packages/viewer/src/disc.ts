@@ -13,7 +13,7 @@
  *  celle de la sphère déformée.
  */
 
-import { link } from "./gl.js";
+import { KIND, link } from "./gl.js";
 
 const VERT = /* glsl */ `#version 300 es
 precision highp float;
@@ -73,6 +73,7 @@ uniform bool uInvert;
 uniform float uFade;
 
 layout(location = 0) out vec4 oColor;
+uniform uint uKind;
 layout(location = 1) out uvec4 oId;
 layout(location = 2) out vec4 oDepth;
 
@@ -113,7 +114,7 @@ void main() {
   gl_FragDepth = (clip.z / clip.w) * 0.5 + 0.5;
   float lambert = max(dot(n, normalize(uLight)), 0.0);
   oColor = vec4(vColor * (0.25 + 0.75 * lambert), 1.0);
-  oId = uvec4(vId, 0u, 0u, 0u);
+  oId = uvec4(vId, uKind, 0u, 0u);
   oDepth = vec4(gl_FragDepth, n);
 }
 `;
@@ -182,7 +183,7 @@ export class EllipsoidRenderer {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, alpha);
   }
 
-  draw(proj: Float32Array, o: { view: Float32Array; light?: [number, number, number]; fade?: number; invert?: boolean }): void {
+  draw(proj: Float32Array, o: { view: Float32Array; light?: [number, number, number]; fade?: number; invert?: boolean; kind?: number }): void {
     const gl = this.gl;
     if (!this.count) return;
     gl.useProgram(this.program);
@@ -193,6 +194,7 @@ export class EllipsoidRenderer {
     gl.uniform3fv(loc("uLight"), o.light ?? [0.4, 0.6, 1]);
     gl.uniform1f(loc("uFade"), o.fade ?? 1);
     gl.uniform1i(loc("uInvert"), o.invert ? 1 : 0);
+    gl.uniform1ui(loc("uKind"), o.kind ?? KIND.disc);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LESS);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.count);

@@ -61,7 +61,7 @@ export class SequenceLayer {
 
   constructor(
     gl: WebGL2RenderingContext,
-    private readonly reader: SequenceReader,
+    readonly reader: SequenceReader,
     private readonly fiber: Fiber,
     readonly chrom: string,
     /** Coordonnée 0-based de la première base de la région fine. */

@@ -6,10 +6,13 @@
 
 import { type Frame, G3D, HttpSource, SequenceReader, type Source, type TargetSpec } from "@geno/g3d";
 import {
+  baseOf,
   createTargets,
   distanceFor,
   eye,
   ImpostorRenderer,
+  invert,
+  KIND,
   NO_HIT,
   type Orbit,
   perspective,
@@ -24,6 +27,17 @@ import { compartmentColors, type State, stateAt, territoryPalette } from "./scen
 import { type Label, SequenceLayer } from "./sequence.js";
 
 export const FOV = (45 * Math.PI) / 180;
+
+/** a × b, matrices 4 × 4 en colonnes. */
+function mat4mul(a: Float32Array, b: Float32Array): Float32Array {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    let v = 0;
+    for (let k = 0; k < 4; k++) v += a[k * 4 + r] * b[c * 4 + k];
+    o[c * 4 + r] = v;
+  }
+  return o;
+}
 const PREVIEW_IDS = 1_000_000;           // les identifiants de l'aperçu ne recouvrent pas ceux du noyau
 const ACTB: [string, number, number] = ["chr7", 5_527_151, 5_530_601];
 const AO_STRENGTH = 0.9;
@@ -34,6 +48,31 @@ const TARGETS = {
   tp53: { level: "fin-tp53", copy: "chr17:a", target: "TP53 c.818", near: -1 },
 } as const;
 export type TargetName = keyof typeof TARGETS;
+
+/** Ce qu'un clic désigne (semaine 13) : le niveau et la bille dont on lira la fiche, et
+ *  la position génomique aussi fine que l'objet cliqué le permet. */
+export interface Selection {
+  /** L'objet : « aperçu », « bille », « fibre », « nucléosome », « ADN », « base »… */
+  what: string;
+  /** Niveau du `.g3d` et du fichier de fiches, et identifiant de la bille (≥ 1). */
+  level: string;
+  bead: number;
+  copy: string;
+  chrom: string;
+  /** Intervalle de la bille ou du monomère, 0-based demi-ouvert. */
+  start: number;
+  end: number;
+  /** La base, 0-based hg38, quand l'objet en désigne une ; sinon −1. */
+  pos: number;
+  /** Brin du barreau cliqué (0 : +, 1 : −), pour une base de l'hélice. */
+  strand: 0 | 1 | -1;
+  precision: string;
+  detail?: string | undefined;
+  /** Point monde sous le pixel, µm (profondeur relue). */
+  world: number[] | null;
+  /** Coût de la lecture du pixel et du mapping inverse, ms. */
+  pickMs: number;
+}
 
 export interface Layer {
   name: string;
@@ -108,6 +147,9 @@ export interface DiveScene {
   size(): [number, number];
   /** Bille sous un pixel du canevas : texte prêt à afficher, ou null. */
   describe(x: number, y: number): Promise<string | null>;
+  /** Semaine 13 : ce que désigne un pixel, **synchrone** — une lecture de pixel et des
+   *  tableaux déjà en mémoire. `null` sur le fond, ou si le niveau n'est pas encore lu. */
+  select(x: number, y: number): Selection | null;
   /** Le tampon d'identifiants du dernier rendu, ligne 0 en bas (convention WebGL). */
   ids(): Uint32Array;
   /** Pixel d'un point monde au dernier rendu, origine en haut à gauche. */
@@ -291,9 +333,60 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       return "noyau : simulé (contraintes de la semaine 6) · compartiments : prédits par le modèle, pas mesurés";
     },
 
+    select(x: number, y: number): Selection | null {
+      const t0 = performance.now();
+      const hit = picker.hit(x, y);
+      if (!hit) return null;
+      const { id, kind } = hit;
+      // Le point monde (profondeur relue) et la ligne de visée du pixel : l'inverse de
+      // projection × vue, au centre du pixel que le picking a lu.
+      const m = invert(mat4mul(lastProj, lastView));
+      const nx = (2 * (Math.floor(x) + 0.5)) / W - 1;
+      const ny = 1 - (2 * (Math.floor(y) + 0.5)) / H;
+      const unproject = (nz: number) => {
+        const v = [0, 1, 2, 3].map((r) => m[r] * nx + m[4 + r] * ny + m[8 + r] * nz + m[12 + r]);
+        return [v[0] / v[3], v[1] / v[3], v[2] / v[3]];
+      };
+      const world = unproject(2 * hit.depth - 1);
+      const near = unproject(-1);
+      const far = unproject(1);
+      const dl = Math.hypot(far[0] - near[0], far[1] - near[1], far[2] - near[2]) || 1;
+      const ray = { o: near, d: [(far[0] - near[0]) / dl, (far[1] - near[1]) / dl, (far[2] - near[2]) / dl] };
+      const done = (s: Omit<Selection, "pickMs" | "world">): Selection => ({ ...s, world, pickMs: performance.now() - t0 });
+      const bead = (lay: Layer, local: number, what: string, precision: string): Selection | null => {
+        const b = g3d.beadsNow(lay.name);
+        if (!b) return null;
+        const copy = lay.frame.level.copies[lay.frame.copy[local - 1]];
+        return done({ what, level: lay.name, bead: local, copy, chrom: copy.split(":")[0], start: b.start[local - 1],
+                      end: b.end[local - 1], pos: -1, strand: -1, precision });
+      };
+      const F = scene.fiber;
+      const R = scene.region;
+      const fibre = (monomer: number, pos: number, strand: 0 | 1 | -1, what: string, precision: string, detail?: string) => {
+        const b = g3d.beadsNow(R!.level);
+        if (!b || monomer < 0 || monomer >= b.start.length) return null;
+        return done({ what, level: R!.level, bead: monomer + 1, copy: R!.copy, chrom: R!.chrom, start: b.start[monomer],
+                      end: b.end[monomer], pos, strand, precision, detail });
+      };
+      if (kind === KIND.helix && id >= IDS.base && R && F) {
+        const { rank, strand } = baseOf(id - IDS.base);
+        return fibre(Math.floor(rank / g3d.level(R.level).bp_per_bead), R.start + rank, strand, "base", "exacte : un barreau = une base");
+      }
+      if (id >= IDS.fiber && F && R) {
+        const h = F.locate(id, ray);
+        if (!h) return null;
+        const what = { fibre: "fibre", ctcf: "site CTCF", anneau: "cohésine", arc: "paire d'ancres", nucleosome: "nucléosome", adn: "ADN" }[h.what];
+        return fibre(h.monomer, h.rank >= 0 ? R.start + h.rank : -1, -1, what, h.precision, h.detail);
+      }
+      if (id > PREVIEW_IDS) return bead(preview, id - PREVIEW_IDS, "bille de l'aperçu", `bille de ${(preview.frame.level.bp_per_bead / 1e6).toFixed(0)} Mb`);
+      if (scene.fine) return bead(scene.fine, id, "bille du noyau", `bille de ${(scene.fine.frame.level.bp_per_bead / 1e3).toFixed(0)} kb`);
+      return null;
+    },
+
     async describe(x: number, y: number): Promise<string | null> {
       const id = picker.pick(x, y);
       if (id === NO_HIT) return null;
+      if (id >= IDS.linker && scene.fiber) return scene.fiber.describe(id);
       if (id >= IDS.base && scene.sequence) return scene.sequence.describe(id);
       if (id >= IDS.fiber && scene.fiber) return scene.fiber.describe(id);
       const lay = id > PREVIEW_IDS ? preview : scene.fine!;
@@ -319,6 +412,8 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   let target: [number, number, number] = [0, 0, 0];
   if (fineName) {
     scene.fine = layer(gl, await g3d.firstFrame(fineName), await g3d.attribute(fineName, "compartment"), 0);
+    // Semaine 13 : début et fin de chaque bille, une fois, pour qu'un clic n'attende rien.
+    await Promise.all([g3d.beads(firstName), g3d.beads(fineName)]);
     const locus: [string, number, number] = tgt ? [tgt.chrom, tgt.position - 1, tgt.position] : ACTB;
     const hits = await g3d.locate(fineName, ...locus);
     const hit = hits.find((h) => h.copy === which.copy) ?? hits[0];
@@ -334,6 +429,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   const seqSpec = tgt ? (g3d.header.sequences ?? []).find((q) => q.chrom === tgt.chrom && q.start < tgt.position && tgt.position <= q.end) : null;
   const regionStart = seqSpec?.start ?? 0;
   if (fiberLevel) {
+    await g3d.beads(which.level);
     const chrom = which.copy.split(":")[0];
     const first = await g3d.identify(which.level, 1);
     const last = await g3d.identify(which.level, fiberLevel.n_beads);

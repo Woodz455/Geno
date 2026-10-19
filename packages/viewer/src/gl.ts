@@ -45,11 +45,19 @@ export function perspective(fovY: number, aspect: number, near: number, far: num
   ]);
 }
 
+/** Ce que le canal G de la cible d'identifiants dit du fragment : le type de rendu qui l'a
+ *  écrit. 0 : rien (fond). Une bille et un point de tube peuvent porter le même identifiant
+ *  local ; le type les départage sans réserver de plages. */
+export const KIND = { none: 0, sphere: 1, tube: 2, disc: 3, helix: 4 } as const;
+
 export interface Targets {
   fbo: WebGLFramebuffer;
   /** Couleur visible, RGBA8. */
   color: WebGLTexture;
-  /** Identifiant d'instance, R32UI — c'est ce que lit le picking. */
+  /** Identifiant, RGBA32UI — c'est ce que lit le picking. R : l'identifiant ; G : le type de
+   *  rendu qui l'a écrit (`KIND`). RGBA parce que `RGBA_INTEGER` est le seul format entier
+   *  que WebGL2 garantit pour `readPixels` ; R32UI se relit en `RED_INTEGER`, qu'un pilote
+   *  peut refuser. */
   id: WebGLTexture;
   /** Profondeur écrite par le fragment shader, RGBA32F. Sert aux tests : on ne
    *  peut pas relire un depth buffer en WebGL2, mais on peut relire un float. */
@@ -81,7 +89,7 @@ export function createTargets(gl: WebGL2RenderingContext, width: number, height:
   };
 
   const color = tex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
-  const id = tex(gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT);
+  const id = tex(gl.RGBA32UI, gl.RGBA_INTEGER, gl.UNSIGNED_INT);
   const depth = tex(gl.RGBA32F, gl.RGBA, gl.FLOAT);
 
   const depthBuffer = gl.createRenderbuffer()!;

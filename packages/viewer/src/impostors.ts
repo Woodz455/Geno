@@ -25,7 +25,7 @@
  *  l'opacité est rendue par **tramage** (voir `FRAG`), pas par mélange.
  */
 
-import { link, perspective } from "./gl.js";
+import { KIND, link, perspective } from "./gl.js";
 
 const VERT = /* glsl */ `#version 300 es
 precision highp float;
@@ -94,6 +94,7 @@ uniform vec3 uLight;
 uniform bool uInvert;
 
 layout(location = 0) out vec4 oColor;
+uniform uint uKind;
 layout(location = 1) out uvec4 oId;
 layout(location = 2) out vec4 oDepth;
 
@@ -132,7 +133,7 @@ void main() {
   float lambert = max(dot(normal, normalize(uLight)), 0.0);
   float ambient = 0.25;
   oColor = vec4(vColor * (ambient + 0.75 * lambert), 1.0);
-  oId = uvec4(vId, 0u, 0u, 0u);
+  oId = uvec4(vId, uKind, 0u, 0u);
   // La normale en espace vue voyage avec la profondeur : l'occlusion ambiante
   // (ssao.ts) a besoin des deux, et la cible flottante avait trois canaux libres.
   oDepth = vec4(gl_FragDepth, normal);
@@ -168,6 +169,8 @@ export interface DrawOptions {
   groupFade?: ArrayLike<number>;
   /** 0 : première palette ; 1 : seconde. */
   mix?: number;
+  /** Écrit dans le canal G de la cible d'identifiants. `KIND.sphere` par défaut. */
+  kind?: number;
 }
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -178,7 +181,7 @@ export class ImpostorRenderer {
   private readonly buffers: WebGLBuffer[] = [];
   private readonly uProj: WebGLUniformLocation;
   private readonly uLight: WebGLUniformLocation;
-  private readonly u: Record<"view" | "fade" | "groupFade" | "mix" | "invert", WebGLUniformLocation>;
+  private readonly u: Record<"view" | "fade" | "groupFade" | "mix" | "invert" | "kind", WebGLUniformLocation>;
   private readonly fades = new Float32Array(MAX_GROUPS);
   private count = 0;
 
@@ -193,6 +196,7 @@ export class ImpostorRenderer {
       groupFade: loc("uGroupFade"),
       mix: loc("uMix"),
       invert: loc("uInvert"),
+      kind: loc("uKind"),
     };
 
     this.vao = gl.createVertexArray()!;
@@ -266,6 +270,7 @@ export class ImpostorRenderer {
     gl.uniform1f(this.u.fade, o.fade ?? 1);
     gl.uniform1i(this.u.invert, o.invert ? 1 : 0);
     gl.uniform1f(this.u.mix, o.mix ?? 0);
+    gl.uniform1ui(this.u.kind, o.kind ?? KIND.sphere);
     this.fades.fill(1);
     if (o.groupFade) for (let i = 0; i < Math.min(o.groupFade.length, MAX_GROUPS); i++) this.fades[i] = o.groupFade[i];
     gl.uniform1fv(this.u.groupFade, this.fades);

@@ -20,11 +20,16 @@
  *    fidelity   les lettres des barreaux visibles, relues sur les pixels de la vue finale
  *    labels     dessine la surimpression des lettres même en mode mesure (pour l'enregistrement)
  *    record=N   N images de la plongée, rendues une à une sur demande (`tools/record.mjs`)
+ *    fiche=…    fichier de fiches (défaut : celui du .g3d, en .fiche) — semaine 13
+ *    pick       mode interactif instrumenté pour `tools/pick.mjs` : chaque clic est chronométré
+ *               (pixel, fiche, DOM, image peinte) ; nofichepre : le témoin sans préchargement
  */
 
+import { FicheReader, HttpSource } from "@geno/g3d";
 import { BASE_COLORS, baseOf, dive, type Orbit, rotate, zoom } from "@geno/viewer";
 import { divePath, runBench } from "./bench.js";
-import { type DiveScene, FOV, openDive, type TargetName } from "./dive.js";
+import { type DiveScene, FOV, openDive, type Selection, type TargetName } from "./dive.js";
+import { compose, EVIDENCE_COLORS, FichePanel } from "./fiche.js";
 import { IDS } from "./fiber.js";
 import { measureJunction, measureLoop } from "./legibility.js";
 
@@ -36,6 +41,8 @@ const VIEW = q.get("view") ?? (q.has("legibility") ? "loop" : q.has("fidelity") 
 const TARGET = (q.get("target") ?? "tp53") as TargetName;
 const STREAM = Number(q.get("stream") ?? 0);
 const RECORD = Number(q.get("record") ?? 0);
+const FICHE = q.get("fiche") ?? FILE.replace(/\.g3d$/, ".fiche");
+const PICK = q.has("pick");
 
 declare global {
   interface Window {
@@ -347,6 +354,73 @@ async function main(): Promise<void> {
     go("Plonger vers ACTB", () => scene.final);
   }
   go("Remonter", () => scene.overview);
+  // Semaine 13 : la fiche. Le fichier s'ouvre après le premier rendu et se précharge en
+  // arrière-plan, le chromosome visé d'abord ; un clic n'attend jamais ce préchargement.
+  const panel = new FichePanel(document);
+  let reader: FicheReader | null = null;
+  const picks: Record<string, unknown>[] = [];
+  const prefetch: Record<string, number> = { started: performance.now() };
+  let marker: number[] | null = null;
+  const focusChrom = scene.region?.chrom ?? "chr17";
+  const opened = FicheReader.open(new HttpSource(FICHE)).then(async (r) => {
+    reader = r;
+    if (q.has("nofichepre")) return r;
+    const order = [
+      { level: "noyau", first: [focusChrom] },
+      { level: scene.g3d.header.first, first: [focusChrom] },
+      ...r.header.levels.filter((l) => l.fine).map((l) => ({ level: l.name })),
+    ];
+    await r.prefetch(order, (step) => (prefetch[step] = performance.now() - prefetch.started));
+    prefetch.all = performance.now() - prefetch.started;
+    prefetch.bytes = r.bytes;
+    return r;
+  }).catch((e) => {
+    info.textContent = `fiches indisponibles : ${e}`;
+    return null;
+  });
+
+  /** Un clic : le pixel, la fiche, le DOM — chronométrés séparément, puis l'image peinte. */
+  const onClick = (x: number, y: number) => {
+    const t0 = performance.now();
+    const sel: Selection | null = scene.select(x, y);
+    const t1 = performance.now();
+    if (!sel) {
+      panel.hide();
+      marker = null;
+      picks.push({ hit: false, pickMs: t1 - t0 });
+      return;
+    }
+    marker = sel.world;
+    const r = reader;
+    const card = r ? r.card(sel.level, sel.bead) : null;
+    const t2 = performance.now();
+    const c = compose(sel, card, (r ?? { header: null }).header as never, r, scene.sequence?.reader ?? null);
+    if (r) panel.show(c, r.header, !card);
+    else info.textContent = `${c.title}\n${c.subtitle}\n(fiches en cours d'ouverture)`;
+    const t3 = performance.now();
+    const entry: Record<string, unknown> = {
+      hit: true, what: sel.what, level: sel.level, bead: sel.bead, pos: sel.pos, ready: !!card,
+      pickMs: t1 - t0, cardMs: t2 - t1, domMs: t3 - t2, expected: c.expected, valued: c.valued, missing: c.missing,
+    };
+    picks.push(entry);
+    requestAnimationFrame(() => {
+      entry.frameMs = performance.now() - t0;
+    });
+    if (!card) {
+      // À froid : les coordonnées sont déjà là, le reste arrive avec son bloc.
+      opened.then(async (rr) => {
+        if (!rr) return;
+        const full = await rr.cardAsync(sel.level, sel.bead);
+        const c2 = compose(sel, full, rr.header, rr, scene.sequence?.reader ?? null);
+        panel.show(c2, rr.header, false);
+        entry.waitMs = performance.now() - t0;
+        entry.expected = c2.expected;
+        entry.valued = c2.valued;
+        entry.missing = c2.missing;
+      });
+    }
+  };
+
   const status = document.createElement("div");
   const evidence = document.createElement("div");
   evidence.id = "evidence";
@@ -375,7 +449,7 @@ async function main(): Promise<void> {
     drag = null;
     if (!wasClick) return;
     const dpr = canvas.width / canvas.clientWidth;
-    info.textContent = (await scene.describe(e.offsetX * dpr, e.offsetY * dpr)) ?? "";
+    onClick(e.offsetX * dpr, e.offsetY * dpr);
   });
   canvas.addEventListener(
     "wheel",
@@ -406,9 +480,10 @@ async function main(): Promise<void> {
     // Les nucléosomes se génèrent par tranches et la séquence arrive par le réseau : tant que
     // la fenêtre n'est pas complète, l'image suivante peut montrer plus.
     if (scene.last.loop > 0 || scene.last.helix > 0) dirty = true;
-    if (dirty) {
+    if (dirty || marker) {
       scene.render(orbit);
       drawLabels(scene);
+      if (marker) drawMarker(scene, marker);
       evidence.textContent = scene.evidence();
       dirty = false;
       frameTimes.push(now - lastFrame);
@@ -428,6 +503,64 @@ async function main(): Promise<void> {
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
+
+  if (PICK) {
+    // Pour `tools/pick.mjs` : aller à une étape de la plongée, tirer des pixels qui portent
+    // un objet, relire le journal des clics et l'état du préchargement.
+    scene.arrival = 1;
+    await scene.preload();
+    scene.growBudgetMs = Infinity;
+    (window as unknown as { __pick: unknown }).__pick = {
+      stops: scene.stops.length,
+      goto(i: number) {
+        orbit = scene.stops[Math.min(i, scene.stops.length - 1)];
+        anim = null;
+        scene.render(orbit);
+        scene.render(orbit);
+        dirty = true;
+        return { ...scene.last };
+      },
+      /** `n` pixels CSS au hasard (graine fixe) parmi ceux qui portent un identifiant. */
+      hits(n: number, seed: number) {
+        const ids = scene.ids();
+        const [W, H] = scene.size();
+        const dpr = canvas.width / canvas.clientWidth;
+        let st = seed >>> 0;
+        const rnd = () => ((st = (st * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+        const out: [number, number][] = [];
+        for (let tries = 0; out.length < n && tries < 200 * n; tries++) {
+          const x = Math.floor(rnd() * W), y = Math.floor(rnd() * H);
+          const cx = (x + 0.5) / dpr, cy = (y + 0.5) / dpr;
+          // Un pixel sous le HUD ou sous la fiche ouverte n'est pas cliquable : on l'écarte.
+          if (ids[(H - 1 - y) * W + x] && document.elementFromPoint(cx, cy) === canvas) out.push([cx, cy]);
+        }
+        return out;
+      },
+      log: picks,
+      prefetch,
+      reader: () => (reader ? { bytes: reader.bytes, requests: reader.requests, tables: reader.tablesBytes(),
+        levels: Object.fromEntries(reader.header.levels.map((l) => [l.name, reader!.levelBytes(l.name)])) } : null),
+    };
+    publish({ ok: true, pick: true, stops: scene.stops.length, gpu: scene.gpu });
+  }
+}
+
+/** Le point cliqué, repéré sur la surimpression : un cercle et une croix fine. */
+function drawMarker(scene: DiveScene, p: number[]): void {
+  const ctx = overlay.getContext("2d")!;
+  const [x, y] = scene.project(p);
+  const r = 9 * (overlay.width / overlay.clientWidth || 1);
+  ctx.save();
+  ctx.strokeStyle = EVIDENCE_COLORS.autre;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 2 * Math.PI);
+  ctx.moveTo(x - 1.8 * r, y);
+  ctx.lineTo(x - 1.2 * r, y);
+  ctx.moveTo(x + 1.2 * r, y);
+  ctx.lineTo(x + 1.8 * r, y);
+  ctx.stroke();
+  ctx.restore();
 }
 
 main().catch((e) => publish({ ok: false, error: String(e) }));

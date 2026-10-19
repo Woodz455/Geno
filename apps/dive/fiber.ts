@@ -28,7 +28,24 @@ export const IDS = {
   nucleosome: 4_000_000,
   /** Semaine 12 : une base, `2 × rang + brin + 1`, sur la région fine. */
   base: 5_000_000,
+  /** Semaine 13 : l'ADN de 1 nm entre et autour des nucléosomes, `rang + 1` du point de
+   *  l'axe. Jusqu'ici il réutilisait par erreur la plage des cœurs : un clic sur l'ADN
+   *  nommait un nucléosome au hasard. Au-dessus des bases (≤ 5 M + 2 × 4 M + 2). */
+  linker: 14_000_000,
 };
+
+/** Ce qu'un pixel de la fibre désigne : le monomère, et la base quand on la connaît. */
+export interface FiberHit {
+  what: "fibre" | "ctcf" | "anneau" | "arc" | "nucleosome" | "adn";
+  /** Monomère, rang dans la région (0-based). */
+  monomer: number;
+  /** Base, rang dans la région (0-based), ou −1 si l'objet n'a pas de base propre. */
+  rank: number;
+  /** Ce que vaut la base : « exacte », « la plus proche du point cliqué »… */
+  precision: string;
+  /** Une ligne de plus pour les objets qui ne sont pas un intervalle (arc, anneau, site). */
+  detail?: string;
+}
 
 /** Seuil des arcs, fixé avant toute mesure : une paire tenue dans au moins 5 % des
  *  conformations est une boucle de la population. */
@@ -87,6 +104,9 @@ export interface Fiber {
   focus: Loop | null;
   draw(proj: Float32Array, view: Float32Array, height: number, s: FiberState): void;
   describe(id: number): Promise<string | null>;
+  /** Mapping inverse : un identifiant de la fibre (et la ligne de visée du pixel, en µm :
+   *  origine et direction unitaire) → monomère et base. Synchrone : tout est en mémoire. */
+  locate(id: number, ray: { o: number[]; d: number[] } | null): FiberHit | null;
   /** Nucléosomes générés jusqu'ici. */
   nucleosomeCount(): number;
   /** Le chemin de l'ADN de la région (semaine 12). */
@@ -355,11 +375,19 @@ export async function openFiber(
     // L'ADN de 1 nm : une polyligne par suite de monomères contigus déjà générés.
     const pts: number[] = [];
     const breaks: number[] = [];
+    // Le rang de la base de chaque point de l'axe : `axis` en pose un toutes les
+    // AXIS_EVERY bases, plus la dernière du monomère. C'est l'identifiant du segment.
+    const ranks: number[] = [];
     let prev = -2;
     for (const k of ordered) {
       if (k !== prev + 1 && pts.length) breaks.push(pts.length / 3);
-      const ax = path.axis(k * lv.bp_per_bead, (k + 1) * lv.bp_per_bead, AXIS_EVERY);
-      for (let i = 0; i < ax.length; i += 3) pts.push(ax[i], ax[i + 1], ax[i + 2]);
+      const b0 = k * lv.bp_per_bead;
+      const b1 = (k + 1) * lv.bp_per_bead;
+      const ax = path.axis(b0, b1, AXIS_EVERY);
+      for (let i = 0; i < ax.length; i += 3) {
+        pts.push(ax[i], ax[i + 1], ax[i + 2]);
+        ranks.push(Math.min(b1 - 1, b0 + (i / 3) * AXIS_EVERY));
+      }
       prev = k;
     }
     const np = pts.length / 3;
@@ -368,6 +396,7 @@ export async function openFiber(
         points: Float32Array.from(pts),
         radii: new Float32Array(np).fill(0.001),
         colors: Float32Array.from(Array.from({ length: np }, () => COLORS.dna).flat()),
+        ids: Uint32Array.from(ranks, (b) => b + 1),
         breaks,
       });
     }
@@ -441,12 +470,72 @@ export async function openFiber(
         const f = s.nuc * (1 - s.helix);
         if (nucCores.length && f > 0) {
           nucs.draw(proj, { view, fade: f, invert: true });
-          dna.draw(proj, { view, height, fade: f, invert: true, idBase: IDS.nucleosome });
+          dna.draw(proj, { view, height, fade: f, invert: true, idBase: IDS.linker });
         }
       }
     },
 
+    locate(id, ray) {
+      // Distance² d'un point à la ligne de visée. On cherche la base dont l'axe passe au plus
+      // près de cette ligne, pas du point de surface touché : sur un tube de 1 nm de rayon vu
+      // de biais, ce point glisse le long de l'axe de r / tan θ — trois bases à 45° (S13).
+      const toRay = (p: number[]) => {
+        const v = [p[0] - ray!.o[0], p[1] - ray!.o[1], p[2] - ray!.o[2]];
+        const t = v[0] * ray!.d[0] + v[1] * ray!.d[1] + v[2] * ray!.d[2];
+        return (v[0] - t * ray!.d[0]) ** 2 + (v[1] - t * ray!.d[1]) ** 2 + (v[2] - t * ray!.d[2]) ** 2;
+      };
+      const world = ray;
+      const nearest = (lo: number, hi: number, at: (b: number) => number[]) => {
+        let best = lo;
+        let bd = Infinity;
+        for (let b = Math.max(0, lo); b < hi; b++) {
+          const v = toRay(at(b));
+          if (v < bd) [bd, best] = [v, b];
+        }
+        return best;
+      };
+      const bp = lv.bp_per_bead;
+      if (id >= IDS.linker) {
+        const b0 = id - IDS.linker - 1;
+        // Le segment va de b0 à b0 + AXIS_EVERY : on cherche la base sur un segment de
+        // part et d'autre, le pixel pouvant tomber sur le raccord.
+        const b = world ? nearest(b0 - AXIS_EVERY, b0 + 2 * AXIS_EVERY, (x) => path.basePoint(x)) : b0;
+        return { what: "adn", monomer: Math.floor(b / bp), rank: b, precision: world ? "la base dont l'axe passe au plus près de la ligne de visée" : `± ${AXIS_EVERY} pb` };
+      }
+      if (id >= IDS.base) return null;
+      if (id >= IDS.nucleosome) {
+        const q = id - IDS.nucleosome - 1;
+        const k = Math.floor(q / PER_MONOMER);
+        const c = path.monomer(k).cores[q % PER_MONOMER];
+        if (!c) return null;
+        const b = world ? nearest(c.firstBp, c.firstBp + 147, (x) => path.basePoint(x)) : c.firstBp + 73;
+        return { what: "nucleosome", monomer: k, rank: b, precision: "l'octamère a été cliqué : la base enroulée la plus proche de la ligne de visée", detail: `nucléosome illustratif ${q % PER_MONOMER + 1}/${PER_MONOMER}, ADN enroulé ${c.firstBp}–${c.firstBp + 146} (rangs dans la région)` };
+      }
+      if (id >= IDS.arc) {
+        const a = arcs[id - IDS.arc - 1];
+        return a ? { what: "arc", monomer: a.i, rank: -1, precision: "ancre gauche de la paire", detail: `paire d'ancres ${a.i}–${a.j}, tenue dans ${(a.weight * 100).toFixed(1)} % des conformations (simulé)` } : null;
+      }
+      if (id >= IDS.ring) {
+        const l = held[id - IDS.ring - 1];
+        return l ? { what: "anneau", monomer: l.i, rank: -1, precision: "pied gauche de la cohésine", detail: `cohésine tenant ${l.i}–${l.j} dans cette conformation (simulé)` } : null;
+      }
+      if (id >= IDS.glyph) {
+        const st = sites[id - IDS.glyph - 1];
+        return st ? { what: "ctcf", monomer: st.monomer, rank: -1, precision: "monomère du site", detail: `site CTCF ${st.strand > 0 ? "+" : "−"} planté, occupation ${st.occupancy.toFixed(2)} (simulé)` } : null;
+      }
+      if (id >= IDS.fiber) {
+        // Un monomère de 2 kb est la plus petite unité du polymère : une position à
+        // l'intérieur n'a pas de sens physique dans le modèle, on n'en invente pas.
+        return { what: "fibre", monomer: id - IDS.fiber - 1, rank: -1, precision: "monomère de 2 kb (la plus petite unité du polymère)" };
+      }
+      return null;
+    },
+
     async describe(id) {
+      if (id >= IDS.linker) {
+        const b = id - IDS.linker - 1;
+        return `ADN de liaison, base de rang ${b} sur la région — chemin illustratif`;
+      }
       if (id >= IDS.nucleosome && id < IDS.base) {
         const q = id - IDS.nucleosome - 1;
         const k = Math.floor(q / PER_MONOMER);

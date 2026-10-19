@@ -27,6 +27,13 @@ export interface Frame {
   copy: Uint8Array;
 }
 
+/** Début et fin (0-based, demi-ouvert) et dispersion de chaque bille, ordre des identifiants. */
+export interface Intervals {
+  start: Uint32Array;
+  end: Uint32Array;
+  variabilityNm: Float32Array;
+}
+
 export interface Bead {
   id: number;
   copy: string;
@@ -61,6 +68,7 @@ export class G3D {
   requests = 0;
   private readonly cache: Uint8Array;
   private readonly frames = new Map<string, Frame>();
+  private readonly spans = new Map<string, Intervals>();
 
   private constructor(
     private readonly source: Source,
@@ -171,21 +179,45 @@ export class G3D {
     return hits;
   }
 
+  /** Début, fin et dispersion de **toutes** les billes d'un niveau, dans l'ordre des
+   *  identifiants : une lecture la première fois, la mémoire ensuite. La semaine 13 en a
+   *  besoin pour qu'un clic ne coûte plus une requête (avant, chaque `identify` relisait). */
+  async beads(name: string): Promise<Intervals> {
+    const hit = this.spans.get(name);
+    if (hit) return hit;
+    const lv = this.level(name);
+    const cols = await this.columns(lv.chunks.flatMap((c) => [c.columns.start, c.columns.end, c.columns.variability]));
+    const start = new Uint32Array(lv.n_beads);
+    const end = new Uint32Array(lv.n_beads);
+    const variabilityNm = new Float32Array(lv.n_beads);
+    lv.chunks.forEach((c, k) => {
+      start.set(cols[3 * k] as Uint32Array, c.first);
+      end.set(cols[3 * k + 1] as Uint32Array, c.first);
+      const v = cols[3 * k + 2];
+      for (let i = 0; i < c.n; i++) variabilityNm[c.first + i] = v[i] * lv.variability.step;
+    });
+    const out = { start, end, variabilityNm };
+    this.spans.set(name, out);
+    return out;
+  }
+
+  /** Comme `beads`, sans attendre : `null` si le niveau n'a pas encore été lu. */
+  beadsNow(name: string): Intervals | null {
+    return this.spans.get(name) ?? null;
+  }
+
   /** Ce qu'on sait d'une bille cliquée. L'identifiant vient du picking GPU (≥ 1). */
   async identify(name: string, id: number): Promise<Bead> {
     const lv = this.level(name);
     const i = id - 1;
-    const c = lv.chunks.find((ch) => i >= ch.first && i < ch.first + ch.n);
-    if (!c) throw new Error(`identifiant hors du niveau : ${id}`);
-    const [start, end, vari] = await this.columns([c.columns.start, c.columns.end, c.columns.variability]);
-    const frame = await this.firstFrame(name);
-    const k = i - c.first;
+    if (i < 0 || i >= lv.n_beads) throw new Error(`identifiant hors du niveau : ${id}`);
+    const [b, frame] = await Promise.all([this.beads(name), this.firstFrame(name)]);
     return {
       id,
       copy: lv.copies[frame.copy[i]],
-      start: start[k],
-      end: end[k],
-      variabilityNm: vari[k] * lv.variability.step,
+      start: b.start[i],
+      end: b.end[i],
+      variabilityNm: b.variabilityNm[i],
     };
   }
 

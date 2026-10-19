@@ -64,6 +64,7 @@ class Chain:
         self.path = Path(path)
         blocks: dict[str, list[tuple[int, int, int, int, int, int]]] = {}
         self.targets: list[tuple[str, int, str]] = []   # par chaîne : (chrom cible, taille, brin)
+        self.scores: list[int] = []
         cur = None
         with _open_text(path) as f:
             for line in f:
@@ -74,6 +75,7 @@ class Chain:
                     score = int(float(c[1]))
                     k = len(self.targets)
                     self.targets.append((q_name, q_size, q_strand))
+                    self.scores.append(score)
                     cur = [t_name, t_start, q_start, k, score]
                     blocks.setdefault(t_name, [])
                     continue

@@ -36,6 +36,7 @@ const SUITES = [
   { page: "dist/macro.html", title: "Plongée : caméra, fondu tramé, occlusion (semaine 10)" },
   { page: "dist/fiber.html", title: "Fibre : tubes, nucléosomes (semaine 11)" },
   { page: "dist/helix.html", title: "Hélice : chemin de l'ADN, B-ADN, séquence (semaine 12)" },
+  { page: "dist/pick.html", title: "Picking et mapping inverse (semaine 13)" },
 ];
 
 const decode = (s) =>

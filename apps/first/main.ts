@@ -104,10 +104,12 @@ async function main(): Promise<void> {
 
   // Vérification, qui force aussi la fin du travail GPU : on compte les pixels qui
   // portent une bille, et on relit l'identifiant au centre de l'image.
-  const idbuf = new Uint32Array(W * H);
+  const rgba = new Uint32Array(W * H * 4);
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, targets.fbo);
   gl.readBuffer(gl.COLOR_ATTACHMENT1);
-  gl.readPixels(0, 0, W, H, gl.RED_INTEGER, gl.UNSIGNED_INT, idbuf);
+  gl.readPixels(0, 0, W, H, gl.RGBA_INTEGER, gl.UNSIGNED_INT, rgba);
+  const idbuf = new Uint32Array(W * H);
+  for (let k = 0; k < W * H; k++) idbuf[k] = rgba[4 * k];
   const tDraw = performance.now();
 
   let covered = 0;
