@@ -62,12 +62,17 @@ async function clicks(page, perStop, seed, waitPrefetch) {
   const rows = [];
   for (let i = 0; i < stops; i++) {
     await page.ev(`window.__pick.goto(${i}), true`);
-    await sleep(50);
+    // Un clic sur une vue immobile : on attend que la page n'ait plus d'image à dessiner
+    // (nucléosomes générés, séquence lue). Le cas « image en vol » est mesuré à part.
+    for (let k = 0; k < 600 && !(await page.ev("window.__pick.idle()")); k++) await sleep(100);
+    await sleep(100);
     const pts = await page.ev(`JSON.stringify(window.__pick.hits(${perStop}, ${seed + i}))`).then(JSON.parse);
     const before = await page.ev("window.__pick.log.length");
     for (const [x, y] of pts) {
+      const n = await page.ev("window.__pick.log.length");
       await page.click(x, y);
-      await sleep(5);
+      // Un clic à la fois : le suivant part quand l'image du précédent est peinte.
+      for (let k = 0; k < 200 && !(await page.ev(`(window.__pick.log[${n}] || {}).frameMs !== undefined || window.__pick.log[${n}]?.hit === false`)); k++) await sleep(5);
     }
     // Laisse les images suivantes se peindre, et les fiches à froid arriver.
     for (let k = 0; k < 600; k++) {

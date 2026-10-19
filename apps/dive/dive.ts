@@ -142,6 +142,10 @@ export interface DiveScene {
   arrival: number;
   /** Pour la mesure seulement : impose des grandeurs d'état au lieu de les lire sur la caméra. */
   override: Partial<State> | null;
+  /** Le dernier rendu a généré des nucléosomes, attend de la séquence ou en lit : l'image
+   *  suivante peut montrer plus. Sinon, inutile de redessiner (semaine 13 : une image en
+   *  vol fait attendre la lecture du pixel d'un clic). */
+  busy: boolean;
   render(o: Orbit): void;
   resize(width: number, height: number): void;
   size(): [number, number];
@@ -150,6 +154,8 @@ export interface DiveScene {
   /** Semaine 13 : ce que désigne un pixel, **synchrone** — une lecture de pixel et des
    *  tableaux déjà en mémoire. `null` sur le fond, ou si le niveau n'est pas encore lu. */
   select(x: number, y: number): Selection | null;
+  /** Pour la mesure : coût moyen d'une lecture d'identifiant et d'une lecture de profondeur. */
+  probe(x: number, y: number, n: number): { id: number; depth: number };
   /** Le tampon d'identifiants du dernier rendu, ligne 0 en bas (convention WebGL). */
   ids(): Uint32Array;
   /** Pixel d'un point monde au dernier rendu, origine en haut à gauche. */
@@ -224,6 +230,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
     last: { lod: 0, focus: 0, mix: 0, fiber: 0, loop: 0, nuc: 0, helix: 0, bases: 0, widthUm: 0 },
     arrival: 0,
     override: null,
+    busy: false,
 
     render(o: Orbit): void {
       const view = viewMatrix(o);
@@ -243,12 +250,16 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       const now = performance.now();
       const budget = Number.isNaN(scene.growBudgetMs) ? Math.max(4, Math.min(50, 0.25 * (now - lastFrameAt))) : scene.growBudgetMs;
       lastFrameAt = now;
-      if (fiber && st.fiber > 0) fiber.grow(o.target, budget);
+      const grown = fiber && st.fiber > 0 ? fiber.grow(o.target, budget) : 0;
       let helix = 0;
+      let waiting = false;
       if (scene.sequence) {
         scene.sequence.prefetch(o.target, widthUm);
+        const before = scene.sequence.stats.loading;
         helix = scene.sequence.update(o.target, widthUm, st);
+        waiting = scene.sequence.stats.loading > before || scene.sequence.pending;
       }
+      scene.busy = grown > 0 || waiting;
       // Profondeur de champ utile : tout le noyau tant qu'on le voit, la région fine ensuite.
       const reach = Math.exp((1 - st.loop) * Math.log(Math.hypot(...o.target) + 6) + st.loop * Math.log(1.2));
       const proj = perspective(FOV, W / H, Math.max(0.02 * d, d - reach), d + reach);
@@ -331,6 +342,15 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       if (s.nuc > 0.5) return "nucléosomes : illustratifs (aucun positionnement lu) · fibre : simulée, extrusion sur CTCF plantés";
       if (s.fiber > 0.5) return "fibre de 2 kb : simulée (polymère + extrusion, CTCF plantés) · posée sur le noyau, raccord en échec (S8)";
       return "noyau : simulé (contraintes de la semaine 6) · compartiments : prédits par le modèle, pas mesurés";
+    },
+
+    probe(x: number, y: number, n: number) {
+      const t = (f: () => unknown) => {
+        const a = performance.now();
+        for (let k = 0; k < n; k++) f();
+        return (performance.now() - a) / n;
+      };
+      return { id: t(() => picker.pick(x, y)), depth: t(() => picker.depthAt(x, y)) };
     },
 
     select(x: number, y: number): Selection | null {

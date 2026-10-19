@@ -72,6 +72,7 @@ function renderRuns(docs: Doc[]): void {
       cell(num("raf_ms_median"), "n");
       cell(num("raf_ms_p95"), "n");
       cell(num("frame_ms_median"), "n");
+      cell(num("pick_ms_p95"), "n");
       const ok = typeof r.raf_ms_p95 === "number" && verdictOf(r.raf_ms_p95 as number);
       const td = document.createElement("td");
       const pill = document.createElement("span");
@@ -146,9 +147,34 @@ async function main(): Promise<void> {
       v.textContent = ok ? "60 fps tenus" : "60 fps non tenus";
       $("result").hidden = false;
 
+      // Semaine 13 : le clic. À trois étapes (bille, fibre, base), des pixels qui portent un
+      // objet, tirés à graine fixe ; chaque `select` — lecture du pixel, ligne de visée,
+      // mapping inverse — chronométré sur une vue immobile, deux images après le rendu.
+      status.textContent = "Mesure du clic…";
+      const pickMs: number[] = [];
+      const frame = () => new Promise((ok) => requestAnimationFrame(() => ok(null)));
+      for (const i of [1, 2, scene.stops.length - 1]) {
+        scene.render(scene.stops[i]);
+        scene.render(scene.stops[i]);
+        await frame();
+        await frame();
+        const ids = scene.ids();
+        let seed = 13 + i;
+        const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+        for (let n = 0, tries = 0; n < 30 && tries < 20000; tries++) {
+          const x = Math.floor(rnd() * w), y = Math.floor(rnd() * h);
+          if (!ids[(h - 1 - y) * w + x]) continue;
+          const a = performance.now();
+          scene.select(x, y);
+          pickMs.push(performance.now() - a);
+          n++;
+        }
+      }
+      $("pick").textContent = `${fmt(median(pickMs))} (p95 ${fmt(percentile(pickMs, 0.95))})`;
+
       const record = {
         at: new Date().toISOString(),
-        scene: "semaine 12",
+        scene: "semaine 13",
         device: ($<HTMLInputElement>("device").value || "").slice(0, 80),
         gpu: r.gpu.slice(0, 200),
         ua: navigator.userAgent.slice(0, 300),
@@ -162,6 +188,9 @@ async function main(): Promise<void> {
         raf_dropped_share: dropped,
         frame_ms_median: sync,
         frame_ms_p95: percentile(r.frameMs, 0.95),
+        pick_ms_median: median(pickMs),
+        pick_ms_p95: percentile(pickMs, 0.95),
+        pick_ms: pickMs.map((x) => Math.round(x * 100) / 100),
         // Les séries complètes, arrondies : de quoi refaire l'analyse sans refaire la mesure.
         raf_ms: r.rafMs.map((x) => Math.round(x * 10) / 10),
         frame_ms: r.frameMs.map((x) => Math.round(x * 10) / 10),

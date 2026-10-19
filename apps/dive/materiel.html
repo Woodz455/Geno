@@ -77,9 +77,10 @@
     <h1>Banc matériel Geno</h1>
     <p class="lede">Ce banc joue la plongée entière de la semaine 12 : du noyau de GM12878 (8&nbsp;082 billes) à la fibre de
       2&nbsp;kb autour de TP53 sur chr17, à ses nucléosomes, puis à la double hélice sur la séquence hg38 réelle, jusqu'à une
-      seule base — c.818, codon 273. Le critère est de tenir 60 images par seconde sur un appareil moyen. Le serveur de
-      développement ne rend qu'en logiciel, donc ce chiffre ne peut venir que d'ici. Les mesures des semaines 10 et 11, plus
-      courtes, restent dans le tableau avec leur étiquette.</p>
+      seule base — c.818, codon 273. Le critère est de tenir 60 images par seconde sur un appareil moyen. Depuis la semaine 13,
+      il chronomètre aussi le clic : lire le pixel cliqué et retrouver la base ou la bille qu'il désigne, à trois étapes de la
+      plongée. Le serveur de développement ne rend qu'en logiciel, donc ces chiffres ne peuvent venir que d'ici. Les mesures
+      des semaines précédentes restent dans le tableau avec leur étiquette.</p>
   </header>
 
   <div class="scene"><canvas id="scene" aria-label="Rendu de la plongée"></canvas><div class="cap" id="cap">chargement du modèle…</div></div>
@@ -101,6 +102,7 @@
       <div class="fig"><b id="rafp95"></b><span>95e centile de cet intervalle</span></div>
       <div class="fig"><b id="dropped"></b><span>images à plus de 25 ms</span></div>
       <div class="fig"><b id="sync"></b><span>rendu seul, GPU attendu (médiane)</span></div>
+      <div class="fig"><b id="pick"></b><span>clic : pixel + mapping inverse (médiane)</span></div>
     </div>
     <div class="gpu" id="gpu"></div>
   </section>
@@ -109,8 +111,8 @@
     <h2>Appareils mesurés</h2>
     <div class="table">
       <table>
-        <thead><tr><th>Plongée</th><th>Appareil</th><th>Processeur graphique</th><th>Canevas</th><th style="text-align:right">rAF méd.</th><th style="text-align:right">p95</th><th style="text-align:right">rendu seul</th><th>60 fps</th></tr></thead>
-        <tbody id="runs"><tr><td colspan="8" class="empty">Aucune mesure encore. Lancez-en une ci-dessus ; elle s'ajoutera ici, et Claude pourra la lire.</td></tr></tbody>
+        <thead><tr><th>Plongée</th><th>Appareil</th><th>Processeur graphique</th><th>Canevas</th><th style="text-align:right">rAF méd.</th><th style="text-align:right">p95</th><th style="text-align:right">rendu seul</th><th style="text-align:right">clic p95</th><th>60 fps</th></tr></thead>
+        <tbody id="runs"><tr><td colspan="9" class="empty">Aucune mesure encore. Lancez-en une ci-dessus ; elle s'ajoutera ici, et Claude pourra la lire.</td></tr></tbody>
       </table>
     </div>
     <p class="note">Verdict « tenu » : 95 % des intervalles sous 20 ms, sur un écran à 60 Hz ou plus. Le « rendu seul » attend la fin

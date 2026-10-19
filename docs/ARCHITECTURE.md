@@ -21,7 +21,8 @@ geno/
 │   ├── core/              # TS — modèle de données, index génomique, mapping coord↔3D
 │   ├── g3d/               # TS — lecture du format, streaming, octree
 │   ├── viewer/            # TS — moteur Three.js, LOD, picking GPU
-│   └── annotate/          # TS — requêtes d'annotation, composition de la fiche
+│   └── annotate/          # TS — requêtes d'annotation (prévu ; la fiche est dans apps/dive/fiche.ts
+│                          #      et packages/g3d/src/fiche.ts depuis la semaine 13)
 ├── apps/
 │   └── web/               # l'application, les deux modes
 └── docs/
@@ -163,6 +164,37 @@ une plongée jusqu'à une base en lit 11,8 Kio.
 l'annotation plutôt que recopiées : `TP53 c.818` est recalculé à l'écriture depuis les CDS du
 transcrit MANE de GENCODE v50, et la base y est lue dans le génome (C sur le brin +, G sur le
 brin codant). Le client affiche ce que l'en-tête dit, provenance comprise.
+
+**Le fichier de fiches (semaine 13) — à côté, pas dedans.** `gm12878.fiche` porte, pour chaque
+bille de chaque niveau du `.g3d`, ce que l'on sait de l'intervalle qu'elle porte : coordonnées
+(hg38, T2T levé, cytobande), structure (compartiment du modèle, sous-compartiment et domaines
+de Rao 2014, ancres HiCCUPS, position radiale, LAD, speckles, NAD, timing de réplication), gènes
+(GENCODE, GTEx, gnomAD), régulation (cCRE, ChromHMM, CTCF orienté), clinique (ClinVar, GWAS),
+séquence. Il est **à part** pour que le premier rendu de la semaine 9 n'en paie rien. Même
+conteneur que le `.g3d` : préambule de 64 octets (signature `\x89FCH`, version, longueur et
+empreinte de l'en-tête), en-tête JSON compressé, puis des blocs deflate lus par requête Range,
+chacun vérifié contre son empreinte.
+
+- **Un champ, c'est une valeur et sa provenance** : `{v, e, s}` — `e` l'évidence (`mesure` dans
+  GM12878, `autre` lignée avec `cell`, `simule`, `reference`, `annotation`), `s` l'identifiant
+  du manifeste. Sans valeur, `absent` : une phrase qui dit pourquoi. Aucun champ n'est muet,
+  et c'est vérifié (`geno fiche check`).
+- **Partagé par les homologues, sauf le modèle.** Les annotations ne dépendent que de
+  l'intervalle : un enregistrement par intervalle distinct (4 041 pour 8 082 billes du noyau),
+  par blocs de 64, rangés par chromosome. Ce qui dépend de la copie — E1 et position radiale du
+  modèle, LAD synthétique, CTCF plantés et boucles simulées aux niveaux fins — est une colonne
+  par bille. `record_of` relie une bille à son enregistrement.
+- **Tables partagées.** Gènes (un bloc par chromosome, en colonnes, avec GTEx et gnomAD),
+  maladies (MONDO/HPO nommées, OMIM en identifiant seulement) et traits GWAS sont écrits une
+  fois ; une fiche n'en garde que l'indice. Mesuré : recopiés dans chaque fiche, les gènes
+  pesaient à eux seuls 3,2 Mo sur 12.
+- **Ce qui ne descend qu'aux niveaux fins** : listes complètes (variants ClinVar avec allèles,
+  segments ChromHMM, cCRE, pics CTCF), pour que la fiche d'une base cliquée se compose sans
+  autre lecture ; et les blocs de la chaîne hg38 → T2T qui couvrent les deux régions, pour lever
+  une base exacte dans le navigateur.
+- **Lecteur** (`packages/g3d/src/fiche.ts`, hors de `G3D` comme la séquence) : `card()` est
+  synchrone — `null` si un bloc manque —, `cardAsync()` lit ce qui manque, `prefetch()` lit tout
+  en arrière-plan, une requête à la fois, le chromosome visé d'abord.
 
 **Zéro dépendance de lecture.** `DecompressionStream("deflate-raw")` et `crypto.subtle` sont
 dans tous les navigateurs récents et dans Node 22. Le lecteur n'importe rien.
@@ -317,11 +349,26 @@ shaders dépouillés compilent.
 
 Les deux sens sont nécessaires, et les deux doivent être rapides.
 
-- **Génomique → 3D** : arbre d'intervalles sur `(chrom, start, end)` → indices de billes →
-  décalages dans le `Float32Array`. Sert à la recherche, aux signets, au brossage depuis
+- **Génomique → 3D** : `G3D.locate` — dichotomie sur l'index `(copie, début)` → identifiants
+  de billes, sur toutes les copies. Sert à la recherche, aux signets, au brossage depuis
   `igv.js`.
-- **3D → génomique** : l'identifiant rendu par le picking GPU indexe directement
-  `chrom_index`. Sert au clic.
+- **3D → génomique** (semaine 13) : un clic lit **un pixel** de la cible d'identifiants,
+  RGBA32UI — R l'identifiant, G le type de rendu qui l'a écrit (sphère, tube, disque, hélice) —
+  et la profondeur. `DiveScene.select` est synchrone : début et fin de chaque bille sont lus une
+  fois par niveau (`G3D.beads`), le reste est en mémoire. La précision dépend de l'objet, et la
+  fiche la dit :
+  - bille de 3 Mb ou de 750 kb : son intervalle ;
+  - monomère de la fibre : ses 2 kb — la plus petite unité du polymère ; une position à
+    l'intérieur n'aurait pas de sens physique dans le modèle, on n'en invente pas ;
+  - ADN de liaison ou nucléosome : la base dont l'**axe** passe au plus près de la **ligne de
+    visée** du pixel (`DnaPath.basePoint`). Pas du point de surface touché : sur un tube de
+    1 nm vu de biais, il glisse le long de l'axe de r / tan θ, trois bases à 45° ;
+  - barreau de l'hélice : la base, exacte, par l'identifiant (`2 × rang + brin + 1`).
+
+  Plages d'identifiants de la plongée (`apps/dive/fiber.ts`) : billes 1–8 082, aperçu
+  1 000 001+, fibre 2 000 001+, glyphes 3 000 001+, cœurs de nucléosome 4 000 001+, bases
+  5 000 001+, ADN de liaison 14 000 001+ (jusqu'à la semaine 12, l'ADN réutilisait par erreur
+  la plage des cœurs).
 
 Les deux haplotypes sont distincts : une coordonnée génomique correspond à **deux** positions
 3D. L'interface doit le montrer, pas le masquer — c'est une information biologique réelle

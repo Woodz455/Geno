@@ -154,7 +154,65 @@ donnent pas.
 
 ---
 
-## 8. État au 2026-10-18 : le réseau s'est ouvert
+## 8. État au 2026-10-19 : les sources de la fiche (semaine 13)
+
+`make status` : **38 entrées** — **33 `ok`**, 1 `unverified`, 4 `unresolved`. La semaine 13 a résolu, téléchargé et verrouillé les 24 sources de la fiche
+d'information. Le md5 de chaque fichier a été confronté à celui que **son dépôt publie**, partout
+où il en publie un ; ailleurs, l'empreinte inscrite est la nôtre, prise au premier
+téléchargement, et c'est dit.
+
+| Entrée | Fichier | Contrôle indépendant |
+|---|---|---|
+| `encode.ccres` | ENCODE ENCSR820WFY / ENCFF590IMH — cCRE SCREEN en GM12878, GRCh38 | md5 = ENCODE |
+| `chromhmm.gm12878` | ENCSR988QYW / ENCFF338RIC — ChromHMM **18 états**, GRCh38 | md5 = ENCODE |
+| `ctcf.peaks.gm12878` | ENCSR000DZN / ENCFF960ZGP — pics IDR optimaux | md5 = ENCODE |
+| `ctcf.motif.orientation` | JASPAR MA0139.1 (jaspar.genereg.net ; le miroir elixir coupe le tunnel) | — |
+| `repliseq.gm12878` + `.S1` … `.G2` | UW, 6 phases, « percentage normalized signal », **hg19** | md5 = ENCODE (×6) |
+| `rao2014.gm12878.subcompartments`, `.domains`, `.loops` | GEO GSE63525, **hg19** ; boucles : la liste HiCCUPS *avec motifs* | — |
+| `chain.hg19.to.hg38` | Ensembl GRCh37 → GRCh38 | — |
+| `lads.damid.lmnb1` | 4DNFINXDTU5Z — pA-DamID LMNB1, **K562**, 5 kb, moyenne des réplicats | md5 = 4DN |
+| `tsaseq.son` | 4DNFIVZSO9RI — TSA-seq v2 SON, **K562**, 20 kb | md5 = 4DN |
+| `nads.hffc6.nucleolus`, `.control` | 4DNFIW2JQD83, 4DNFI2S373O8 — NAD-seq **HFFc6**, RPKM | md5 = 4DN (×2) |
+| `clinvar.vcf` | ClinVar GRCh38, version **20261019** | md5 = `.md5` publié par NCBI |
+| `gwas.catalog` | GWAS Catalog, `associations_ontology-annotated-full.zip` du 2026-10-05 | — |
+| `gnomad.constraint` | gnomAD v4.1, `constraint_metrics.tsv` | — |
+| `gtex.median.tpm` | GTEx v10, TPM médian par tissu | — |
+| `mondo.obo`, `hpo.obo` | ontologies MONDO et HPO | — |
+
+**Trois remarques qui changent la lecture.**
+
+- **Aucune mesure de lamina, de speckles ni de nucléole n'existe en GM12878** dans 4DN : DamID,
+  pA-DamID et TSA-seq y couvrent K562, HCT116, H1, HFFc6, RPE — pas les lymphoblastes. Décision
+  (question posée) : la fiche montre la mesure de la lignée la plus proche, **étiquetée** «
+  mesuré dans K562, pas GM12878 » (NAD : HFFc6), à côté de la valeur du modèle, étiquetée «
+  simulé ». Le timing de réplication, lui, est mesuré en GM12878.
+- **Rao 2014 et le Repli-seq UW sont publiés en hg19.** Ils sont levés en hg38 par la chaîne
+  Ensembl, et ce qui ne se lève pas est perdu et compté : 47 sous-compartiments sur 3 849, 38
+  domaines sur 9 274, 22 boucles sur 9 448, 828 bins de 10 kb sur 211 913.
+- **UCSC ne passe plus le TLS** depuis le 2026-10-19 (« unable to get local issuer certificate »
+  — il répondait 200 la veille). Pas de contournement : tout ce dont la semaine 13 avait besoin
+  était déjà local (cytobandes, chaînes, `.2bit`) ou existe ailleurs (chaîne GRCh37 → GRCh38
+  chez Ensembl). Ce qui manque à cause de cela : la cytobande T2T — la fiche donne la position
+  T2T et la bande hg38.
+
+**La chaîne hg38 → T2T, contrôlée sans UCSC.** Pour 10 000 positions hg38 tirées au hasard, le
+21-mer centré est comparé dans `hg38.2bit` et dans `hs1.2bit` à la position levée : 9 752
+positions se lèvent (97,5 %), et 9 511 de celles-là ont le même 21-mer (97,5 %) — ce qu'on
+attend de deux assemblages qui diffèrent d'environ une SNV par kb. Témoin, position levée
+décalée de 1 kb : 1 sur 9 752. (`geno fiche check`, VALIDATION § S13.)
+
+**Licences.** ClinVar : domaine public. GWAS Catalog : libre, citation demandée. gnomAD : libre.
+GTEx : données résumées en accès ouvert. MONDO : CC-BY 4.0, cité dans la fiche. HPO : licence
+propre, citation demandée. ENCODE et 4DN : politique d'usage de chaque consortium, citée par
+accession. **OMIM** : ClinVar en cite des numéros ; la fiche les garde comme identifiants et
+n'affiche aucun texte OMIM — les noms de maladies viennent de MONDO, de HPO, ou du libellé
+ClinVar.
+
+**Restent `unresolved`, hors de la fiche** : le mcool de 4DN, les deux Micro-C, RAD21. Le `.hic`
+de Rao 2014 (plusieurs dizaines de Go) reste `unverified` : la fiche n'en a pas besoin, et
+`fetch.sh` accepte désormais `ONLY=` pour ne pas le tirer avec le reste de son tier.
+
+## 8 bis. État au 2026-10-18 : le réseau s'est ouvert
 
 Jusqu'à la semaine 11, l'environnement d'exécution appliquait une politique d'egress fermée :
 `hgdownload.soe.ucsc.edu`, `ftp.ebi.ac.uk`, `data.4dnucleome.org` et `ftp.ncbi.nlm.nih.gov`

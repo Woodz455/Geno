@@ -73,6 +73,11 @@ export class SequenceLayer {
     this.targetRank = target ? target.position - 1 - regionStart : -1;
   }
 
+  /** Une lecture de séquence est en cours : l'image suivante peut en montrer plus. */
+  get pending(): boolean {
+    return this.inflight || this.wanted.size > 0;
+  }
+
   /** Octets de séquence lus depuis l'ouverture. */
   get bytes(): number {
     return this.reader.bytes;
@@ -264,7 +269,7 @@ export class SequenceLayer {
   }
 
   describe(id: number): string | null {
-    if (id < IDS.base) return null;
+    if (id < IDS.base || id >= IDS.linker) return null;
     const { rank, strand } = baseOf(id - IDS.base);
     const pos = this.regionStart + rank;                  // 0-based
     const s = this.reader.now(this.chrom, pos, pos + 1);

@@ -193,7 +193,7 @@ function readLetters(scene: DiveScene): Record<string, string> {
   const votes = new Map<string, Record<string, number>>();
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
-    if (id < IDS.base || id === 0xffffffff) continue;
+    if (id < IDS.base || id >= IDS.linker || id === 0xffffffff) continue;   // l'ADN de liaison est au-dessus des bases
     const h = hue(rgb[4 * i], rgb[4 * i + 1], rgb[4 * i + 2]);
     if (h < 0) continue;
     let best = "N", gap = Infinity;
@@ -387,10 +387,14 @@ async function main(): Promise<void> {
     if (!sel) {
       panel.hide();
       marker = null;
+      drawLabels(scene);
       picks.push({ hit: false, pickMs: t1 - t0 });
       return;
     }
     marker = sel.world;
+    // Le repère du point cliqué : la surimpression seule, pas une image WebGL de plus.
+    drawLabels(scene);
+    if (marker) drawMarker(scene, marker);
     const r = reader;
     const card = r ? r.card(sel.level, sel.bead) : null;
     const t2 = performance.now();
@@ -478,9 +482,10 @@ async function main(): Promise<void> {
       dirty = true;
     }
     // Les nucléosomes se génèrent par tranches et la séquence arrive par le réseau : tant que
-    // la fenêtre n'est pas complète, l'image suivante peut montrer plus.
-    if (scene.last.loop > 0 || scene.last.helix > 0) dirty = true;
-    if (dirty || marker) {
+    // la fenêtre n'est pas complète, l'image suivante peut montrer plus. Sinon on ne redessine
+    // pas : une image en vol ferait attendre la lecture du pixel du prochain clic.
+    if (scene.busy) dirty = true;
+    if (dirty) {
       scene.render(orbit);
       drawLabels(scene);
       if (marker) drawMarker(scene, marker);
@@ -538,6 +543,18 @@ async function main(): Promise<void> {
       },
       log: picks,
       prefetch,
+      /** Coût de chaque lecture, sur la vue courante : identifiant seul, profondeur seule. */
+      probe(x: number, y: number, n = 20) {
+        const dpr = canvas.width / canvas.clientWidth;
+        const t = (f: () => unknown) => {
+          const a = performance.now();
+          for (let k = 0; k < n; k++) f();
+          return (performance.now() - a) / n;
+        };
+        return { select: t(() => scene.select(x * dpr, y * dpr)), ...scene.probe(x * dpr, y * dpr, n) };
+      },
+      /** Plus rien à dessiner : ni image demandée, ni génération ou lecture en cours. */
+      idle: () => !dirty && !anim && !scene.busy,
       reader: () => (reader ? { bytes: reader.bytes, requests: reader.requests, tables: reader.tablesBytes(),
         levels: Object.fromEntries(reader.header.levels.map((l) => [l.name, reader!.levelBytes(l.name)])) } : null),
     };
