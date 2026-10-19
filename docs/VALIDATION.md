@@ -9,6 +9,174 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S13 — Un clic, une fiche : complète, exacte, en MESURE_P95 ms
+
+### Le critère, traduit
+
+**Fait quand : un clic sur n'importe quelle bille produit la fiche complète en moins de 100 ms.**
+Trois mots, trois mesures, fixées avant de mesurer :
+
+1. **« n'importe quelle bille »** : à chaque étape de la plongée — aperçu de 3 Mb, bille de
+   750 kb, monomère de 2 kb, nucléosome, ADN, base de l'hélice — un pixel cliqué désigne le bon
+   objet et la bonne position génomique, aussi fine que l'objet le permet ;
+2. **« la fiche complète »** : pour **toutes** les billes de tous les niveaux, chaque champ de la
+   feuille de route a une valeur ou une raison écrite de ne pas en avoir — aucun champ muet — et
+   les valeurs sont exactes, recomposées par un autre chemin ;
+3. **« en moins de 100 ms »** : du clic (événement souris réel) à l'image où la fiche est peinte,
+   p95, dans la page interactive — avec un témoin sans préchargement qui, lui, attend.
+
+### Les sources : réelles, sauf ce qui n'existe pas
+
+Le réseau ouvert à la semaine 12 a permis de résoudre, télécharger et verrouiller 24 sources
+(DATA_SOURCES § 8) ; leur md5 est celui que publie le dépôt partout où il en publie un (ENCODE ×9,
+4DN ×4, ClinVar). La structure 3D, elle, reste celle du modèle : **la fiche annote une coordonnée
+avec des données réelles, elle ne refait pas le modèle** — le rattrapage S1–S8 reste une étape à
+part. Chaque ligne de la fiche porte son badge d'évidence, couleur permanente :
+
+| Évidence | Champs |
+|---|---|
+| mesuré dans GM12878 | sous-compartiment, domaines et ancres (Rao 2014), cCRE, ChromHMM, CTCF, timing de réplication |
+| mesuré dans une autre lignée | lamina LMNB1 et speckles SON (K562), nucléole (HFFc6), expression (LCL de GTEx) |
+| simulé | compartiment E1, position radiale, LAD du modèle ; CTCF plantés et boucles aux niveaux fins |
+| référence | position hg38 et T2T, cytobande, composition, bases |
+| annotation | gènes GENCODE v50, contrainte gnomAD, ClinVar, GWAS |
+
+Deux choix dits d'avance. **LAD, speckles et NAD n'ont aucune mesure en GM12878** : la fiche
+montre la lignée la plus proche, étiquetée comme telle (décision posée en question). **Rao 2014 et
+le Repli-seq sont en hg19** : levés par la chaîne Ensembl, ce qui ne se lève pas est compté et
+perdu (47 sous-compartiments sur 3 849, 38 domaines sur 9 274, 22 boucles sur 9 448).
+
+Le CTCF orienté vient d'un scan de MA0139.1 (JASPAR, seuil relatif 0,80) sur la séquence hg38 de
+chaque pic IDR : 39 276 pics orientés sur 43 865 — 19 766 `+`, 19 510 `−`, 4 589 sans motif
+reconnu, dits tels.
+
+### Le fichier de fiches
+
+`make fiche` : une fiche par intervalle distinct de chaque niveau — 1 016 pour les 2 032 billes de
+l'aperçu, 4 041 pour les 8 082 du noyau, 2 000 + 2 000 aux régions fines —, plus une colonne par
+copie pour ce que dit le modèle. **6,50 Mo** au total : tables partagées 2,11 Mo (gènes 1,70,
+maladies 0,27, traits 0,14), aperçu 0,86, noyau 2,12, régions fines 0,51 et 0,87. C'est **au-dessus
+du budget de 2,5 Mo** que je m'étais fixé ; la première version faisait 12,15 Mo, avec les gènes
+recopiés dans chaque fiche (3,2 Mo à eux seuls). Ce que ça coûte se lit au préchargement, plus bas.
+
+### « La fiche complète »
+
+`geno fiche check`, sur le fichier écrit :
+
+**Complétude — toutes les billes.** **0 champ muet** sur 2 032 + 8 082 + 2 000 + 2 000 = 14 114
+fiches ; chaque absence porte sa raison. Les plus fréquentes : « les bases se lisent au zoom
+maximal » (toute bille hors des régions fines), contrainte gnomAD sur des gènes non codants, X
+inactif sans compartiment, trous d'assemblage sans ChromHMM ni Repli-seq. Témoin : une fiche dont
+on retire `clinvar` est vue incomplète.
+
+**Exactitude — un autre chemin.** 200 fiches tirées au hasard, recomposées **sans** le code qui
+les a écrites : gènes, cCRE, CTCF et cytobandes par le magasin d'intervalles de la semaine 2
+construit sur les fichiers verrouillés ; ClinVar et GWAS par un balayage ligne à ligne des
+fichiers bruts.
+
+| | gènes | cCRE | CTCF | cytobandes | ClinVar (comptes par classe) | GWAS |
+|---|---:|---:|---:|---:|---:|---:|
+| fiches | **200/200** | **200/200** | **200/200** | **200/200** | **200/200** | **200/200** |
+| témoin, intervalles décalés d'une bille | 92 | 45 | 100 | 131 | 73 | 58 |
+
+**Faits connus**, écrits avant de lire le fichier : TP53 c.818 en 17p13.1 ; son monomère porte
+TP53, brin −, MANE Select ; pLI 0,998 et LOEUF 0,449 ; rs28934576 **C>T** (R273H) pathogène à
+chr17:7 673 802 (5 variants ClinVar à cette base) ; la position T2T sur chr17 ; ACTB en 7p22.1,
+8 062 TPM en LCL. Tous vérifiés.
+
+**La position T2T, sans UCSC.** UCSC ne passait plus le TLS ; la chaîne hg38 → T2T est donc
+contrôlée par les deux séquences : sur 10 000 positions tirées au hasard, 9 752 se lèvent, et
+**9 511 ont le même 21-mer** dans `hs1.2bit` (97,5 % — deux assemblages qui diffèrent d'environ une
+SNV par kb) ; témoin décalé de 1 kb : 1. TP53 c.818 tombe sur chr17:7 577 926 de T2T-CHM13.
+
+**Lecture croisée** (`node tools/test-fiche.mjs`) : 160 fiches tirées dans les quatre niveaux, relues
+par le lecteur TypeScript, sont celles de Python **champ pour champ** ; 1 000 positions des régions
+fines levées par la chaîne embarquée dans le fichier sont celles de la chaîne complète ; un bloc
+corrompu est refusé.
+
+### « N'importe quelle bille » : le picking et le mapping inverse
+
+La cible d'identifiants passe de R32UI à **RGBA32UI**, relue en `RGBA_INTEGER` — le seul format
+entier que WebGL2 garantit pour `readPixels` — ; R porte l'identifiant, G le type de rendu.
+Suite headless `pick` (`pnpm verify`), 12 assertions :
+
+- chaque type de rendu écrit son identifiant et son type — sphère jusqu'à 4 294 967 294, tube
+  (plage + identifiant local), ellipsoïde, hélice — ; le fond n'est rien ; une lecture coûte
+  0,35 ms ;
+- **un défaut de la semaine 11 trouvé et corrigé** : l'ADN de 1 nm entre les nucléosomes
+  réutilisait la plage d'identifiants des cœurs. Sur une vue de deux monomères, 48 des 343
+  identifiants d'ADN visibles se lisaient comme des nucléosomes ; avec sa propre plage : 0 ;
+- **aller-retour base → pixel → base** sur 500 bases d'ADN visibles : 482 retrouvées à la
+  résolution du pixel (≥ 1 pb ; vue de biais, un pixel couvre plusieurs bases), 464 à ± 1 pb,
+  404 exactes. La base est celle dont **l'axe passe au plus près de la ligne de visée** ; deux
+  témoins montrent pourquoi : l'identifiant seul (le segment de 6 pb) n'en donne que 32 exactes,
+  et le point de surface touché — ce qu'utilisait la première version — glisse le long de l'axe
+  de r / tan θ : 241 à ± 1 pb ;
+- **un second défaut, plus ancien** : `Picker` arrondissait la coordonnée (`round`) et lisait le
+  pixel voisin dès que le clic tombait dans la moitié droite d'un pixel. En `floor`, l'aller-retour
+  passe de 252 à 404 bases exactes.
+
+Ce que vaut la position, par objet, et que la fiche écrit : une bille, son intervalle ; un monomère
+de la fibre, ses 2 kb — la plus petite unité du polymère, pas de position inventée dedans ; un
+nucléosome, la base enroulée la plus proche de la ligne de visée ; l'ADN de liaison, la base de
+l'axe ; un barreau de l'hélice, sa base, exacte. Au niveau de la base, la fiche du monomère se
+complète de ce qui vaut pour elle : lettre et contexte (référence), position T2T exacte, variants
+ClinVar à cette base, état ChromHMM et cCRE qui la couvrent.
+
+### « En moins de 100 ms »
+
+`node tools/pick.mjs 500` : la page interactive, de vrais événements souris (CDP
+`Input.dispatchMouseEvent`), 1 280 × 720, SwiftShader. À chaque étape de la plongée, des pixels qui
+portent un objet tirés à graine fixe, un clic à la fois ; la page chronomètre la lecture du pixel
+et le mapping inverse, la fiche, le DOM, et l'image suivante — c'est ce temps-là qui est jugé.
+
+MESURE_TABLE
+
+**Un défaut trouvé par cette mesure.** La première passe donnait 1,1 s par clic, dont 1,1 s dans
+la lecture du pixel : `readPixels` attendait l'image en cours de rendu, et la page en rendait une à
+chaque image — le repère du clic forçait un rendu WebGL, et l'échelle de l'hélice redessinait sans
+cesse. SwiftShader met ~1 s à rendre 1 280 × 720. Corrigé : la page ne redessine que si des
+nucléosomes se génèrent ou si de la séquence arrive (`DiveScene.busy`), et le repère se dessine sur
+la surimpression 2D. Une lecture de pixel sur une vue immobile coûte alors 0,33 ms ; ce qui reste
+dans la colonne « pixel » (~23 ms) est la synchronisation avec le compositeur du navigateur, qui
+repeint la page après chaque clic — en logiciel ici. **Ce que ça ne couvre pas** : un clic pendant
+une animation attend l'image en vol, soit une image de rendu (2,6 ms sur l'Iris Xe de la semaine
+10, ~1 s sous SwiftShader).
+
+MESURE_PREFETCH
+
+### Non-régression
+
+MESURE_NONREG
+
+### Ce que ça ne dit pas
+
+- **La fiche est réelle ; la position 3D ne l'est pas.** Cliquer une bille donne les annotations
+  réelles de son intervalle génomique ; l'endroit où la bille est dans le noyau reste celui du
+  modèle simulé, et sa ligne « position radiale » le dit.
+- **LAD, speckles et NAD viennent d'autres lignées.** Les LAD sont conservés à ~70 % entre types
+  cellulaires ; un LAD de K562 n'est pas un LAD de GM12878, et le badge le dit.
+- **SwiftShader est une borne haute** du temps de clic ; le banc matériel republié le mesure sur
+  vrai GPU, à condition qu'on l'ouvre.
+- **Le budget de taille n'est pas tenu** (6,5 Mo pour 2,5) : sous Slow 4G, le préchargement complet
+  dure deux minutes et demie, et un clic qui le précède attend son bloc.
+- **Pas de cytobande T2T** : UCSC injoignable.
+
+### Reproduire
+
+```
+cd pipeline && ONLY="…" TIERS=all bash scripts/fetch.sh && make data-lock   # les 24 sources
+pip install -e '.[hic,fiche]'
+make fiche                       # écrit data/g3d/gm12878.fiche, puis geno fiche check
+make test
+cd .. && pnpm build && pnpm verify
+node tools/test-fiche.mjs        # lecture croisée des fiches, Python → TypeScript
+node tools/test-g3d.mjs
+node tools/pick.mjs 500          # clic → fiche peinte : chaud, Slow 4G, témoin
+```
+
+---
+
 ## S12 — Du noyau à une base de TP53 : la vraie séquence, une hélice qui tient, aucun chargement visible
 
 ### Le critère, traduit
