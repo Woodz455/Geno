@@ -138,6 +138,11 @@ if (!out.warm || !out.slow || !out.control) {
   const cold = (out.slow?.cold ?? []).flatMap((r) => r.log.filter((e) => e.hit));
   console.log(`  passes partielles (${PASSES.join(", ")}) ; Slow 4G, clics avant le préchargement : ${cold.filter((e) => !e.ready).length}/${cold.length} attendent, attente ${cold.filter((e) => !e.ready).map((e) => f1(e.waitMs)).join(", ")} ms`);
   if (out.slow) console.log(`  préchargement Slow 4G : ${JSON.stringify(out.slow.prefetch)}`);
+  if (out.warm) {
+    const w = out.warm.rows.flatMap((r) => r.log.filter((e) => e.hit));
+    const fr = w.map((e) => e.frameMs);
+    console.log(`  chaud : ${w.length} clics, peinte p50 ${f1(q(fr, 0.5))} ms, p95 ${f1(q(fr, 0.95))} ms, max ${f1(Math.max(...fr))} ms, complètes ${w.filter((e) => e.ready && !e.missing.length).length}/${w.length}`);
+  }
   process.exit(0);
 }
 const all = out.warm.rows.flatMap((r) => r.log.filter((e) => e.hit));

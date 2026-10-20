@@ -170,7 +170,29 @@ mesure ci-dessus.
 
 ### Non-régression
 
-MESURE_NONREG
+| Mesure | Semaine 12 | Semaine 13 |
+|---|---:|---:|
+| `make test` | 242 | **276** (+ 10 liftover, + 23 fiche, + 1 parseurs) |
+| `pnpm verify` | 70 | **82** (+ 12 picking) |
+| lecture croisée `.g3d` | 46 | **46** |
+| lecture croisée des fiches | — | **6/6** (160 fiches, 1 000 positions T2T) |
+| continuité, 600 images | 0 saut, transitions 0,94–1,00× | **identique** (témoin : 3 sauts, jusqu'à 7,41×) |
+| lisibilité S11 : ancres, anneau, arc, corps, flèches | 269 · 131 · 1 662 · 2 961 · 85 % | **identiques** ; raccords 45 % et 11 % |
+| fidélité des bases | 90/90 (témoin 23 %) | **90/90** (témoin 23 %) |
+| temps réel Slow 4G, images en attente | 0 (témoin 1) | **0** (témoin 1), 11,8–31,8 Kio lus |
+| premier rendu S9, aperçu, préfixe 16 Kio, Slow 4G | 1 418 ms | **1 478 ms** (marge 22 ms) |
+| page du premier rendu | 15,1 Kio | 15,8 Kio |
+
+**La marge de S9 a fondu, et ce n'est pas la semaine 13.** Le code de la semaine 12 (`ceca1ee`),
+reconstruit et remesuré le même jour, donne **1 487 ms** : l'environnement a dérivé de ~70 ms
+depuis le 18/10, et les phases réseau (document 606 ms, en-tête 1 278 ms, données 1 285 ms) sont
+identiques à la milliseconde ; c'est le rendu logiciel qui est plus lent. Ce que la semaine 13
+coûte, mesuré à part : la cible RGBA32UI, **9 ms** (1 470 ms en R32UI, expérience non conservée).
+Deux corrections pour en arriver là : la page relisait **tout** le tampon d'identifiants dans la
+fenêtre chronométrée pour se vérifier — quatre fois plus d'octets en RGBA32UI —, elle s'arrête
+désormais sur la lecture d'un pixel, qui attend autant la fin du GPU, et vérifie ensuite ; et le
+cache des intervalles de billes, ajouté à `G3D` que la page embarque, en est sorti (`BeadIndex`).
+Avant elles : 1 511 ms, en échec.
 
 ### Ce que ça ne dit pas
 

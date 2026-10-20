@@ -102,15 +102,20 @@ async function main(): Promise<void> {
   gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
   gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
 
-  // Vérification, qui force aussi la fin du travail GPU : on compte les pixels qui
-  // portent une bille, et on relit l'identifiant au centre de l'image.
+  // L'identifiant au centre de l'image : une lecture d'un pixel, qui force la fin du travail
+  // GPU — c'est elle qui arrête le chronomètre. La vérification complète vient après : depuis
+  // la semaine 13 la cible est RGBA32UI, et relire tout le tampon (4 × plus d'octets qu'en
+  // R32UI) dans la fenêtre chronométrée mesurait la vérification, pas le rendu.
+  const centre = new Picker(gl, targets).pick(W / 2, H / 2);
+  const tDraw = performance.now();
+
+  // Vérification : on compte les pixels qui portent une bille.
   const rgba = new Uint32Array(W * H * 4);
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, targets.fbo);
   gl.readBuffer(gl.COLOR_ATTACHMENT1);
   gl.readPixels(0, 0, W, H, gl.RGBA_INTEGER, gl.UNSIGNED_INT, rgba);
   const idbuf = new Uint32Array(W * H);
   for (let k = 0; k < W * H; k++) idbuf[k] = rgba[4 * k];
-  const tDraw = performance.now();
 
   let covered = 0;
   const seen = new Set<number>();
@@ -120,7 +125,6 @@ async function main(): Promise<void> {
       seen.add(v);
     }
   }
-  const centre = new Picker(gl, targets).pick(W / 2, H / 2);
   const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
 
   publish({
