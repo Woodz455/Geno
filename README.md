@@ -9,7 +9,7 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–2, semaine 12.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–3, semaine 13.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
@@ -140,16 +140,25 @@ génome. Ce qui est réel et ce qui ne l'est pas est dit à l'écran à chaque �
 est la référence, l'hélice est idéale, la position est celle de nucléosomes illustratifs sur une
 fibre simulée ([`docs/VALIDATION.md` § S12](docs/VALIDATION.md)).
 
+Et chaque point **répond de lui-même**. Un clic sur une bille, un monomère, un nucléosome ou une
+base ouvre sa **fiche** : position hg38 et T2T, cytobande ; compartiment, sous-compartiment, TAD,
+ancres de boucles, position radiale, lamina, speckles, nucléole, timing de réplication ; gènes,
+expression, contrainte ; cCRE, ChromHMM, CTCF orienté ; ClinVar et GWAS ; et à la base, sa lettre,
+ses variants et son contexte. Les sources sont réelles et verrouillées (24 de plus cette semaine),
+et chaque ligne dit ce qu'elle vaut — mesurée dans GM12878, mesurée ailleurs (K562 pour la lamina,
+faute de mesure en GM12878), simulée par le modèle, ou annotation de référence. Aucune fiche n'a de
+champ muet, 200 sur 200 se recomposent à l'identique par un autre chemin, et la fiche est peinte
+en 44 ms au 95e centile après un vrai clic ([`docs/VALIDATION.md` § S13](docs/VALIDATION.md)).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
 Ce verdict porte sur la correction seulement — l'environnement ne rend que via SwiftShader,
 un rasteriseur logiciel, donc les images par seconde attendent du vrai matériel.
 
-> Les fiches du socle 1D viennent encore de **fixtures**, pas de sources scientifiques, et toute
-> fiche qui en vient le dit en en-tête. Le réseau vers les dépôts s'est ouvert à la semaine 12 :
-> la séquence hg38 et GENCODE sont réels et verrouillés ; les positions du modèle restent
-> simulées, et leur passage aux données réelles est la prochaine étape. Voir
+> Les annotations de la fiche sont réelles et verrouillées depuis la semaine 13 (le magasin de
+> démonstration de `make query`, lui, vient encore de **fixtures**, et le dit). Les positions du
+> modèle restent simulées, et leur passage aux données réelles est une étape à part. Voir
 > [`docs/DATA_SOURCES.md` § 8](docs/DATA_SOURCES.md).
 
 ## Ce qu'on construit
@@ -214,14 +223,16 @@ make fine-tp53       la même chose autour de TP53, sur chr17
 make g3d             écrit le fichier .g3d multi-niveaux, compartiments, séquence et cibles compris, et le relit
                      COMPARTMENTS=e1.bedGraph affiche un E1 mesuré à la place de celui du modèle
 make g3d-bench       octets écrits par bille, de 1 Mb à 10 kb
+make fiche           les fiches de toutes les billes (data/g3d/gm12878.fiche), puis leur vérification
 make test            suite de tests
 ```
 
 Côté rendu (Node 22, pnpm) :
 
 ```
-pnpm verify          70 assertions : imposteurs (S4), caméra, tramage, occlusion (S10), tubes, nucléosomes (S11),
-                     chemin de l'ADN, double hélice, couleurs et picking à la base (S12)
+pnpm verify          82 assertions : imposteurs (S4), caméra, tramage, occlusion (S10), tubes, nucléosomes (S11),
+                     chemin de l'ADN, double hélice, couleurs et picking à la base (S12), picking RGBA32UI et
+                     mapping inverse (S13)
 pnpm typecheck       TypeScript strict
 pnpm build           produit dist/dive.html (la plongée), les pages de mesure et le banc matériel
 node tools/test-g3d.mjs   lecture croisée du .g3d, Python → TypeScript, HTTP Range compris
@@ -232,4 +243,6 @@ node tools/stream.mjs     la plongée en temps réel sous Slow 4G : images en at
 node tools/fidelity.mjs   les bases dessinées à l'arrivée, contre hg38.2bit relu par Python
 node tools/record.mjs     la vidéo de la plongée, et sa continuité mesurée sur la vidéo
 node tools/shot.mjs       une image PNG par étape de la plongée
+node tools/test-fiche.mjs lecture croisée du fichier de fiches, Python → TypeScript
+node tools/pick.mjs       clic → fiche peinte, par de vrais événements souris : chaud, Slow 4G, témoin
 ```

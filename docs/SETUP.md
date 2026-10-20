@@ -79,7 +79,7 @@ symboles Node dont il a besoin plutôt que d'ajouter `@types/node`.
 ## Vérifier
 
 ```console
-$ make test            # 242 tests (43 socle 1D + 141 conformation + 49 format .g3d + 4 compartiments + 5 séquence)
+$ make test            # 276 tests (… + 5 séquence, + 10 liftover, + 23 fiche, + 1 parseurs)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```
@@ -98,3 +98,15 @@ de GENCODE (`gencode.annotation.gtf`, 80 Mo). Un téléchargement coupé par le 
 par plage (`curl -C -`) ; c'est l'empreinte, confrontée au `md5sum.txt` du dépôt puis
 verrouillée par `make data-lock`, qui dit que le fichier est entier. Sans `hg38.2bit`, `make g3d`
 écrit un fichier sans séquence, et la plongée s'arrête aux nucléosomes.
+
+La semaine 13 (la fiche) ajoute 24 sources, ≈ 750 Mo, dont ClinVar (200 Mo), le GWAS Catalog
+(73 Mo), gnomAD (95 Mo), MONDO (53 Mo) et les bigWig de 4DN et d'ENCODE ; elles s'ajoutent à
+`ensembl.org`, `encodeproject.org`, les S3 ouverts de 4DN, `storage.googleapis.com` (gnomAD,
+GTEx), `purl.obolibrary.org` et `jaspar.genereg.net`. Le `.hic` de Rao 2014, plusieurs dizaines de
+Go, est dans le même tier que des fichiers dont la fiche a besoin : `ONLY="id …"` dans
+l'environnement de `make data-…` ne récupère que ces identifiants. `make fiche` a besoin de
+`pyBigWig` (`pip install -e '.[hic,fiche]'`) ; sa première lecture des sources prend ≈ 4 min et
+se met en cache dans `data/cache/fiche/`, indexé par les empreintes du manifeste.
+
+Depuis le 2026-10-19, `hgdownload.soe.ucsc.edu` échoue au TLS (« unable to get local issuer
+certificate ») ; rien de ce qui précède n'en dépend plus, sauf un premier `make data-core`.

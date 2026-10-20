@@ -196,10 +196,10 @@ téléchargement, et c'est dit.
   T2T et la bande hg38.
 
 **La chaîne hg38 → T2T, contrôlée sans UCSC.** Pour 10 000 positions hg38 tirées au hasard, le
-21-mer centré est comparé dans `hg38.2bit` et dans `hs1.2bit` à la position levée : 9 752
-positions se lèvent (97,5 %), et 9 511 de celles-là ont le même 21-mer (97,5 %) — ce qu'on
-attend de deux assemblages qui diffèrent d'environ une SNV par kb. Témoin, position levée
-décalée de 1 kb : 1 sur 9 752. (`geno fiche check`, VALIDATION § S13.)
+21-mer centré est comparé dans `hg38.2bit` et dans `hs1.2bit` à la position levée : 9 773
+positions se lèvent, 9 558 de celles-là ont le même 21-mer (97,8 %) et 9 764 la même base
+(99,91 %) — ce qu'on attend de deux assemblages qui diffèrent d'environ une SNV par kb. Témoin,
+position levée décalée de 1 kb : 0 21-mer, 25,7 % de bases, le hasard. (`geno fiche check`, VALIDATION § S13.)
 
 **Licences.** ClinVar : domaine public. GWAS Catalog : libre, citation demandée. gnomAD : libre.
 GTEx : données résumées en accès ouvert. MONDO : CC-BY 4.0, cité dans la fiche. HPO : licence

@@ -297,6 +297,22 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   - Clinique : variants ClinVar, maladies (MONDO/HPO), hits GWAS, contrainte gnomAD (pLI, LOEUF)
   - Séquence : au zoom maximal, les bases réelles de la référence
 - **Fait quand** : un clic sur n'importe quelle bille produit la fiche complète en moins de 100 ms.
+- **Fait.** Le clic lit un pixel d'une cible **RGBA32UI** (identifiant + type de rendu) et sa
+  profondeur, puis retrouve ce qu'il désigne, aussi finement que l'objet le permet : l'intervalle
+  d'une bille, les 2 kb d'un monomère, la base dont l'axe passe au plus près de la ligne de visée
+  pour l'ADN et les nucléosomes, la base exacte pour l'hélice (482/500 à la résolution du pixel).
+  La fiche vient d'un fichier à part, `gm12878.fiche` (6,5 Mo, au-dessus des 2,5 Mo visés), écrit
+  depuis **24 sources réelles résolues et verrouillées** — GENCODE v50, GTEx v10, gnomAD v4.1,
+  cCRE, ChromHMM et CTCF d'ENCODE en GM12878 (orientés par le motif), Rao 2014 et Repli-seq levés
+  de hg19, ClinVar du 2026-10-19, GWAS Catalog, MONDO/HPO — ; LAD, speckles et nucléole n'existent
+  pas en GM12878 et sont montrés depuis K562 et HFFc6, étiquetés. Chaque ligne porte son badge
+  d'évidence. **0 champ muet sur 14 114 fiches** ; 200/200 recomposées par un autre chemin (témoin
+  décalé : diverge) ; R273H pathogène à c.818. Mesurée par de vrais clics dans la page : **504/504
+  fiches complètes, peintes en 29 ms médian et 44 ms au 95e centile** sous SwiftShader ; sans
+  préchargement, le témoin attend 1,7 s. Deux défauts anciens trouvés en chemin : l'ADN de liaison
+  partageait les identifiants des nucléosomes, et le picking lisait le pixel voisin une fois sur
+  deux. Sous Slow 4G le préchargement complet prend 147 s, et un clic qui le précède attend son
+  bloc 1,3 à 5,4 s ([`VALIDATION.md` § S13](VALIDATION.md)).
 
 #### Semaine 14 — Vues liées
 - `igv.js` et HiGlass montés à côté de la 3D. Une sélection unique publiée par un store —

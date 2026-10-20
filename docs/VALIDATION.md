@@ -9,7 +9,7 @@ un rapport qui n'a pas cherché.
 
 ---
 
-## S13 — Un clic, une fiche : complète, exacte, en MESURE_P95 ms
+## S13 — Un clic, une fiche : complète, exacte, peinte en 44 ms (p95)
 
 ### Le critère, traduit
 
@@ -85,9 +85,10 @@ chr17:7 673 802 (5 variants ClinVar à cette base) ; la position T2T sur chr17 ;
 8 062 TPM en LCL. Tous vérifiés.
 
 **La position T2T, sans UCSC.** UCSC ne passait plus le TLS ; la chaîne hg38 → T2T est donc
-contrôlée par les deux séquences : sur 10 000 positions tirées au hasard, 9 752 se lèvent, et
-**9 511 ont le même 21-mer** dans `hs1.2bit` (97,5 % — deux assemblages qui diffèrent d'environ une
-SNV par kb) ; témoin décalé de 1 kb : 1. TP53 c.818 tombe sur chr17:7 577 926 de T2T-CHM13.
+contrôlée par les deux séquences : sur 10 000 positions tirées au hasard, 9 773 se lèvent ;
+**9 558 ont le même 21-mer** dans `hs1.2bit` (97,8 % — deux assemblages qui diffèrent d'environ une
+SNV par kb) et 9 764 la même base (99,91 %). Témoin décalé de 1 kb : 0 21-mer, 25,7 % de bases
+— le hasard. TP53 c.818 tombe sur chr17:7 577 926 de T2T-CHM13.
 
 **Lecture croisée** (`node tools/test-fiche.mjs`) : 160 fiches tirées dans les quatre niveaux, relues
 par le lecteur TypeScript, sont celles de Python **champ pour champ** ; 1 000 positions des régions
@@ -130,7 +131,20 @@ ClinVar à cette base, état ChromHMM et cCRE qui la couvrent.
 portent un objet tirés à graine fixe, un clic à la fois ; la page chronomètre la lecture du pixel
 et le mapping inverse, la fiche, le DOM, et l'image suivante — c'est ce temps-là qui est jugé.
 
-MESURE_TABLE
+| Étape | Clics | Objets | Pixel + mapping, p50 | Fiche | DOM | **Peinte, p50** | **p95** | max | Complètes |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| départ, aperçu (80 µm) | 84 | bille de 3 Mb | 22,7 | 0,5 | 1,3 | 28,2 | 36,8 | 182,7 | 84/84 |
+| noyau | 84 | bille de 750 kb, fibre | 21,5 | 0,3 | 1,3 | 27,2 | 36,7 | 82,8 | 84/84 |
+| fibre | 84 | monomère, site CTCF | 30,5 | 0,2 | 1,1 | 36,7 | 49,0 | 55,4 | 84/84 |
+| nucléosomes | 84 | ADN, nucléosome | 22,1 | 0,2 | 1,6 | 28,3 | 38,3 | 69,4 | 84/84 |
+| hélice | 84 | base | 23,4 | 1,2 | 1,6 | 31,2 | 37,3 | 46,3 | 84/84 |
+| base | 84 | base | 23,5 | 1,2 | 1,4 | 30,6 | 39,8 | 67,7 | 84/84 |
+| **tout** | **504** | | 23,2 | 0,4 | 1,4 | **29,5** | **43,9** | 182,7 | **504/504** |
+
+(ms ; fiches préchargées, réseau non bridé.) **Critère tenu : p95 43,9 ms, et 504 fiches complètes
+sur 504.** Un clic sur 504 dépasse 100 ms : le premier de la plongée, 182,7 ms, dont 176 dans la
+lecture du pixel — la première lecture de la cible après l'ouverture. Composer la fiche coûte
+0,2 à 1,2 ms (plus à la base, qui lit sa séquence et ses variants) ; l'écrire dans le DOM, 1 à 2 ms.
 
 **Un défaut trouvé par cette mesure.** La première passe donnait 1,1 s par clic, dont 1,1 s dans
 la lecture du pixel : `readPixels` attendait l'image en cours de rendu, et la page en rendait une à
@@ -143,7 +157,16 @@ repeint la page après chaque clic — en logiciel ici. **Ce que ça ne couvre p
 une animation attend l'image en vol, soit une image de rendu (2,6 ms sur l'Iris Xe de la semaine
 10, ~1 s sous SwiftShader).
 
-MESURE_PREFETCH
+**Ce que le préchargement achète, et ce qu'il coûte.** Il lit les tables, puis le noyau (le
+chromosome visé d'abord), l'aperçu et les régions fines, une requête à la fois : 6,5 Mo en 185
+requêtes, **3,4 s** sans bridage — mais **147 s sous Slow 4G** (tables à 44 s, noyau à 90 s). Pendant
+ce temps, un clic montre aussitôt ce que le `.g3d` sait (objet, coordonnées, copie, précision :
+28 ms) et complète la fiche quand son bloc arrive : sous Slow 4G, 13 clics sur 16 faits avant la
+fin du préchargement ont attendu, **1,3 à 5,4 s**. Après lui, 60/60 prêts, peints en 42 ms (p95).
+Témoin **sans préchargement**, Slow 4G : 15 clics sur 30 attendent leur bloc ; fiche complète en
+1,7 s médian, 7,2 s au 95e centile. Un défaut trouvé en mesurant : les clics à froid attendaient
+la fin du préchargement entier (150 s) au lieu de l'ouverture du fichier ; corrigé avant la
+mesure ci-dessus.
 
 ### Non-régression
 
