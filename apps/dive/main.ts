@@ -101,6 +101,10 @@ function sizeOverlay(w: number, h: number, cssW: number, cssH: number): void {
 }
 
 /** Les lettres des bases et l'étiquette de la base visée, par-dessus le rendu WebGL. */
+/** La fiche est ouverte : l'étiquette de la base visée, qui en dirait une partie, se tait —
+ *  dans le coin haut droit, elle passait sous la fiche, et à sa gauche, sous le HUD. */
+let ficheOpen = false;
+
 function drawLabels(scene: DiveScene): void {
   const ctx = overlay.getContext("2d");
   if (!ctx) return;
@@ -110,6 +114,7 @@ function drawLabels(scene: DiveScene): void {
   for (const l of scene.labels().sort((a, b) => Number(!!a.target) - Number(!!b.target))) {
     ctx.globalAlpha = l.alpha;
     if (l.target) {
+      if (ficheOpen) continue;
       const lines = l.text.split("\n");
       const fs = Math.round(13 * scale);
       ctx.font = `600 ${fs}px system-ui, sans-serif`;
@@ -357,6 +362,11 @@ async function main(): Promise<void> {
   // Semaine 13 : la fiche. Le fichier s'ouvre après le premier rendu et se précharge en
   // arrière-plan, le chromosome visé d'abord ; un clic n'attend jamais ce préchargement.
   const panel = new FichePanel(document);
+  panel.onHide = () => {
+    ficheOpen = false;
+    marker = null;
+    drawLabels(scene);
+  };
   let reader: FicheReader | null = null;
   const picks: Record<string, unknown>[] = [];
   const prefetch: Record<string, number> = { started: performance.now() };
@@ -391,19 +401,21 @@ async function main(): Promise<void> {
     if (!sel) {
       panel.hide();
       marker = null;
+      ficheOpen = false;
       drawLabels(scene);
       picks.push({ hit: false, pickMs: t1 - t0 });
       return;
     }
     marker = sel.world;
-    // Le repère du point cliqué : la surimpression seule, pas une image WebGL de plus.
-    drawLabels(scene);
-    if (marker) drawMarker(scene, marker);
     const r = reader;
     const card = r ? r.card(sel.level, sel.bead) : null;
     const t2 = performance.now();
     const c = compose(sel, card, (r ?? { header: null }).header as never, r, scene.sequence?.reader ?? null);
     if (r) panel.show(c, r.header, !card);
+    ficheOpen = !!r;
+    // Le repère du point cliqué : la surimpression seule, pas une image WebGL de plus.
+    drawLabels(scene);
+    if (marker) drawMarker(scene, marker);
     else info.textContent = `${c.title}\n${c.subtitle}\n(fiches en cours d'ouverture)`;
     const t3 = performance.now();
     const entry: Record<string, unknown> = {

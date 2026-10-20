@@ -67,8 +67,13 @@ const pos1 = (p: number) => fmt(p + 1);
 const kb = (bp: number) => (bp >= 1e6 ? `${(bp / 1e6).toFixed(2)} Mb` : bp >= 1e3 ? `${(bp / 1e3).toFixed(1)} kb` : `${bp} pb`);
 const pct = (x: number) => `${Math.round(x * 100)} %`;
 
-function text(key: string, f: FicheField, h: FicheHeader, sel: Selection): string {
+function text(key: string, f: FicheField, h: FicheHeader, sel: Selection, card: Card): string {
   const v = f.v;
+  // Les tables d'expression et de contrainte sont indexées par identifiant Ensembl ; on
+  // affiche le nom du gène, que porte la ligne Gènes.
+  const gv = card.genes?.v;
+  const named = new Map<string, string>([...(gv?.genes ?? []), ...(gv?.nearest ?? [])].map((g: any) => [g.id, g.name]));
+  const nameOf = (id: string) => named.get(id) ?? id;
   switch (key) {
     case "hg38":
       return `${v.chrom}:${pos1(v.start)}–${fmt(v.end)} (${kb(v.end - v.start)})`;
@@ -118,13 +123,12 @@ function text(key: string, f: FicheField, h: FicheHeader, sel: Selection): strin
       return `${lead}${v.genes.length} gène${v.genes.length > 1 ? "s" : ""} (${pc.length} codant${pc.length > 1 ? "s" : ""}) : ${list}${(pc.length || v.genes.length) > 8 ? "…" : ""} · * MANE Select`;
     }
     case "expression": {
-      const rows = Object.values(v as Record<string, any>).sort((a, b) => b.lcl - a.lcl).slice(0, 3);
-      const names = Object.keys(v);
-      return rows.map((r, i) => `${names[Object.values(v).indexOf(r)] ?? i} : ${r.lcl} TPM en LCL, max ${r.max} (${h.tissues[r.tissue].replace(/_/g, " ")})`).join(" · ");
+      const rows = Object.entries(v as Record<string, any>).sort((a, b) => b[1].lcl - a[1].lcl).slice(0, 3);
+      return rows.map(([id, r]) => `${nameOf(id)} : ${r.lcl} TPM en LCL, max ${r.max} (${h.tissues[r.tissue].replace(/_/g, " ")})`).join(" · ");
     }
     case "contrainte": {
       const rows = Object.entries(v as Record<string, any>).filter(([, c]) => c.loeuf != null).sort((a, b) => a[1].loeuf - b[1].loeuf).slice(0, 3);
-      return rows.map(([id, c]) => `${id} : LOEUF ${c.loeuf}${c.loeuf < 0.35 ? " (intolérant)" : ""} · pLI ${c.pli}`).join(" · ") || "aucune valeur publiée";
+      return rows.map(([id, c]) => `${nameOf(id)} : LOEUF ${c.loeuf}${c.loeuf < 0.35 ? " (intolérant)" : ""} · pLI ${c.pli}`).join(" · ") || "aucune valeur publiée";
     }
     case "ccre": {
       const cl = Object.entries(v.classes as Record<string, number>).sort((a, b) => b[1] - a[1]).slice(0, 4);
@@ -212,7 +216,7 @@ export function compose(sel: Selection, card: Card | null, header: FicheHeader, 
       if (!absent) valued++;
       lines.push({
         key, label: header.labels[key] ?? key, evidence: f.e, cell: f.cell, source: f.s, absent,
-        text: absent ? f.absent! : text(key, f, header, sel),
+        text: absent ? f.absent! : text(key, f, header, sel, card),
       });
     }
     if (sec === "coordonnees") lines.push(...baseLines(sel, card, reader, seq).filter((l) => l.key === "t2t_base"));
@@ -245,6 +249,8 @@ const CSS = `
 
 export class FichePanel {
   readonly el: HTMLElement;
+  /** Appelé quand l'utilisateur ferme la fiche. */
+  onHide: (() => void) | null = null;
 
   constructor(doc: Document) {
     const st = doc.createElement("style");
@@ -285,7 +291,10 @@ export class FichePanel {
     if (c.missing.length && !waiting) parts.push(`<div class="wait">champs sans valeur ni raison : ${esc(c.missing.join(", "))}</div>`);
     parts.push(`<div class="legend">${Object.entries(EVIDENCE_SHORT).map(([k, v]) => `<span class="ev" style="background:${EVIDENCE_COLORS[k]}">${v}</span>`).join(" ")}</div>`);
     this.el.innerHTML = parts.join("");
-    this.el.querySelector("button.close")!.addEventListener("click", () => this.hide());
+    this.el.querySelector("button.close")!.addEventListener("click", () => {
+      this.hide();
+      this.onHide?.();
+    });
     this.el.classList.add("open");
   }
 }
