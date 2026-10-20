@@ -277,7 +277,9 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   contre 1 pour le témoin sans préchargement, en lisant 11,8 Kio de séquence sur 2 Mo ; **90/90**
   bases dessinées égales au génome relu par Python. La vidéo enregistrée (49 s, 1 350 images)
   est mesurée sur elle-même : 0 saut, lettres comprises. Le raccord S8, mesuré cette fois sur chr17, est pire qu'à ACTB : 11 % de la fibre
-  dans ses billes contre 45 % ([`VALIDATION.md` § S12](VALIDATION.md)).
+  dans ses billes contre 45 % ([`VALIDATION.md` § S12](VALIDATION.md)). Sur vrai matériel
+  (iPhone 14, banc rejoué le 2026-10-20), la plongée jusqu'à la base **ne tient pas** 60 fps :
+  p95 de 28 à 31 ms, rendu seul de 22 à 27 ms entre les nucléosomes et l'hélice.
 
 ---
 
@@ -312,7 +314,8 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   préchargement, le témoin attend 1,7 s. Deux défauts anciens trouvés en chemin : l'ADN de liaison
   partageait les identifiants des nucléosomes, et le picking lisait le pixel voisin une fois sur
   deux. Sous Slow 4G le préchargement complet prend 147 s, et un clic qui le précède attend son
-  bloc 1,3 à 5,4 s ([`VALIDATION.md` § S13](VALIDATION.md)).
+  bloc 1,3 à 5,4 s. Sur un iPhone 14, lecture du pixel et mapping inverse coûtent **0 à 1 ms**
+  sur 180 clics ([`VALIDATION.md` § S13](VALIDATION.md)).
 
 #### Semaine 14 — Vues liées
 - `igv.js` et HiGlass montés à côté de la 3D. Une sélection unique publiée par un store —

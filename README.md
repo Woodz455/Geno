@@ -149,6 +149,8 @@ et chaque ligne dit ce qu'elle vaut — mesurée dans GM12878, mesurée ailleurs
 faute de mesure en GM12878), simulée par le modèle, ou annotation de référence. Aucune fiche n'a de
 champ muet, 200 sur 200 se recomposent à l'identique par un autre chemin, et la fiche est peinte
 en 44 ms au 95e centile après un vrai clic ([`docs/VALIDATION.md` § S13](docs/VALIDATION.md)).
+Sur un vrai GPU (iPhone 14), le clic lui-même coûte 0 à 1 ms ; mais la plongée jusqu'à la base n'y
+tient **pas** 60 images par seconde — p95 de 28 à 31 ms entre les nucléosomes et l'hélice.
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et

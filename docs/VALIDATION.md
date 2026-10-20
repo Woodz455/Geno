@@ -168,6 +168,34 @@ Témoin **sans préchargement**, Slow 4G : 15 clics sur 30 attendent leur bloc ;
 la fin du préchargement entier (150 s) au lieu de l'ouverture du fichier ; corrigé avant la
 mesure ci-dessus.
 
+### Sur du vrai matériel : le clic tient, les 60 images par seconde non
+
+Le banc matériel republié (version 4) a été joué deux fois sur un **iPhone 14** (Apple GPU,
+canevas de 716 × 403 pixels de rendu — dpr 3, plafonné à 2 par la page), le 2026-10-20 à 01:39 et 01:40 UTC — la plongée entière, du noyau à
+la base c.818, puis 90 clics chronométrés chacun à trois étapes (bille, fibre, base) :
+
+| Passe | rAF méd. / p95 | Images > 25 ms | Rendu seul méd. / p95 | Clic méd. / p95 / max |
+|---|---|---:|---|---|
+| 01:39:53 | 17 / **28 ms** | 7,5 % | 5 / 29 ms | **0 / 0 / 1 ms** |
+| 01:40:07 | 17 / **31 ms** | 10,4 % | 7 / 31 ms | **0 / 1 / 1 ms** |
+| rappel S10, même appareil, plongée jusqu'aux compartiments | 17 / 17 ms | 0 % | 3 / 7 ms | — |
+
+**Le clic tient, largement** : lecture du pixel et mapping inverse coûtent 0 à 1 ms sur un vrai
+GPU — Safari arrondit à la milliseconde —, contre ~23 ms sous SwiftShader, où l'essentiel était la
+synchronisation avec le compositeur logiciel.
+
+**Les 60 images par seconde ne tiennent pas** sur la plongée jusqu'à la base : p95 de 28 et 31 ms,
+verdict « non tenu » de la page. Ce n'est pas un chargement — la passe suit un préchargement
+complet —, c'est le rendu, et il est localisé : les images lentes tombent entre **59 % et 92 % du
+trajet** (indices 141 à 220 sur 240), c'est-à-dire, d'après le tableau de continuité de 600
+images, de l'arrivée des nucléosomes (170 nm de champ) jusqu'à l'apparition des lettres (6,3 nm).
+Le rendu seul y vaut **22 à 27 ms** par décile du trajet, contre 2 à 3 ms à l'échelle du noyau ;
+la vue finale de la base revient à 16,7 ms. C'est le premier chiffre matériel pour les échelles
+des semaines 11 à 13 : les mesures de la semaine 10 s'arrêtaient aux compartiments. Pistes,
+ni mesurées ni engagées : la fenêtre de nucléosomes et d'ADN dessinée (jusqu'à 40 monomères de
+contexte de part et d'autre de la base), et l'occlusion ambiante, calculée à la pleine résolution
+du canevas — sa part n'est pas isolée par le banc.
+
 ### Non-régression
 
 | Mesure | Semaine 12 | Semaine 13 |
@@ -201,9 +229,9 @@ Avant elles : 1 511 ms, en échec.
   modèle simulé, et sa ligne « position radiale » le dit.
 - **LAD, speckles et NAD viennent d'autres lignées.** Les LAD sont conservés à ~70 % entre types
   cellulaires ; un LAD de K562 n'est pas un LAD de GM12878, et le badge le dit.
-- **SwiftShader est une borne haute** du temps de clic. Le banc matériel est republié (version 4,
-  même URL) avec un chronométrage du clic — lecture du pixel et mapping inverse, à trois étapes ;
-  aucune mesure sur vrai GPU n'en est encore revenue.
+- **Un seul appareil réel** a joué le banc de la semaine 13 (iPhone 14) : le clic y tient en 0–1 ms,
+  les 60 fps de la plongée jusqu'à la base non. Ni GPU de bureau ni GPU intégré de PC n'ont encore
+  rejoué cette plongée-là.
 - **Le budget de taille n'est pas tenu** (6,5 Mo pour 2,5) : sous Slow 4G, le préchargement complet
   dure deux minutes et demie, et un clic qui le précède attend son bloc.
 - **Pas de cytobande T2T** : UCSC injoignable.
@@ -477,7 +505,9 @@ est le niveau du premier rendu — en sort renforcée.
 - **L'enregistrement ne prouve pas l'absence de chargement** : rendu image par image, chaque
   image attend d'être complète. C'est la mesure en temps réel qui le prouve, sous SwiftShader —
   donc avec une caméra qui avance par grands pas, et un réseau qui, lui, est réaliste.
-- **Les 60 fps de la plongée jusqu'à la base** ne peuvent venir que du banc matériel.
+- **Les 60 fps de la plongée jusqu'à la base** ne pouvaient venir que du banc matériel. Ils en sont
+  venus le 2026-10-20 (§ S13) : **non tenus** sur un iPhone 14 aux échelles nucléosome et hélice
+  (rAF p95 28–31 ms, rendu seul 22–27 ms sur cette portion du trajet).
 
 ### Reproduire
 
