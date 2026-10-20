@@ -22,6 +22,8 @@ import { cdp, launch, shutdown } from "./cdp.mjs";
 import { serve } from "./serve.mjs";
 
 const N = Number(process.argv[2] ?? 500);
+// Passes à jouer : warm, slow, control (défaut : les trois).
+const PASSES = (process.argv[3] ?? "warm,slow,control").split(",");
 const SLOW_4G = { latency: 562.5, downloadThroughput: (1.6e6 / 8) * 0.9, uploadThroughput: (750e3 / 8) * 0.9 };
 const NONE = { latency: 0, downloadThroughput: -1, uploadThroughput: -1 };
 const W = 1280, H = 720;
@@ -100,7 +102,7 @@ const browser = await cdp(url);
 const out = {};
 try {
   // 1. Chaud.
-  {
+  if (PASSES.includes("warm")) {
     const page = await open(browser, `${base}/dive.html?f=data/gm12878.g3d&pick`, NONE);
     const rows = await clicks(page, Math.ceil(N / 6), 13, true);
     out.warm = { rows, prefetch: await page.ev("JSON.stringify(window.__pick.prefetch)").then(JSON.parse),
@@ -108,7 +110,7 @@ try {
     await page.close();
   }
   // 2. Slow 4G : préchargement, et un clic à froid tout de suite.
-  {
+  if (PASSES.includes("slow")) {
     const page = await open(browser, `${base}/dive.html?f=data/gm12878.g3d&pick`, SLOW_4G);
     const cold = await clicks(page, 3, 7, false);
     for (let k = 0; k < 6000 && !(await page.ev("window.__pick.prefetch.all > 0")); k++) await sleep(250);
@@ -118,7 +120,7 @@ try {
     await page.close();
   }
   // 3. Témoin : sans préchargement, Slow 4G.
-  {
+  if (PASSES.includes("control")) {
     const page = await open(browser, `${base}/dive.html?f=data/gm12878.g3d&pick&nofichepre`, SLOW_4G);
     await sleep(3000);       // le temps que l'en-tête des fiches arrive
     const rows = await clicks(page, 5, 21, false);
@@ -131,6 +133,13 @@ try {
   await shutdown(proc, profile);
 }
 
+if (!out.warm || !out.slow || !out.control) {
+  process.stdout.write(`JSON ${JSON.stringify(out)}\n`);
+  const cold = (out.slow?.cold ?? []).flatMap((r) => r.log.filter((e) => e.hit));
+  console.log(`  passes partielles (${PASSES.join(", ")}) ; Slow 4G, clics avant le préchargement : ${cold.filter((e) => !e.ready).length}/${cold.length} attendent, attente ${cold.filter((e) => !e.ready).map((e) => f1(e.waitMs)).join(", ")} ms`);
+  if (out.slow) console.log(`  préchargement Slow 4G : ${JSON.stringify(out.slow.prefetch)}`);
+  process.exit(0);
+}
 const all = out.warm.rows.flatMap((r) => r.log.filter((e) => e.hit));
 console.log(`\n  Clic → fiche, page interactive, événements souris CDP, SwiftShader (borne haute), ${W} × ${H}\n`);
 console.log(`  ${"étape".padEnd(26)} ${"clics".padStart(5)} ${"objet".padEnd(26)} ${"pixel p50".padStart(9)} ${"fiche".padStart(6)} ${"DOM".padStart(6)} ${"peinte p50".padStart(10)} ${"p95".padStart(6)} ${"max".padStart(6)} ${"complètes".padStart(10)}`);

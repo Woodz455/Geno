@@ -362,9 +362,17 @@ async function main(): Promise<void> {
   const prefetch: Record<string, number> = { started: performance.now() };
   let marker: number[] | null = null;
   const focusChrom = scene.region?.chrom ?? "chr17";
-  const opened = FicheReader.open(new HttpSource(FICHE)).then(async (r) => {
+  // Deux promesses : le fichier ouvert (en-tête lu) — ce qu'un clic à froid attend —, et le
+  // préchargement, qui dure, lui, jusqu'à deux minutes et demie sous Slow 4G.
+  const opened = FicheReader.open(new HttpSource(FICHE)).then((r) => {
     reader = r;
-    if (q.has("nofichepre")) return r;
+    return r;
+  }).catch((e) => {
+    info.textContent = `fiches indisponibles : ${e}`;
+    return null;
+  });
+  void opened.then(async (r) => {
+    if (!r || q.has("nofichepre")) return;
     const order = [
       { level: "noyau", first: [focusChrom] },
       { level: scene.g3d.header.first, first: [focusChrom] },
@@ -373,10 +381,6 @@ async function main(): Promise<void> {
     await r.prefetch(order, (step) => (prefetch[step] = performance.now() - prefetch.started));
     prefetch.all = performance.now() - prefetch.started;
     prefetch.bytes = r.bytes;
-    return r;
-  }).catch((e) => {
-    info.textContent = `fiches indisponibles : ${e}`;
-    return null;
   });
 
   /** Un clic : le pixel, la fiche, le DOM — chronométrés séparément, puis l'image peinte. */
