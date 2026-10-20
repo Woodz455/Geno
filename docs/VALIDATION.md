@@ -201,8 +201,9 @@ Avant elles : 1 511 ms, en échec.
   modèle simulé, et sa ligne « position radiale » le dit.
 - **LAD, speckles et NAD viennent d'autres lignées.** Les LAD sont conservés à ~70 % entre types
   cellulaires ; un LAD de K562 n'est pas un LAD de GM12878, et le badge le dit.
-- **SwiftShader est une borne haute** du temps de clic ; le banc matériel republié le mesure sur
-  vrai GPU, à condition qu'on l'ouvre.
+- **SwiftShader est une borne haute** du temps de clic. Le banc matériel est republié (version 4,
+  même URL) avec un chronométrage du clic — lecture du pixel et mapping inverse, à trois étapes ;
+  aucune mesure sur vrai GPU n'en est encore revenue.
 - **Le budget de taille n'est pas tenu** (6,5 Mo pour 2,5) : sous Slow 4G, le préchargement complet
   dure deux minutes et demie, et un clic qui le précède attend son bloc.
 - **Pas de cytobande T2T** : UCSC injoignable.
