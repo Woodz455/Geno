@@ -4,7 +4,7 @@
  *  réel : les trois dessinent exactement la même chose, au pixel près.
  */
 
-import { type Frame, G3D, HttpSource, SequenceReader, type Source, type TargetSpec } from "@geno/g3d";
+import { BeadIndex, type Frame, G3D, HttpSource, SequenceReader, type Source, type TargetSpec } from "@geno/g3d";
 import {
   baseOf,
   createTargets,
@@ -196,6 +196,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
 
   const source = typeof file === "string" ? new HttpSource(file) : file;
   const g3d = await G3D.open(source, { prefix: opts.prefix ?? 16 * 1024 });
+  const beads = new BeadIndex(g3d);
   const firstName = g3d.header.first;
   const preview = layer(gl, await g3d.firstFrame(firstName), await g3d.attribute(firstName, "compartment"), PREVIEW_IDS);
   const copies = preview.frame.level.copies;
@@ -374,7 +375,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       const ray = { o: near, d: [(far[0] - near[0]) / dl, (far[1] - near[1]) / dl, (far[2] - near[2]) / dl] };
       const done = (s: Omit<Selection, "pickMs" | "world">): Selection => ({ ...s, world, pickMs: performance.now() - t0 });
       const bead = (lay: Layer, local: number, what: string, precision: string): Selection | null => {
-        const b = g3d.beadsNow(lay.name);
+        const b = beads.now(lay.name);
         if (!b) return null;
         const copy = lay.frame.level.copies[lay.frame.copy[local - 1]];
         return done({ what, level: lay.name, bead: local, copy, chrom: copy.split(":")[0], start: b.start[local - 1],
@@ -383,7 +384,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       const F = scene.fiber;
       const R = scene.region;
       const fibre = (monomer: number, pos: number, strand: 0 | 1 | -1, what: string, precision: string, detail?: string) => {
-        const b = g3d.beadsNow(R!.level);
+        const b = beads.now(R!.level);
         if (!b || monomer < 0 || monomer >= b.start.length) return null;
         return done({ what, level: R!.level, bead: monomer + 1, copy: R!.copy, chrom: R!.chrom, start: b.start[monomer],
                       end: b.end[monomer], pos, strand, precision, detail });
@@ -433,7 +434,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   if (fineName) {
     scene.fine = layer(gl, await g3d.firstFrame(fineName), await g3d.attribute(fineName, "compartment"), 0);
     // Semaine 13 : début et fin de chaque bille, une fois, pour qu'un clic n'attende rien.
-    await Promise.all([g3d.beads(firstName), g3d.beads(fineName)]);
+    await Promise.all([beads.load(firstName), beads.load(fineName)]);
     const locus: [string, number, number] = tgt ? [tgt.chrom, tgt.position - 1, tgt.position] : ACTB;
     const hits = await g3d.locate(fineName, ...locus);
     const hit = hits.find((h) => h.copy === which.copy) ?? hits[0];
@@ -449,7 +450,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   const seqSpec = tgt ? (g3d.header.sequences ?? []).find((q) => q.chrom === tgt.chrom && q.start < tgt.position && tgt.position <= q.end) : null;
   const regionStart = seqSpec?.start ?? 0;
   if (fiberLevel) {
-    await g3d.beads(which.level);
+    await beads.load(which.level);
     const chrom = which.copy.split(":")[0];
     const first = await g3d.identify(which.level, 1);
     const last = await g3d.identify(which.level, fiberLevel.n_beads);

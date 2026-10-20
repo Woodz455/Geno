@@ -355,7 +355,7 @@ Les deux sens sont nécessaires, et les deux doivent être rapides.
 - **3D → génomique** (semaine 13) : un clic lit **un pixel** de la cible d'identifiants,
   RGBA32UI — R l'identifiant, G le type de rendu qui l'a écrit (sphère, tube, disque, hélice) —
   et la profondeur. `DiveScene.select` est synchrone : début et fin de chaque bille sont lus une
-  fois par niveau (`G3D.beads`), le reste est en mémoire. La précision dépend de l'objet, et la
+  fois par niveau (`BeadIndex`, à part de la classe `G3D` que la page du premier rendu embarque), le reste est en mémoire. La précision dépend de l'objet, et la
   fiche la dit :
   - bille de 3 Mb ou de 750 kb : son intervalle ;
   - monomère de la fibre : ses 2 kb — la plus petite unité du polymère ; une position à
