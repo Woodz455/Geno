@@ -370,6 +370,10 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
 
 #### Semaine 22 — Performance et compatibilité
 - Budget de frame, mémoire, mobile, chemin de repli WebGPU, particularités Safari.
+- **Point d'entrée, mesuré en semaine 13** : sur iPhone 14, la plongée ne tient pas 60 fps sous
+  la fibre — rAF p95 28–31 ms, rendu seul 22–27 ms entre les nucléosomes et l'hélice
+  ([`VALIDATION.md` § S13](VALIDATION.md)). Reporté ici par décision de l'utilisateur ; isoler
+  d'abord ce qui coûte (occlusion ambiante, taille de la fenêtre dessinée), puis corriger.
 - Tests de non-régression de performance automatisés.
 - **Fait quand** : les budgets tiennent sur les trois cibles, et un commit qui les dépasse
   casse la CI.

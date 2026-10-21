@@ -192,7 +192,7 @@ images, de l'arrivée des nucléosomes (170 nm de champ) jusqu'à l'apparition d
 Le rendu seul y vaut **22 à 27 ms** par décile du trajet, contre 2 à 3 ms à l'échelle du noyau ;
 la vue finale de la base revient à 16,7 ms. C'est le premier chiffre matériel pour les échelles
 des semaines 11 à 13 : les mesures de la semaine 10 s'arrêtaient aux compartiments. Pistes,
-ni mesurées ni engagées : la fenêtre de nucléosomes et d'ADN dessinée (jusqu'à 40 monomères de
+ni mesurées ni engagées — reportées à la semaine 22 par décision de l'utilisateur : la fenêtre de nucléosomes et d'ADN dessinée (jusqu'à 40 monomères de
 contexte de part et d'autre de la base), et l'occlusion ambiante, calculée à la pleine résolution
 du canevas — sa part n'est pas isolée par le banc.
 
