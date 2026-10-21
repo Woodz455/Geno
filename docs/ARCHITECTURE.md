@@ -378,18 +378,60 @@ Les deux haplotypes sont distincts : une coordonnée génomique correspond à **
 
 ## 7. Vues liées
 
-Trois vues, une seule sélection :
+Trois vues, une seule sélection (semaine 14, `apps/linked/`, page `dist/vues.html`) :
 
 ```
-        ┌──────────────┐
-        │  sélection   │   (chrom, start, end, haplotype)
-        └──────┬───────┘
-     ┌─────────┼─────────┐
-  3D viewer  igv.js   HiGlass
+                 ┌───────────────────────────────┐
+                 │  SelectionStore (store.ts)    │   1 ou 2 intervalles haploïdes
+                 │  égalité · garde d'application │   (chrom, début, fin)
+                 └──┬─────────────┬──────────┬───┘
+       publie ↑ ↓ applique      ↑ ↓        ↑ ↓
+       view3d.ts           viewIgv.ts   viewHiglass.ts
+       (openDive)          (igv.js 3.8)  (HiGlass 2.3, fetcher GenoContacts)
 ```
 
-Un store unique émet la sélection ; chaque vue s'y abonne et la publie. Pas de
-synchronisation deux-à-deux — c'est la source des boucles infinies.
+**La sélection.** Un ou deux intervalles 0-based demi-ouverts, **sans copie** : igv.js et HiGlass
+sont haploïdes, et la 3D surligne les deux homologues. Deux intervalles, c'est un pixel de la
+carte hors diagonale — deux loci en contact ; igv les ouvre côte à côte, la 3D les surligne
+ensemble.
+
+**Le store.** Chaque vue publie ce que l'utilisateur y sélectionne et applique ce que le store lui
+donne ; aucune ne parle à une autre, et la source ne reçoit pas sa propre sélection (elle la montre
+d'elle-même). Deux défenses, journalisées : une sélection **égale** à la courante n'est pas
+redistribuée ; pendant qu'une vue **applique**, ce qu'elle publierait est refusé comme écho. Et une
+règle de conception : **naviguer n'est pas sélectionner** — igv `locuschange`, HiGlass `location`
+et l'orbite de la 3D ne sont jamais publiés. C'est la synchronisation des déplacements, deux à
+deux, qui rebondit : la page la rejoue en témoin (`?naive`), et elle ne s'arrête pas (VALIDATION
+§ S14).
+
+**Sélectionner, dans chaque vue.**
+
+| Vue | Geste | Ce qui est publié |
+|---|---|---|
+| 3D | clic sur un pixel (picking de la semaine 13) | l'intervalle de la bille ou du monomère ; la base, pour l'hélice |
+| igv | clic sur un élément d'une piste (`trackclick`) | le gène, le pic, le bin de compartiment ; les deux ancres d'une boucle |
+| HiGlass | clic sur la carte (position par l'événement `cursorLocation`) | les deux bins du pixel, à la résolution affichée en ce point |
+
+**Montrer, dans chaque vue.** 3D : `DiveScene.highlight` — couleur jaune, groupes de fondu à part
+pour les billes sélectionnées (62, 63 : la copie visée, les autres), copies sans sélection à 15 % ;
+monomères de la fibre ; la caméra vise la sélection si rien n'en est à l'écran. igv : une région
+d'intérêt par intervalle, et une fenêtre par intervalle si la vue ne les contient pas. HiGlass :
+une surimpression DOM (bandes des intervalles, rectangle du pixel), recalée sur la piste centrale
+par l'événement `cursorLocation` et tenue à jour par `location` ; `zoomTo` si la vue ne contient
+pas la sélection.
+
+**Ce que lisent igv et HiGlass** (`make linked`, à côté du `.g3d`) :
+
+- `gm12878.contacts` — format `geno-contacts/1`, du moule du `.g3d` : préambule de 64 octets
+  (signature `\x89GCT\r\n\x1a\n`, version, longueur et sha256 de l'en-tête), en-tête JSON deflate,
+  puis une tuile par bloc — 256 × 256 float16, octets regroupés par rang, deflate, sha256 tronqué.
+  Deux jeux : `noyau` (24 Mb → 750 kb) et `fin` (512 kb → 2 kb, NaN hors des régions fines).
+  Tuile `z.x.y` : `dense[i·256 + j] = M[y·256 + i][x·256 + j]`, seules x ≤ y écrites. Coordonnées
+  absolues : chr1…chr22, chrX bout à bout (le modèle est 46,XX). Lu par `ContactsReader`
+  (`packages/g3d/src/contacts.ts`), une tuile par requête Range, vérifiée, gardée.
+- `igv/` — gènes, CTCF orientés, boucles (BEDPE), compartiments du modèle (bedGraph), cytobandes,
+  tailles, et `index.json` (empreintes, évidence de chaque piste). La séquence est le `.2bit`
+  verrouillé, servi par plages sous `/ref/`.
 
 ---
 

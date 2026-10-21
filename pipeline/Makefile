@@ -50,6 +50,7 @@ help:
 	@echo
 	@echo "Fiches (semaine 13)"
 	@echo "  make fiche           écrit data/g3d/gm12878.fiche — une fiche par bille, sources réelles"
+	@echo "  make linked          carte de contacts du modèle (gm12878.contacts) + pistes igv — semaine 14"
 	@echo "                       du manifeste — puis la vérifie (complétude, exactitude, faits)"
 
 data:           ; @TIERS="core annot" $(FETCH)
@@ -76,6 +77,7 @@ ensemble:       ; @$(GENO) ensemble $(if $(N),--n $(N),) $(if $(DAMID),--damid $
 g3d:            ; @$(GENO) g3d build $(if $(COMPARTMENTS),--compartments $(COMPARTMENTS),) && $(GENO) g3d build --no-preview $(if $(COMPARTMENTS),--compartments $(COMPARTMENTS),) --out $(HERE)/data/g3d/gm12878-noyau.g3d >/dev/null && $(GENO) g3d inspect
 g3d-bench:      ; @$(GENO) g3d bench
 fiche:          ; @$(GENO) fiche build && $(GENO) fiche check
+linked:         ; @$(GENO) linked build && $(GENO) linked check
 fine:           ; @$(GENO) fine $(if $(N),--bp-per-bead $(N),) $(if $(CTCF),--ctcf $(CTCF),)
 # Semaine 12. D'autres graines que la région ACTB : avec les mêmes, le 1D (numpy pur, graines
 # fixes) planterait exactement les mêmes sites aux mêmes rangs, et rendrait les mêmes boucles.

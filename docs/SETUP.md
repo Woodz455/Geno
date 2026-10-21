@@ -73,13 +73,32 @@ côté navigateur comme côté Node 22, n'utilise que des API natives : `Decompr
 ('deflate-raw')` pour décompresser, `crypto.subtle` pour vérifier les empreintes, `fetch` pour
 les requêtes Range. La mesure de temps pilote Chromium par le protocole DevTools sur le
 `WebSocket` natif de Node 22, sans Playwright ni Puppeteer. Le dépôt garde donc ses deux seules
-dépendances JavaScript, esbuild et TypeScript ; le test de lecture croisée déclare les deux
+dépendances JavaScript, esbuild et TypeScript — jusqu'à la semaine 14, qui embarque igv.js et
+HiGlass dans la seule page des vues liées (ci-dessous) ; le test de lecture croisée déclare les deux
 symboles Node dont il a besoin plutôt que d'ajouter `@types/node`.
+
+## Vues liées — igv.js et HiGlass (semaine 14)
+
+Les premières dépendances JavaScript d'exécution du dépôt, toutes dans `apps/linked/` et toutes
+épinglées : `igv` 3.8.10, `higlass` 2.3.5 et ses pairs `react` / `react-dom` 18.3.1 et `pixi.js`
+6.5.10 (`pnpm install`). Elles ne touchent ni `first.html` ni `dive.html` : seule `vues.html` les
+embarque (4,3 Mo). Quatre particularités, chacune vue avant d'être contournée :
+
+- **igv** s'importe par `igv/dist/igv.esm.js` : le champ `browser` de son `package.json` désigne la
+  version UMD, qu'esbuild prendrait sinon, sans export par défaut. Ses types ne couvrent pas ce
+  chemin (`apps/linked/shims.d.ts`).
+- **React** lit `process.env.NODE_ENV` : `tools/build.mjs` le définit à `"production"`.
+- **HiGlass** a une feuille de style (`hglib.css`), incorporée à la page. Son data fetcher maison
+  doit exposer un champ `dataConfig` — HiGlass le lit par son nom.
+- **Le serveur local** (`tools/serve.mjs`) lit les fichiers de plus de 64 Mo par plages, sans les
+  charger : igv lit le `.2bit` de 835 Mo par requêtes Range.
+
+`make linked` (pipeline) n'ajoute aucune dépendance Python : numpy et scipy, déjà là.
 
 ## Vérifier
 
 ```console
-$ make test            # 276 tests (… + 5 séquence, + 10 liftover, + 23 fiche, + 1 parseurs)
+$ make test            # 283 tests (… + 10 liftover, + 23 fiche, + 1 parseurs, + 7 vues liées)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

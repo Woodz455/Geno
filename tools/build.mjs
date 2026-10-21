@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const page = (title, script, body = "") => `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>${title}</title>
+const page = (title, script, body = "", css = "") => `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>${title}</title>${css ? `\n<style>${css}</style>` : ""}
 <style>
   :root { color-scheme: dark }
   body { margin:0; background:#0e1218; color:#e8ecf1;
@@ -48,9 +48,12 @@ async function bundle(entry, minify = false) {
     write: false,
     minify,
     plugins: [stripGlsl],
+    // React (sous HiGlass, semaine 14) lit `process.env.NODE_ENV` : sans valeur, la page
+    // tomberait sur le build de développement, ou sur une ReferenceError.
+    define: { "process.env.NODE_ENV": '"production"', global: "globalThis" },
     logLevel: "warning",
   });
-  return out.outputFiles[0].text;
+  return out.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
 }
 
 const targets = [
@@ -64,12 +67,16 @@ const targets = [
   // requête de données. Les deux autres pages sont des outils, celle-ci est mesurée.
   { entry: "apps/first/main.ts", out: "dist/first.html", title: "Geno", minify: true },
   { entry: "apps/dive/main.ts", out: "dist/dive.html", title: "Geno — plongée", minify: true },
+  // Semaine 14 : igv.js et HiGlass embarqués (React, pixi) — 4 Mo, pas une page de premier rendu.
+  { entry: "apps/linked/main.ts", out: "dist/vues.html", title: "Geno — vues liées", minify: true,
+    css: "apps/linked/node_modules/higlass/dist/hglib.css" },
 ];
 
 await mkdir(resolve(ROOT, "dist"), { recursive: true });
 for (const t of targets) {
   const js = await bundle(t.entry, t.minify);
-  await writeFile(resolve(ROOT, t.out), page(t.title, js));
+  const css = t.css ? await readFile(resolve(ROOT, t.css), "utf8") : "";
+  await writeFile(resolve(ROOT, t.out), page(t.title, js, "", css));
   console.log(`  ${t.out}  ${(js.length / 1024).toFixed(1)} ko`);
 }
 

@@ -228,6 +228,9 @@ export class ImpostorRenderer {
       integer: boolean,
     ) => {
       const b = gl.createBuffer()!;
+      if (loc === 4) this.colorBuf = b;
+      if (loc === 5) this.groupBuf = b;
+      if (loc === 6) this.color2Buf = b;
       gl.bindBuffer(gl.ARRAY_BUFFER, b);
       gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
       gl.enableVertexAttribArray(loc);
@@ -256,6 +259,20 @@ export class ImpostorRenderer {
 
   private hasGroups = false;
   private hasColors2 = false;
+  private colorBuf: WebGLBuffer | null = null;
+  private color2Buf: WebGLBuffer | null = null;
+  private groupBuf: WebGLBuffer | null = null;
+
+  /** Nouvelles couleurs (et groupes), dans les tampons existants (semaine 14 : la
+   *  surbrillance d'une sélection) — `upload` en créerait d'autres à chaque fois. */
+  recolor(colors: Float32Array, colors2?: Float32Array, groups?: Uint8Array): void {
+    const gl = this.gl;
+    for (const [b, d] of [[this.colorBuf, colors], [this.color2Buf, colors2], [this.groupBuf, groups]] as const) {
+      if (!b || !d) continue;
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, d);
+    }
+  }
 
   draw(proj: Float32Array, opts: DrawOptions | [number, number, number] = {}): void {
     const gl = this.gl;

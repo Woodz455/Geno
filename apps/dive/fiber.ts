@@ -50,6 +50,8 @@ export interface FiberHit {
 /** Seuil des arcs, fixé avant toute mesure : une paire tenue dans au moins 5 % des
  *  conformations est une boucle de la population. */
 export const ARC_THRESHOLD = 0.05;
+/** La couleur de surbrillance de la 3D (`dive.HIGHLIGHT`), recopiée : `dive.ts` importe ce module. */
+const HIGHLIGHT_FIBER: [number, number, number] = [0.94, 0.89, 0.26];
 
 const COLORS = {
   fiber: [0.62, 0.66, 0.72],
@@ -119,6 +121,9 @@ export interface Fiber {
   /** Monomères de la fenêtre à moins de `r` µm de `p` qui ne sont pas encore générés. */
   missing(p: number[], r: number): number;
   generated(k: number): boolean;
+  /** Semaine 14 : surligne les monomères `lo..hi` (bornes incluses), assombrit les autres ;
+   *  `lo < 0` rend les couleurs d'origine. */
+  highlight(lo: number, hi: number): void;
 }
 
 const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -439,6 +444,26 @@ export async function openFiber(
       return m;
     },
     generated: (k) => done[k] === 1,
+
+    highlight(lo, hi) {
+      const a = c1.slice();
+      const b = c2.slice();
+      if (lo >= 0) {
+        for (let k = 0; k < n; k++) {
+          if (k >= lo && k <= hi) {
+            a.set(HIGHLIGHT_FIBER, 3 * k);
+            b.set(HIGHLIGHT_FIBER, 3 * k);
+          } else {
+            for (let q = 0; q < 3; q++) {
+              a[3 * k + q] *= 0.55;
+              b[3 * k + q] *= 0.55;
+            }
+          }
+        }
+      }
+      fiber.upload({ points, radii: new Float32Array(n).fill(radiusUm), colors: a, colors2: b });
+      lastLoop = NaN;                 // le téléversement a remis les fondus à 1 : les réappliquer
+    },
 
     draw(proj, view, height, s) {
       if (s.fiber <= 0) return;

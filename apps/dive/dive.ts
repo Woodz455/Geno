@@ -82,7 +82,39 @@ export interface Layer {
   radiusUm: number;
   idBase: number;
   e1: Float32Array | null;
+  /** Les deux palettes téléversées (territoires, compartiments), pour revenir d'une surbrillance. */
+  colors: Float32Array;
+  colors2: Float32Array;
 }
+
+/** Semaine 14 : un intervalle génomique, 0-based demi-ouvert, sans copie — la sélection
+ *  des vues liées est haploïde, comme le navigateur linéaire et la carte de contacts. */
+export interface Region {
+  chrom: string;
+  start: number;
+  end: number;
+}
+
+/** Ce qu'une sélection a surligné dans la 3D. */
+export interface Highlighted {
+  /** Identifiants locaux (≥ 1) des billes de l'aperçu et du noyau qui la recouvrent. */
+  preview: number[];
+  nucleus: number[];
+  /** Monomères de la fibre (rangs 0-based, bornes incluses), ou null. */
+  fiber: [number, number] | null;
+  /** Copies qui portent une bille surlignée. */
+  copies: string[];
+}
+
+/** Okabe–Ito jaune : absent des palettes de territoire et de compartiment. */
+export const HIGHLIGHT: [number, number, number] = [0.94, 0.89, 0.26];
+const HL_DIM = 0.4;          // les billes non sélectionnées gardent 40 % de leur couleur
+const HL_FADE = 0.15;        // les copies sans sélection, 15 % de leurs pixels
+const HL_OWN = 0.3;          // le reste d'une copie qui porte la sélection, 30 % : la bille
+                             // surlignée ne reste pas enfouie dans son propre territoire
+/** Groupes des billes surlignées : celles de la copie visée (qui cèdent à la fibre), les autres. */
+const SEL_FOCUS = 62;
+const SEL_OTHER = 63;
 
 function layer(gl: WebGL2RenderingContext, frame: Frame, e1: Float32Array | null, idBase: number): Layer {
   const n = frame.count;
@@ -102,7 +134,8 @@ function layer(gl: WebGL2RenderingContext, frame: Frame, e1: Float32Array | null
   const renderer = new ImpostorRenderer(gl);
   renderer.upload({ centers, radii, ids, colors, colors2: compartmentColors(e1, n), groups: frame.copy, count: n });
   const sorted = Array.from(lv.radius_nm).sort((a, b) => a - b);
-  return { name: lv.name, renderer, frame, radiusUm: sorted[sorted.length >> 1] / 1000, idBase, e1 };
+  const colors2 = compartmentColors(e1, n);
+  return { name: lv.name, renderer, frame, radiusUm: sorted[sorted.length >> 1] / 1000, idBase, e1, colors, colors2 };
 }
 
 export interface DiveScene {
@@ -167,6 +200,10 @@ export interface DiveScene {
   preload(): Promise<void>;
   /** Ce que l'on regarde, et d'où ça vient (principe n° 2), à l'état du dernier rendu. */
   evidence(): string;
+  /** Semaine 14 : surligne ce qui recouvre `regions` — billes des deux niveaux en jaune, les
+   *  autres assombries, les copies sans sélection presque effacées, monomères de la fibre ;
+   *  `null` rend la scène telle qu'elle était. Synchrone : les intervalles sont en mémoire. */
+  highlight(regions: Region[] | null): Highlighted;
 }
 
 export interface OpenOptions {
@@ -200,7 +237,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   const firstName = g3d.header.first;
   const preview = layer(gl, await g3d.firstFrame(firstName), await g3d.attribute(firstName, "compartment"), PREVIEW_IDS);
   const copies = preview.frame.level.copies;
-  const groupFade = new Float32Array(copies.length);
+  const groupFade = new Float32Array(64);       // MAX_GROUPS : les copies, puis SEL_FOCUS et SEL_OTHER
   let focusCopy = copies.indexOf("chr7:a");
 
   const overview: Orbit = { target: [0, 0, 0], yaw: 0.35, pitch: 0.28, distance: distanceFor(24, FOV) };
@@ -209,6 +246,8 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   let lastOrbit: Orbit = overview;
   let lastFrameAt = performance.now();
   const which = TARGETS[opts.target ?? "tp53"];
+  /** Semaine 14 : les copies qui portent une bille surlignée ; `null` sans sélection. */
+  let hlCopy: Uint8Array | null = null;
 
   const scene: DiveScene = {
     gl,
@@ -269,7 +308,15 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       const t = fine ? st.lod * scene.arrival : 0;
       // La copie visée cède à la fibre par tramage complémentaire : elle garde h ≥ fiber, la
       // fibre h < fiber.
-      for (let c = 0; c < copies.length; c++) groupFade[c] = c === focusCopy ? 1 - st.fiber : 1 - st.focus;
+      // Une sélection (semaine 14) l'emporte sur l'effacement de la plongée : une copie qui
+      // porte une bille surlignée reste entière à toutes les échelles, les autres tombent à
+      // HL_FADE. La copie visée cède toujours à sa fibre.
+      for (let c = 0; c < copies.length; c++) {
+        const base = c === focusCopy ? 1 - st.fiber : 1 - st.focus;
+        groupFade[c] = !hlCopy ? base : (hlCopy[c] ? (c === focusCopy ? 1 - st.fiber : 1) : base) * (hlCopy[c] ? HL_OWN : HL_FADE);
+      }
+      groupFade[SEL_FOCUS] = 1 - st.fiber;
+      groupFade[SEL_OTHER] = 1;
       scene.last = { ...st, lod: t, widthUm };
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, targets.fbo);
@@ -343,6 +390,58 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       if (s.nuc > 0.5) return "nucléosomes : illustratifs (aucun positionnement lu) · fibre : simulée, extrusion sur CTCF plantés";
       if (s.fiber > 0.5) return "fibre de 2 kb : simulée (polymère + extrusion, CTCF plantés) · posée sur le noyau, raccord en échec (S8)";
       return "noyau : simulé (contraintes de la semaine 6) · compartiments : prédits par le modèle, pas mesurés";
+    },
+
+    highlight(regions: Region[] | null): Highlighted {
+      const out: Highlighted = { preview: [], nucleus: [], fiber: null, copies: [] };
+      const on = !!regions && regions.length > 0;
+      hlCopy = on ? new Uint8Array(copies.length) : null;
+      const hit = (chrom: string, s: number, e: number) => !!regions && regions.some((r) => r.chrom === chrom && r.start < e && r.end > s);
+      for (const [lay, ids] of [[preview, out.preview], [scene.fine, out.nucleus]] as const) {
+        if (!lay) continue;
+        const b = beads.now(lay.name);
+        const n = lay.frame.count;
+        const c1 = lay.colors.slice();
+        const c2 = lay.colors2.slice();
+        const groups = lay.frame.copy.slice();
+        if (on && b) {
+          const labels = lay.frame.level.copies;
+          for (let i = 0; i < n; i++) {
+            const copy = lay.frame.copy[i];
+            if (hit(labels[copy].split(":")[0], b.start[i], b.end[i])) {
+              ids.push(i + 1);
+              c1.set(HIGHLIGHT, 3 * i);
+              c2.set(HIGHLIGHT, 3 * i);
+              groups[i] = copy === focusCopy ? SEL_FOCUS : SEL_OTHER;
+              if (lay === scene.fine || !scene.fine) hlCopy![copy] = 1;
+            } else {
+              for (let k = 0; k < 3; k++) {
+                c1[3 * i + k] *= HL_DIM;
+                c2[3 * i + k] *= HL_DIM;
+              }
+            }
+          }
+        }
+        lay.renderer.recolor(c1, c2, groups);
+      }
+      out.copies = copies.filter((_, c) => hlCopy?.[c]);
+      const R = scene.region;
+      const F = scene.fiber;
+      if (R && F) {
+        const b = beads.now(R.level);
+        let lo = -1, hi = -1;
+        if (on && b) {
+          for (let k = 0; k < b.start.length; k++) {
+            if (hit(R.chrom, b.start[k], b.end[k])) {
+              if (lo < 0) lo = k;
+              hi = k;
+            }
+          }
+        }
+        F.highlight(lo, hi);
+        out.fiber = lo >= 0 ? [lo, hi] : null;
+      }
+      return out;
     },
 
     probe(x: number, y: number, n: number) {

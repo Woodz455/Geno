@@ -323,6 +323,19 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   sélection dans le navigateur linéaire → surbrillance en 3D, et réciproquement.
 - **Fait quand** : une sélection faite dans l'une des trois vues apparaît dans les deux
   autres, sans rebond.
+- **Fait.** `vues.html` monte la plongée, igv.js 3.8 et HiGlass 2.3 côte à côte, sans réseau
+  extérieur : igv lit le `.2bit` verrouillé par plages et des pistes écrites depuis les sources
+  verrouillées (gènes, CTCF orientés, boucles Rao 2014, compartiments du modèle) ; HiGlass lit la
+  carte de contacts **du modèle** — 200 repliements du noyau, 750 kb, et les régions fines à 2 kb,
+  superposées —, un format à tuiles écrit pour lui (`gm12878.contacts`, 21 Mo, float16), vérifié
+  par conservation (≤ 1,5·10⁻⁵), par 200 + 200 pixels recomposés à partir des distances (témoin
+  décalé : diverge) et par lecture croisée au bit près. La sélection est un ou deux intervalles,
+  publiés par un store ; naviguer n'est pas sélectionner. Mesurée par de vrais gestes, 30 par vue :
+  **90/90 sélections vues dans les deux autres vues, une publication chacune, zéro rebond** ; 15
+  gestes de navigation, 0 publication ; le témoin synchronisé deux à deux envoie 198 messages en
+  une demi-seconde après un seul geste, et ne s'arrête pas. igv attend 500 ms avant un clic simple
+  (son délai de double-clic) ; la carte est simulée, pas du Hi-C mesuré
+  ([`VALIDATION.md` § S14](VALIDATION.md)).
 
 #### Semaine 15 — Couche clinique et fonctionnelle
 - Surimpression ClinVar / GWAS / contrainte gnomAD sur la structure.

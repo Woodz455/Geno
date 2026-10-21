@@ -212,6 +212,26 @@ ClinVar.
 de Rao 2014 (plusieurs dizaines de Go) reste `unverified` : la fiche n'en a pas besoin, et
 `fetch.sh` accepte désormais `ONLY=` pour ne pas le tirer avec le reste de son tier.
 
+## 8 ter. Semaine 14 : aucune source nouvelle, deux produits dérivés
+
+Les vues liées n'ajoutent rien au manifeste. Ce qu'igv.js et HiGlass lisent est **écrit** par
+`make linked`, depuis ce qui est déjà verrouillé, et chaque fichier porte l'empreinte de ce dont il
+vient (`data/g3d/igv/index.json`, champ `provenance`) :
+
+| Fichier | Vient de | Évidence |
+|---|---|---|
+| `igv/genes.bed.gz` | `gencode.annotation.gtf` (v50) | annotation |
+| `igv/ctcf.bed.gz` | `ctcf.peaks.gm12878`, brin = motif MA0139.1 scanné sur `hg38.2bit` (§ 8) | mesuré |
+| `igv/loops.bedpe.gz` | `rao2014.gm12878.loops`, levées par `chain.hg19.to.hg38` (22 perdues sur 9 448) | mesuré |
+| `igv/compartments.bedgraph.gz` | l'E1 du `.g3d` (carte de contacts du modèle) | simulé |
+| `igv/cytoband.txt.gz`, `igv/chrom.sizes` | `hg38.cytoband`, `hg38.chrom.sizes` | référence |
+| `gm12878.contacts` | l'ensemble de 200 repliements (semaine 7), les régions fines (semaine 8) | **simulé** |
+| séquence d'igv | `hg38.2bit`, servi tel quel par plages | référence |
+
+**Pas de Hi-C mesuré dans HiGlass.** Le `.hic` de Rao 2014 (`rao2014.gm12878.hic`) reste
+`unverified` : plusieurs dizaines de Go, jamais téléchargé, donc jamais verrouillé ; le `.mcool` de
+4DN est `unresolved`. Les montrer est le rattrapage S1–S8, pas la semaine 14.
+
 ## 8 bis. État au 2026-10-18 : le réseau s'est ouvert
 
 Jusqu'à la semaine 11, l'environnement d'exécution appliquait une politique d'egress fermée :

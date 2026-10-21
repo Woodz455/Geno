@@ -1169,6 +1169,93 @@ def cmd_fiche(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_linked(args: argparse.Namespace) -> int:
+    """Les données des vues liées (semaine 14) : carte de contacts du modèle et pistes igv."""
+    import json as _json
+
+    from .export import linked as L
+    from .export.linked_check import conservation, exactness, fine_exactness
+
+    fine_paths = [Path(args.fine) / f"{n}.npz" for n in ("tp53", "actb") if (Path(args.fine) / f"{n}.npz").exists()]
+    if args.action == "build":
+        import hashlib
+
+        from .export.g3d import read as read_g3d
+        from .fiche import sources as S
+        from .sequence import TwoBit
+
+        m = S.manifest()
+        sizes = {c: int(n) for c, n in (ln.split("\t")[:2] for ln in
+                 S.locked(m, "hg38.chrom.sizes").path.read_text().splitlines() if ln.strip())}
+        prov = {k: {"sha256": m[k].sha256, "url": m[k].url} for k in
+                ("hg38.chrom.sizes", "gencode.annotation.gtf", "ctcf.peaks.gm12878", "rao2014.gm12878.loops",
+                 "hg38.cytoband", "hg38.2bit", "chain.hg19.to.hg38")}
+        ens = Path(args.ensemble)
+        prov["ensemble"] = {"path": ens.name}
+        for p in fine_paths:
+            prov[f"fine:{p.stem}"] = {"sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+        print("carte de contacts du modèle")
+        rep = L.build(ens, fine_paths, sizes, Path(args.out), prov)
+        print(f"  {rep['path']} : {rep['bytes'] / 1e6:.2f} Mo, tuiles {rep['tiles']}")
+
+        def rows(iv):
+            return [(c, int(a), int(b), iv.items[int(i)]) for c in iv.starts
+                    for a, b, i in zip(iv.starts[c], iv.ends[c], iv.idx[c])]
+
+        genes, _ = S.genes(m)
+        ctcf = S.ctcf(m, TwoBit(S.locked(m, "hg38.2bit").path))
+        loops, loop_i = S.loops(m, S.chain_hg19(m))
+        g = read_g3d(args.g3d)
+        nuc = g.levels["noyau"]
+        e1 = nuc["attributes"]["compartment"]
+        copies = nuc["meta"]["copies"]
+        e1_rows, seen = [], set()
+        for k in range(len(e1)):
+            label = copies[int(nuc["copy"][k])]
+            chrom = label.split(":")[0]
+            first = next(c for c in copies if c.split(":")[0] == chrom)
+            if label == first:
+                e1_rows.append((chrom, int(nuc["start"][k]), int(nuc["end"][k]), float(e1[k])))
+                seen.add(chrom)
+        files = L.igv_tracks(Path(args.igv), genes=rows(genes), ctcf=rows(ctcf), loops=rows(loops),
+                             e1_rows=e1_rows, cytoband=S.locked(m, "hg38.cytoband").path, sizes=sizes)
+        index = {"format": "geno-linked/1", "contacts": {"path": Path(args.out).name,
+                 "sha256": hashlib.sha256(Path(args.out).read_bytes()).hexdigest()},
+                 "igv": files, "loops_lift": loop_i, "provenance": prov,
+                 "evidence": {"genes": "annotation", "ctcf": "mesure", "loops": "mesure",
+                              "compartments": "simule", "cytoband": "reference", "contacts": "simule"}}
+        (Path(args.igv) / "index.json").write_text(_json.dumps(index, ensure_ascii=False, indent=1))
+        for k, f in files.items():
+            print(f"  igv/{f['path']:26s} {f['bytes'] / 1e3:8.1f} ko")
+        return 0
+
+    c = L.Contacts(args.out)
+    if args.action == "dump":
+        from .export.linked_check import dump_expected
+
+        dump_expected(c, Path(args.dump))
+        print(f"attendus : {args.dump}")
+        return 0
+    cons = conservation(c)
+    worst = max(r["rel"] for r in cons)
+    print(f"conservation : {len(cons)} résolutions, écart relatif max {worst:.2e}")
+    for r in cons:
+        print(f"  {r['tileset']:5s} {r['resolution']:>10,} pb  {r['tiles']:4d} tuiles  "
+              f"{r['stored']:14.3f} pour {r['expected']:14.3f}")
+    ok = worst < 1e-3                      # float16 : chaque pixel arrondi à 4,9·10⁻⁴ près
+    for shift in (0, 1):
+        ex = exactness(c, Path(args.ensemble), n=args.n, shift=shift)
+        print(f"noyau, {ex['pixels']} pixels de 750 kb recomposés{' (témoin : décalés d’un pixel)' if shift else ''} : "
+              f"{ex['equal']}/{ex['pixels']} égaux  {ex['first_diff'] or ''}")
+        ok &= (ex["equal"] == ex["pixels"]) if not shift else ex["equal"] < ex["pixels"]
+        if fine_paths:
+            fx = fine_exactness(c, fine_paths, n=args.n, shift=shift)
+            print(f"fin, {fx['pixels']} pixels de 2 kb{' (témoin)' if shift else ''} : "
+                  f"{fx['equal']}/{fx['pixels']} égaux  {fx['first_diff'] or ''}")
+            ok &= (fx["equal"] == fx["pixels"]) if not shift else fx["equal"] < fx["pixels"]
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1370,6 +1457,18 @@ def main(argv: list[str] | None = None) -> int:
     fc.add_argument("--n", type=int, default=200, help="check : billes recomposées")
     fc.add_argument("--kmers", type=int, default=10_000, help="check : positions du contrôle T2T (0 : sans)")
     fc.set_defaults(fn=cmd_fiche)
+
+    lk = sub.add_parser("linked", help="carte de contacts du modèle et pistes igv des vues liées (semaine 14)")
+    lk.add_argument("action", choices=["build", "check", "dump"])
+    lk.add_argument("--dump", default=str(ROOT.parent / "dist" / "contacts-test" / "expected.json"),
+                    help="dump : où écrire les tuiles attendues de la lecture croisée")
+    lk.add_argument("--ensemble", default=str(ROOT / "data" / "ensemble" / "gm12878.zarr"))
+    lk.add_argument("--fine", default=str(ROOT / "data" / "fine"))
+    lk.add_argument("--g3d", default=str(ROOT / "data" / "g3d" / "gm12878.g3d"))
+    lk.add_argument("--out", default=str(ROOT / "data" / "g3d" / "gm12878.contacts"))
+    lk.add_argument("--igv", default=str(ROOT / "data" / "g3d" / "igv"))
+    lk.add_argument("--n", type=int, default=200, help="check : pixels recomposés")
+    lk.set_defaults(fn=cmd_linked)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

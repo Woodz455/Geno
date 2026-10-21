@@ -6,3 +6,6 @@ declare module "node:fs" {
   export function readFileSync(path: string, encoding: "utf8"): string;
 }
 declare const process: { argv: string[]; exit(code: number): never };
+declare module "node:crypto" {
+  export function createHash(algo: string): { update(d: Uint8Array): { digest(enc: "hex"): string } };
+}

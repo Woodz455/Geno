@@ -9,14 +9,14 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–3, semaine 13.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–3, semaine 14.** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
 entier** — 46 chaînes, 8 082 billes d'échelle TAD, sans interpénétration —, un **ensemble de
 200 repliements** du même génome, une **descente sous le TAD** par extrusion de boucles, un **format de fichier** qui
-les sert par morceaux, et une **plongée continue** du noyau jusqu'à une seule base de TP53, sur la
-séquence hg38 réelle.
+les sert par morceaux, une **plongée continue** du noyau jusqu'à une seule base de TP53, sur la
+séquence hg38 réelle, et des **vues liées** — la 3D, igv.js et HiGlass, une seule sélection.
 
 ```console
 $ make build-store                              # construit depuis les fixtures
@@ -152,6 +152,13 @@ en 44 ms au 95e centile après un vrai clic ([`docs/VALIDATION.md` § S13](docs/
 Sur un vrai GPU (iPhone 14), le clic lui-même coûte 0 à 1 ms ; mais la plongée jusqu'à la base n'y
 tient **pas** 60 images par seconde — p95 de 28 à 31 ms entre les nucléosomes et l'hélice.
 
+Et ce qu'on désigne dans une vue **se montre dans les deux autres** (`dist/vues.html`). Un clic
+sur une bille, un gène ou un pic dans igv.js, un pixel de la carte de contacts dans HiGlass : la
+sélection passe par un store unique, et les deux autres vues la surlignent et s'y déplacent — 90
+sélections sur 90, une publication chacune, zéro rebond, là où des vues synchronisées deux à deux
+s'emballent (198 messages en une demi-seconde après un seul geste). La carte de HiGlass est celle
+du **modèle**, simulée, et le dit ([`docs/VALIDATION.md` § S14](docs/VALIDATION.md)).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
@@ -226,6 +233,7 @@ make g3d             écrit le fichier .g3d multi-niveaux, compartiments, séque
                      COMPARTMENTS=e1.bedGraph affiche un E1 mesuré à la place de celui du modèle
 make g3d-bench       octets écrits par bille, de 1 Mb à 10 kb
 make fiche           les fiches de toutes les billes (data/g3d/gm12878.fiche), puis leur vérification
+make linked          la carte de contacts du modèle (gm12878.contacts) et les pistes igv, puis leur vérification
 make test            suite de tests
 ```
 
@@ -236,7 +244,8 @@ pnpm verify          82 assertions : imposteurs (S4), caméra, tramage, occlusio
                      chemin de l'ADN, double hélice, couleurs et picking à la base (S12), picking RGBA32UI et
                      mapping inverse (S13)
 pnpm typecheck       TypeScript strict
-pnpm build           produit dist/dive.html (la plongée), les pages de mesure et le banc matériel
+pnpm build           produit dist/dive.html (la plongée), dist/vues.html (les vues liées), les pages de mesure
+                     et le banc matériel
 node tools/test-g3d.mjs   lecture croisée du .g3d, Python → TypeScript, HTTP Range compris
 node tools/loadtime.mjs   premier rendu sous bridage Fast 4G / Slow 4G, dans Chromium
 node tools/dive.mjs       continuité de la plongée, image par image, contre un témoin qui saute
@@ -247,4 +256,7 @@ node tools/record.mjs     la vidéo de la plongée, et sa continuité mesurée s
 node tools/shot.mjs       une image PNG par étape de la plongée
 node tools/test-fiche.mjs lecture croisée du fichier de fiches, Python → TypeScript
 node tools/pick.mjs       clic → fiche peinte, par de vrais événements souris : chaud, Slow 4G, témoin
+node tools/test-contacts.mjs lecture croisée de la carte de contacts, Python → TypeScript
+node tools/test-store.mjs le store des vues liées seul : distribution, égalité, écho
+node tools/linked.mjs     une sélection par vue → vue dans les deux autres, sans rebond ; navigation ; témoin
 ```

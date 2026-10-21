@@ -9,3 +9,5 @@ export type { RequestRecord, Source } from "./source.js";
 export { SequenceReader } from "./sequence.js";
 export { FicheReader } from "./fiche.js";
 export type { Card, FicheField, FicheHeader, FicheLevel, Gene, Lifted } from "./fiche.js";
+export { ContactsReader, TILE } from "./contacts.js";
+export type { ContactLevel, ContactsHeader, Region, Tileset } from "./contacts.js";
