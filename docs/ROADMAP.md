@@ -332,7 +332,7 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   décalé : diverge) et par lecture croisée au bit près. La sélection est un ou deux intervalles,
   publiés par un store ; naviguer n'est pas sélectionner. Mesurée par de vrais gestes, 30 par vue :
   **90/90 sélections vues dans les deux autres vues, une publication chacune, zéro rebond** ; 15
-  gestes de navigation, 0 publication ; le témoin synchronisé deux à deux envoie 198 messages en
+  gestes de navigation, 0 publication ; le témoin synchronisé deux à deux envoie 190 messages en
   une demi-seconde après un seul geste, et ne s'arrête pas. igv attend 500 ms avant un clic simple
   (son délai de double-clic) ; la carte est simulée, pas du Hi-C mesuré
   ([`VALIDATION.md` § S14](VALIDATION.md)).

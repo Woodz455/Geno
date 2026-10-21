@@ -61,6 +61,9 @@ export async function openIgv(root: HTMLElement, index: IgvIndex, publish: (regi
       twoBitURL: "ref/hg38.2bit", chromSizesURL: f("chromsizes"), cytobandURL: f("cytoband"),
     },
     locus,
+    // Sans quoi igv va chercher sa liste de génomes sur igv.org à l'ouverture — la seule
+    // requête externe de la page, vue par la mesure (`tools/linked.mjs`).
+    loadDefaultGenomes: false,
     showSampleNames: false,
     tracks: [
       { name: "Gènes · GENCODE v50 · annotation", type: "annotation", format: "bed", url: f("genes"), displayMode: "COLLAPSED", color: "#3a5e8c" },

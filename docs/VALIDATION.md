@@ -9,6 +9,198 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S14 — Trois vues, une sélection : 90/90 vues ailleurs, zéro rebond
+
+### Le critère, traduit
+
+**Fait quand : une sélection faite dans l'une des trois vues apparaît dans les deux autres, sans
+rebond.** Fixé avant de mesurer :
+
+1. **« faite dans l'une des trois vues »** : par un vrai geste (événements souris CDP) dans la
+   page `vues.html` — un pixel de la 3D, un élément d'une piste igv.js, un pixel de la carte
+   HiGlass —, 30 fois par vue, à des endroits et des échelles variés ;
+2. **« apparaît dans les deux autres »** : relu dans chacune, pas supposé — la 3D : des pixels de
+   billes surlignées dans son tampon d'identifiants, de la teinte de la surbrillance ; igv : une
+   région d'intérêt par intervalle, dessinée dans la vue ; HiGlass : les bandes de chaque intervalle
+   dessinées sur la carte, dans la vue ;
+3. **« sans rebond »** : **une** publication acceptée, venue de la vue du geste, **aucune**
+   refusée (un écho ou une égalité refusés seraient un rebond rattrapé : on veut zéro tentative),
+   chacune des deux autres vues appliquant la sélection **une** fois — jugé après le repos des
+   trois vues et 400 ms de plus, pour laisser à un rebond tardif le temps de se produire. Avec un
+   **témoin** : la conception que la feuille de route écarte, des vues synchronisées deux à deux,
+   doit, elle, rebondir.
+
+### Ce qui est montré, et ce que ça vaut
+
+| Vue | Ce qu'elle montre | Évidence |
+|---|---|---|
+| 3D | la plongée des semaines 10 à 13, fiche comprise | modèle simulé, séquence hg38 |
+| igv.js 3.8 | séquence hg38 (le `.2bit` verrouillé, lu par plages) ; gènes GENCODE v50 ; pics CTCF de GM12878, brin = motif ; boucles Rao 2014 levées en hg38 | annotation, mesuré, mesuré |
+| | compartiments : l'E1 du modèle | simulé |
+| HiGlass 2.3 | contacts du **modèle** : noyau (24 Mb → 750 kb), régions fines (512 kb → 2 kb) | simulé |
+
+**La carte de HiGlass est celle du modèle, pas du Hi-C mesuré** — le choix de la 3D, qui reste
+simulée tant que le rattrapage S1–S8 n'est pas fait ; la page le dit dans le cartouche de la carte.
+Les deux cartes se superposent, la fine par-dessus (NaN hors de ses régions, donc transparente), et
+leur frontière se voit : c'est le raccord S8, qui échoue, vu cette fois en contacts.
+
+Aucune requête ne sort de la page : igv lit la référence et ses pistes sur le serveur local
+(`/ref/hg38.2bit`, 835 Mo, par plages ; `/data/igv/`), HiGlass ses tuiles par un data fetcher
+maison. La mesure relit la liste des ressources de la page : **148 requêtes, 0 hors du serveur
+local** — après une correction : igv allait chercher sa liste de génomes sur `igv.org` à
+l'ouverture (`loadDefaultGenomes: false`).
+
+### La sélection : un store, deux défenses, une règle
+
+Une sélection est **un ou deux intervalles haploïdes** (chrom, début, fin) : une bille, un
+monomère, une base, un gène, un pic — ou un pixel de la carte, deux loci en contact. Haploïde,
+parce qu'igv et HiGlass le sont ; la 3D surligne les deux homologues. Le store (`apps/linked/store.ts`)
+la distribue aux deux autres vues, jamais à sa source, qui la montre d'elle-même. Deux défenses,
+chacune journalisée :
+
+- **égalité** : une sélection égale à la courante est refusée et n'est pas redistribuée ;
+- **garde d'application** : pendant qu'une vue applique ce qu'elle reçoit, ce qu'elle publierait
+  est refusé comme écho.
+
+Le store seul est vérifié sous Node (`tools/test-store.mjs`, 7 assertions) : une sélection va aux
+deux autres vues et pas à sa source ; la même, ou la même paire dans l'autre ordre, est refusée et
+pas redistribuée ; une vue qui republie, élargie, ce qu'elle reçoit voit son écho refusé.
+
+Et une règle, qui rend les deux défenses inutiles en pratique : **naviguer n'est pas
+sélectionner**. Le déplacement d'une vue — igv `locuschange`, HiGlass `location`, l'orbite de la
+3D — n'est jamais publié. Une vue qui reçoit une sélection hors de son champ s'y déplace : igv
+ouvre une fenêtre par intervalle (côte à côte pour deux loci), HiGlass centre le pixel du contact,
+la 3D vise les billes surlignées, en gardant son orientation.
+
+**Dans la 3D**, une sélection : ses billes en jaune Okabe–Ito (absent des palettes de territoire et
+de compartiment), les autres assombries à 40 %, le reste de leurs copies tramé à 30 %, les autres
+copies à 15 % — sinon une bille de chr1 restait enfouie dans son propre territoire. Une copie qui
+porte la sélection reste visible à toutes les échelles, contre l'effacement de la plongée. À
+l'échelle de la fibre, ses monomères. Couleurs et groupes réécrits dans les tampons existants
+(`ImpostorRenderer.recolor`), sans en créer.
+
+### La carte de contacts : `gm12878.contacts`
+
+`make linked` : les 200 repliements du noyau, comptés comme à la semaine 7 (centres à moins de
+1,5 × (r_i + r_j)), sur la carte haploïde de 4 041 bins (3 875 404 pixels non nuls) ; les deux
+régions fines, 2 000 monomères × 1 200 conformations chacune, comme à la semaine 8. **La grille de
+HiGlass est uniforme en coordonnées absolues, les billes non** (747 à 753 kb, et un chromosome ne
+commence pas sur un multiple de la résolution) : chaque bille est répartie sur les pixels qu'elle
+recouvre, au prorata de sa longueur. Tuiles de 256 × 256 en float16, deflate, une empreinte chacune :
+**21,1 Mo**, 325 tuiles (187 du noyau, 138 des régions fines ; 43,4 Mo en float32, 11 bits suffisent
+à une couleur). Seules les tuiles x ≤ y sont écrites ; HiGlass produit les autres par miroir — et
+l'orientation (colonnes = x, lignes = y) a été établie sur un motif asymétrique avant d'écrire un
+octet.
+
+| Contrôle (`geno linked check`) | Résultat | Témoin |
+|---|---|---|
+| conservation : somme des tuiles, miroir compris, contre la matrice de bins | écart relatif **≤ 1,5·10⁻⁵** sur les 15 résolutions | — |
+| 200 pixels de 750 kb recomposés par distances directes (ni KD-tree ni matrice creuse) | **200/200** à 10⁻³ près | décalés d'un pixel : 39/200 (des zéros trans) |
+| 200 pixels de 2 kb des régions fines, idem | **200/200** | décalés : 4/200 |
+| lecture croisée Python → TypeScript (`tools/test-contacts.mjs`) | **80/80 tuiles au bit près**, 80/80 pixels, aller-retour chr17:7 673 802 → absolu | tuile corrompue d'un octet : refusée |
+
+Pistes d'igv, écrites par la même commande depuis les sources verrouillées : gènes (1,04 Mo),
+CTCF orientés (443 ko), boucles (128 ko ; 9 448 boucles, 22 perdues au levage), compartiments du
+modèle (42 ko), cytobandes, tailles — chacune lue en entier, sans index.
+
+### La mesure : 90/90
+
+`tools/linked.mjs 30`, 1 440 × 860, SwiftShader :
+
+| Geste dans | n | publiée une fois | sans rebond | vue dans les deux autres | geste → publication | → 3D | → igv | → HiGlass |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3D (15 billes de 3 Mb, 15 monomères ou sites de la fibre) | 30 | 30 | 30 | **30** | 6 / 11 ms | — | 13 / 24 ms | 1 / 2 ms |
+| igv (gènes et pics CTCF, 6 loci, 12 éléments distincts) | 30 | 30 | 30 | **30** | 501 / 502 ms | 13 / 14 ms | — | 3 / 5 ms |
+| HiGlass (pixels de 6 Mb, 750 kb, 8 kb, 2 kb) | 30 | 30 | 30 | **30** | 0 / 1 ms | 31 / 353 ms | 23 / 46 ms | — |
+
+(latences p50 / p95 ; « → vue » : de la publication à l'application — pour la 3D, l'image peinte
+qui la montre ; une vue qui doit se déplacer y ajoute son déplacement.) **90/90** : chaque
+sélection, publiée une fois, appliquée une fois par chacune des deux autres vues, vue dans chacune ;
+**zéro** publication refusée. 29 des 90 sélections portent deux intervalles (pixels hors
+diagonale), 61 un seul.
+
+- **igv attend 500 ms** avant de traiter un clic simple : c'est son délai de double-clic
+  (`doubleClickDelay`, le double-clic y zoome). Le geste → publication d'igv, c'est lui ; laissé
+  par défaut.
+- **HiGlass → 3D, 353 ms au p95** : la 3D peint sa première image après que HiGlass a décodé et
+  dessiné ses tuiles sur le même fil, sous SwiftShader. Sur un vrai GPU, à mesurer.
+
+**La navigation ne publie rien** : 15 gestes — glisser la piste d'igv, molette dans HiGlass,
+tourner la 3D — : **0** publication.
+
+**Le témoin rebondit.** La même page sans store (`?naive`) : igv `locuschange` déplace HiGlass et
+la 3D, HiGlass `location` déplace igv et la 3D. Un seul geste (glisser igv) : **190 messages dans
+la première demi-seconde**, 246 à 8 s, **52 loci distincts** — chaque vue arrondit ou ajuste la
+fenêtre qu'on lui donne (le format d'igv, le rapport d'aspect de HiGlass), la renvoie, et la
+fenêtre dérive. La boucle ne s'arrête pas ; on a coupé au bout de 8 s.
+
+Quatre défauts trouvés en chemin, chacun avant que la mesure ne passe :
+
+- **la carte du noyau ne s'affichait pas** sous celle des régions fines : le fond par défaut d'une
+  heatmap HiGlass (gris clair) la couvrait — fond transparent ;
+- **la surimpression de HiGlass restait sur l'ancienne vue** : `zoomTo` sans transition ne prévient
+  pas ses écouteurs, et `getLocation()` lit des échelles qu'il ne remplace pas tout de suite —
+  150 ms de transition, et la vue tenue à jour par l'événement `location` ;
+- **deux clics igv sur trois ne sélectionnaient rien** : ils tombaient sur le cartouche du nom de
+  piste, qu'igv dessine par-dessus la piste ;
+- **une sélection venue d'ailleurs restait invisible dans la 3D** quand la caméra était à la fibre
+  de chr17 : la plongée efface toutes les copies sauf chr17:a sous 12,5 µm de champ — une copie qui
+  porte la sélection l'emporte désormais.
+
+Et deux défauts de l'outil, corrigés : pixi.js réémet un `pointerup` synthétique 40 ms après le
+vrai, qui écrasait l'instant du geste (seuls les événements de confiance comptent) ; et les pixels
+de la 3D, tirés une fois avant le premier clic, tombaient ensuite sur des billes que la sélection
+avait effacées.
+
+### Non-régression
+
+| Mesure | Semaine 13 | Semaine 14 |
+|---|---:|---:|
+| `make test` | 276 | **283** (+ 7 vues liées) |
+| `pnpm verify` | 82 | **82** |
+| lecture croisée `.g3d` · fiches | 46 · 6/6 | **46 · 6/6** ; contacts **5/5** ; store **7/7** |
+| continuité, 600 images | 0 saut, transitions 0,94–1,00×, pire rapport 1,47 | **identique** (témoin : 3 sauts, 7,41×) |
+| lisibilité S11 : ancres, anneau, arc, corps, flèches | 269 · 131 · 1 662 · 2 961 · 85 % | **identiques** ; raccords 45 % et 11 % |
+| fidélité des bases | 90/90 (témoin 23 %) | **90/90** (témoin 23 %) |
+| temps réel Slow 4G, images en attente | 0 (témoin 1) | **0** (témoin 1 à 9 s, 3 à 40 s) |
+| clic → fiche peinte, chaud | p95 43,9 ms, 504/504 | p95 **26,9 ms**, 114/114 (120 demandés) |
+| premier rendu S9, aperçu, préfixe 16 Kio, Slow 4G | 1 478 ms | **1 420 ms** (marge 80 ms) |
+| page du premier rendu | 15,8 Kio | 16,1 Kio (+ `recolor`) |
+
+La surbrillance ne change rien à la plongée sans sélection : mêmes couleurs, mêmes fondus. Le
+premier rendu S9 **gagne** 58 ms en ajoutant 0,3 Kio à la page : c'est l'environnement qui varie
+(± 70 ms d'un jour à l'autre, § S13), pas le code — la marge reste celle d'une mesure qui flotte.
+
+
+### Ce que ça ne dit pas
+
+- **Les contacts sont ceux du modèle.** Une carte de Hi-C mesuré de GM12878 (Rao 2014, `.hic` de
+  dizaines de Go, ou un `.mcool` 4DN) n'est pas dans la page : le manifeste ne l'a pas verrouillée,
+  et elle appartient au rattrapage S1–S8.
+- **Le témoin n'est qu'une conception naïve parmi d'autres** : il montre que la mesure voit un
+  rebond, pas que toute synchronisation deux-à-deux en produit.
+- **SwiftShader, encore** : les latences sont des bornes hautes ; aucune vue liée n'a tourné sur un
+  vrai GPU.
+- **Une page lourde** : `vues.html` pèse 4,3 Mo (igv.js, HiGlass, React, pixi.js) — ce n'est pas la
+  page du premier rendu, qui reste `first.html`, mais elle se charge en plusieurs secondes sous
+  Slow 4G, non mesurées.
+- **Un avertissement** reste dans la console : la dépréciation d'une API de pixi.js 6, émise une
+  fois par HiGlass à la création de son rendu.
+
+### Reproduire
+
+```
+cd pipeline && make linked       # gm12878.contacts + pistes igv, puis geno linked check
+make test
+cd .. && pnpm install && pnpm build
+node tools/test-contacts.mjs     # lecture croisée des contacts, Python → TypeScript
+node tools/test-store.mjs        # le store seul : distribution, égalité, écho
+node tools/linked.mjs 30         # 3 × 30 sélections, navigation, témoin
+node tools/serve.mjs             # puis http://127.0.0.1:8080/vues.html
+```
+
+---
+
 ## S13 — Un clic, une fiche : complète, exacte, peinte en 44 ms (p95)
 
 ### Le critère, traduit

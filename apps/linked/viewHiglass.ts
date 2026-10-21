@@ -108,6 +108,9 @@ export interface ViewHiglass {
 }
 
 const VIEW = "v";
+/** Une bande de sélection : voile et liseré jaunes — le voile seul, sur une bande de quelques
+ *  pixels, ne se voyait pas sur la carte. */
+const BAND = "background:rgba(240,228,66,0.25);outline:1px solid rgba(240,228,66,0.95)";
 /** Durée du déplacement programmé. Pas 0 : sans transition, HiGlass déplace la vue sans
  *  prévenir ses écouteurs (`location`), et la surimpression resterait sur l'ancienne. */
 const ZOOM_MS = 150;
@@ -215,8 +218,8 @@ export async function openHiglass(root: HTMLElement, file: string, publish: (reg
       const [s, e] = abs[k];
       if (s === null || e === null) return;
       const key = `${g.chrom}:${g.start}-${g.end}`;
-      rect(s, e, loc.yDomain[0], loc.yDomain[1], "background:rgba(240,228,66,0.22)", key);   // bande verticale (colonnes)
-      rect(loc.xDomain[0], loc.xDomain[1], s, e, "background:rgba(240,228,66,0.22)", key);   // bande horizontale (lignes)
+      rect(s, e, loc.yDomain[0], loc.yDomain[1], BAND, key);   // bande verticale (colonnes)
+      rect(loc.xDomain[0], loc.xDomain[1], s, e, BAND, key);   // bande horizontale (lignes)
     });
     if (abs.length === 2 && abs.every(([s, e]) => s !== null && e !== null)) {
       const [[a0, a1], [b0, b1]] = abs as [number, number][];

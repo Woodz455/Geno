@@ -156,7 +156,7 @@ Et ce qu'on désigne dans une vue **se montre dans les deux autres** (`dist/vues
 sur une bille, un gène ou un pic dans igv.js, un pixel de la carte de contacts dans HiGlass : la
 sélection passe par un store unique, et les deux autres vues la surlignent et s'y déplacent — 90
 sélections sur 90, une publication chacune, zéro rebond, là où des vues synchronisées deux à deux
-s'emballent (198 messages en une demi-seconde après un seul geste). La carte de HiGlass est celle
+s'emballent (190 messages en une demi-seconde après un seul geste). La carte de HiGlass est celle
 du **modèle**, simulée, et le dit ([`docs/VALIDATION.md` § S14](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
