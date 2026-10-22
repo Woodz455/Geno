@@ -1303,7 +1303,7 @@ def cmd_sv(args: argparse.Namespace) -> int:
     from .sv.run import path as run_path
 
     if all(run_path(Path(args.dir), t, window=True).exists() for t in ("delb", "delbs", "delb-keep")):
-        res["revised"] = C.revised(Path(args.dir))
+        res["revised"] = C.revised(Path(args.dir), family_seeds=args.seeds)
         show(res["revised"], "plan révisé, fenêtre constante de 5 Mb (seuils inchangés)")
     report.write_text(_json.dumps(res, ensure_ascii=False, indent=1))
     return 0 if all(res["pass"].values()) else 1

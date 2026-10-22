@@ -110,7 +110,9 @@ def export(sv_dir: Path, out: Path) -> dict:
     loc = L.build()
     report = sv_dir / "check.json"
     if report.exists():
-        law = json.loads(report.read_text())["law"]
+        rep = json.loads(report.read_text())
+        # La loi du plan révisé s'il a été jugé : c'est elle que la page applique.
+        law = rep.get("revised", rep)["law"]
     else:
         coords, legs, _ = load(sv_dir / "epha4-wt.npz")
         law = calibrate(coords, legs).__dict__

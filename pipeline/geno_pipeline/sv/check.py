@@ -15,8 +15,8 @@ Critères fixés **avant** de regarder les allèles mutants (seuils dans `CRITER
    virtuel depuis PAX3 ≥ 0,9, et le rapport du critère 2 du même côté de 1,5.
 
 Ces critères sont jugés tels quels sur le plan pré-enregistré (`check`). Le plan révisé
-(`revised`, fenêtre constante, raison dans `REVISION`) les rejuge à seuils inchangés ; le
-rapport garde les deux.
+(`revised` : fenêtre constante, loi 1D sans plancher ; raisons dans `REVISION`) les rejuge à
+seuils inchangés ; le rapport garde les deux.
 """
 
 from __future__ import annotations
@@ -113,62 +113,36 @@ def measure(loc: L.Locus, runs: dict, fit: P.Fit, log=print) -> tuple[dict, dict
     return out, verdicts
 
 
-REVISION = (
-    "Plan révisé après lecture des allèles mutants du plan pré-enregistré : chaque allèle garde "
-    "5 Mb (2 500 monomères), la délétion faisant entrer la séquence en aval. Raison : le "
-    "confinement est réglé sur la longueur de la chaîne, et une chaîne plus courte a un plancher "
-    "de contacts lointains plus haut (3D, séparations de 500 à 800 monomères : 0,0012 pour le type "
-    "sauvage à 2 500 monomères, 0,0023 pour DEL-B à 1 600) ; DEL-B (1 600) et DelBS (1 815) "
-    "n'étaient donc pas comparés à confinement égal. Les seuils ne changent pas.")
+REVISION = {
+    "window": (
+        "Chaque allèle garde 5 Mb (2 500 monomères), la délétion faisant entrer la séquence en aval. "
+        "Raison : le confinement est réglé sur la longueur de la chaîne, et une chaîne plus courte a un "
+        "plancher de contacts lointains plus haut (3D, séparations de 500 à 800 monomères : 0,0012 pour "
+        "le type sauvage à 2 500 monomères, 0,0023 pour DEL-B à 1 600) ; DEL-B (1 600) et DelBS (1 815) "
+        "n'étaient donc pas comparés à confinement égal."),
+    "law": (
+        "Loi 1D sans plancher (c = 0), calée sur les paires à moins de 1 Mb du 3D du type sauvage. "
+        "Raison : le plancher c = 0,0008 calé sur toutes les paires reproduit le plateau que la sphère "
+        "de confinement impose au-delà d'un mégabase — l'artefact déjà relevé à la semaine 7 — et il "
+        "dépasse les contacts lointains eux-mêmes : en 1D, le type sauvage n'isolait plus (1,17)."),
+    "thresholds": "Seuils inchangés.",
+}
 
 
-def revised(sv_dir: Path, log=print) -> dict:
-    """Les critères 2 et 3 sur le plan à fenêtre constante (`epha4-<allèle>.w.npz`), même loi."""
-    loc = L.build()
-    fit = P.Fit(**json.loads((sv_dir / "law.json").read_text()))
-    runs = {t: load(run_path(sv_dir, t, window=True)) for t in alleles(loc)}
-    log("plan révisé, fenêtre constante de 5 Mb :")
-    al, verdicts = measure(loc, runs, fit, log)
-    C = CRITERIA
-    v3 = verdicts["verdict_3d"]
-    return {
-        "why": REVISION, "alleles": al, **verdicts,
-        "pass": {
-            "2_boundary_3d": v3["vs_delbs"] >= C["boundary"] and v3["vs_keep"] >= C["boundary"],
-            "3_other_boundaries": C["ihh_lo"] <= v3["ihh"] <= C["ihh_hi"],
-        },
-    }
+def _law(path: Path) -> P.Fit:
+    return P.Fit(**json.loads(path.read_text()))
 
 
-def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
-    loc = L.build()
-    tags = alleles(loc)
-    runs = {t: load(sv_dir / f"epha4-{t}.npz") for t in tags}
-    coords, legs, _ = runs["wt"]
-    cache = sv_dir / "law.json"
-    if cache.exists():
-        fit = P.Fit(**json.loads(cache.read_text()))
-        log("loi relue (law.json, calée sur le 3D du type sauvage) :")
-    else:
-        log("calage de la loi sur le 3D du type sauvage …")
-        fit = P.calibrate(coords, legs)
-        cache.write_text(json.dumps(fit.__dict__))
-    log(f"  α = {fit.alpha}, d0 = {fit.d0} monomère(s), plancher c = {fit.c:.3g}, r(log, casiers de 20 kb) = {fit.r_log:.3f}")
-
-    res: dict = {"law": fit.__dict__, "criteria": CRITERIA}
-    res["alleles"], verdicts = measure(loc, runs, fit, log)
-    res.update(verdicts)
-    A = res["alleles"]
-
-    # — toute la famille, en 1D (graines indépendantes de celles du 3D) —
-    log(f"famille : {sum(v.kind == 'DEL-B' for v in loc.variants)} DEL-B, {family_seeds} exécutions 1D par allèle …")
-    seeds = range(91_000, 91_000 + family_seeds)
+def family(loc: L.Locus, fit: P.Fit, seeds: int, log=print) -> tuple[list[dict], dict]:
+    """Toute la famille, en 1D (graines indépendantes de celles du 3D)."""
+    log(f"famille : {sum(v.kind == 'DEL-B' for v in loc.variants)} DEL-B, {seeds} exécutions 1D par allèle …")
+    rng = range(91_000, 91_000 + seeds)
     cache: dict = {}
 
     def c(v):
         key = (v.kind, v.start, v.end)
         if key not in cache:
-            rows, src, lm, _ = predicted(loc, v, fit, seeds)
+            rows, src, lm, _ = predicted(loc, v, fit, rng)
             cache[key] = contacts(rows, src, lm)["PAX3"]
         return cache[key]
 
@@ -179,22 +153,62 @@ def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
         s = next(x for x in loc.variants if x.kind == "DelBS" and x.start == v.start)
         k = next(x for x in loc.variants if x.kind == "DEL-B, frontière épargnée" and x.start == v.start and x.end == v.end)
         fam.append({"name": v.name, "start": v.start, "end": v.end, "delb": c(v), "delbs": c(s), "keep": c(k)})
-    res["family"] = fam
     rb = [f["delb"] / f["delbs"] for f in fam]
     rk = [f["delb"] / f["keep"] for f in fam]
-    res["family_min"] = {"vs_delbs": float(min(rb)), "vs_keep": float(min(rk))}
     log(f"  min DEL-B / DelBS = {min(rb):.2f}, min DEL-B / frontière épargnée = {min(rk):.2f} sur {len(fam)}")
+    return fam, {"vs_delbs": float(min(rb)), "vs_keep": float(min(rk))}
 
-    C = CRITERIA
-    v3, v1 = res["verdict_3d"], res["verdict_1d"]
-    res["pass"] = {
+
+def verdict(res: dict) -> dict:
+    C, A = CRITERIA, res["alleles"]
+    v3, v1, fm = res["verdict_3d"], res["verdict_1d"], res["family_min"]
+    return {
         "1_wt_isolates": v3["wt_ratio"] >= C["wt_ratio"],
         "2_boundary_3d": v3["vs_delbs"] >= C["boundary"] and v3["vs_keep"] >= C["boundary"],
-        "2_boundary_family_1d": res["family_min"]["vs_delbs"] >= C["boundary"] and res["family_min"]["vs_keep"] >= C["boundary"],
+        "2_boundary_family_1d": fm["vs_delbs"] >= C["boundary"] and fm["vs_keep"] >= C["boundary"],
         "3_other_boundaries": C["ihh_lo"] <= v3["ihh"] <= C["ihh_hi"],
         "4_predictor": all(A[t]["r_log_4c_pax3"] >= C["r_log"] for t in ("delb", "delbs", "delb-keep"))
                        and v1["vs_delbs"] >= C["boundary"] and v1["vs_keep"] >= C["boundary"],
     }
+
+
+def revised(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
+    """Les quatre critères, seuils inchangés, sur le plan à fenêtre constante
+    (`epha4-<allèle>.w.npz`) et, si elle est calée (`law-nofloor.json`), la loi sans plancher."""
+    loc = L.build()
+    nofloor = sv_dir / "law-nofloor.json"
+    fit = _law(nofloor if nofloor.exists() else sv_dir / "law.json")
+    why = [REVISION["window"]] + ([REVISION["law"]] if nofloor.exists() else []) + [REVISION["thresholds"]]
+    runs = {t: load(run_path(sv_dir, t, window=True)) for t in alleles(loc)}
+    log(f"plan révisé : fenêtre constante de 5 Mb ; loi α = {fit.alpha}, d0 = {fit.d0}, c = {fit.c:.3g}")
+    res: dict = {"why": why, "law": fit.__dict__, "criteria": CRITERIA}
+    res["alleles"], verdicts = measure(loc, runs, fit, log)
+    res.update(verdicts)
+    res["family"], res["family_min"] = family(loc, fit, family_seeds, log)
+    res["pass"] = verdict(res)
+    return res
+
+
+def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
+    loc = L.build()
+    tags = alleles(loc)
+    runs = {t: load(sv_dir / f"epha4-{t}.npz") for t in tags}
+    coords, legs, _ = runs["wt"]
+    cache = sv_dir / "law.json"
+    if cache.exists():
+        fit = _law(cache)
+        log("loi relue (law.json, calée sur le 3D du type sauvage) :")
+    else:
+        log("calage de la loi sur le 3D du type sauvage …")
+        fit = P.calibrate(coords, legs)
+        cache.write_text(json.dumps(fit.__dict__))
+    log(f"  α = {fit.alpha}, d0 = {fit.d0} monomère(s), plancher c = {fit.c:.3g}, r(log, casiers de 20 kb) = {fit.r_log:.3f}")
+
+    res: dict = {"law": fit.__dict__, "criteria": CRITERIA}
+    res["alleles"], verdicts = measure(loc, runs, fit, log)
+    res.update(verdicts)
+    res["family"], res["family_min"] = family(loc, fit, family_seeds, log)
+    res["pass"] = verdict(res)
     return res
 
 
