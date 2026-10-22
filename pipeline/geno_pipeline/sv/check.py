@@ -58,7 +58,7 @@ def predicted(loc: L.Locus, v: L.Variant | None, law: P.Fit, seeds: range, sourc
     lm = landmarks(loc, mids)
     src = np.unique(np.r_[lm["enhancer"], lm["PAX3"]] if sources is None else sources)
     legs = np.concatenate([np.stack(_ex(region, sites, s).legs) for s in seeds])
-    return P.rows(region.n, legs, src, law.alpha, law.d0), src, lm, mids
+    return P.rows(region.n, legs, src, law.alpha, law.d0, law.c), src, lm, mids
 
 
 def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
@@ -68,7 +68,7 @@ def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
     coords, legs, _ = runs["wt"]
     log("calage de la loi sur le 3D du type sauvage …")
     fit = P.calibrate(coords, legs)
-    log(f"  α = {fit.alpha}, d0 = {fit.d0} monomère(s), r(log) = {fit.r_log:.3f} sur {fit.pairs:,} paires")
+    log(f"  α = {fit.alpha}, d0 = {fit.d0} monomère(s), plancher c = {fit.c:.3g}, r(log, casiers de 20 kb) = {fit.r_log:.3f}")
 
     res: dict = {"law": fit.__dict__, "criteria": CRITERIA, "alleles": {}}
     for t, v in tags.items():
@@ -77,12 +77,15 @@ def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
         lm = landmarks(loc, mids)
         src = np.unique(np.r_[lm["enhancer"], lm["PAX3"]])
         obs = P.observed(coords, src)
-        pre = P.rows(coords.shape[1], legs, src, fit.alpha, fit.d0)
+        pre = P.rows(coords.shape[1], legs, src, fit.alpha, fit.d0, fit.c)
         k = {int(s): i for i, s in enumerate(src)}
+        # Le 4C depuis PAX3, en casiers de 20 kb (à 2 kb, la plupart des monomères n'ont aucun
+        # contact sur 1 200 instantanés) ; le point de vue lui-même exclu.
         r4c = obs[[k[int(i)] for i in lm["PAX3"]]].mean(axis=0)
         p4c = pre[[k[int(i)] for i in lm["PAX3"]]].mean(axis=0)
-        far = np.abs(np.arange(len(r4c)) - lm["PAX3"].mean()) >= 3
-        ok = far & (r4c > 0)
+        far = np.abs(np.arange(len(r4c)) - lm["PAX3"].mean()) >= 10
+        r4c, p4c = (P.binned(np.where(far, x, np.nan)[None])[0] for x in (r4c, p4c))
+        ok = np.isfinite(r4c) & (r4c > 0)
         res["alleles"][t] = {
             "name": "type sauvage" if v is None else v.name, "monomers": int(coords.shape[1]),
             "frames": int(coords.shape[0]),

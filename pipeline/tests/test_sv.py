@@ -52,10 +52,11 @@ def test_distances_match_brute_force_on_nested_and_disjoint_loops():
         assert np.array_equal(d[k], _bfs(n, loops, int(s)))
 
 
-def test_law_is_capped_and_decreasing():
-    d = np.array([0.0, 0.5, 1.0, 2.0, 8.0])
-    p = P.law(d, 1.5, 1.0)
+def test_law_is_capped_decreasing_and_floored():
+    d = np.array([0.0, 0.5, 1.0, 2.0, 8.0, 1e6])
+    p = P.law(d, 1.5, 1.0, 1e-3)
     assert p[0] == 1 and p[1] == 1 and p[2] == 1 and p[3] < 1 and p[4] < p[3]
+    assert abs(p[5] - 1e-3) < 1e-9
 
 
 def test_calibration_recovers_a_planted_law():
@@ -67,7 +68,7 @@ def test_calibration_recovers_a_planted_law():
         i = rng.integers(0, n - 60)
         legs[f, 0] = (i, i + rng.integers(10, 50))
     src = np.arange(0, n, 10)
-    truth = P.rows(n, legs, src, 1.6, 1.4)
+    truth = P.rows(n, legs, src, 1.6, 1.4, 2e-3)
     coords = np.zeros((1, n, 3))
     obs_orig = P.observed
     try:
@@ -75,7 +76,8 @@ def test_calibration_recovers_a_planted_law():
         fit = P.calibrate(coords.repeat(frames, axis=0), legs, every=10, frames=frames)
     finally:
         P.observed = obs_orig
-    assert abs(fit.alpha - 1.6) <= 0.05 and abs(fit.d0 - 1.4) / 1.4 < 0.1 and fit.r_log > 0.999
+    assert abs(fit.alpha - 1.6) <= 0.05 and abs(fit.d0 - 1.4) / 1.4 < 0.1 and abs(fit.c / 2e-3 - 1) < 0.1
+    assert fit.r_log > 0.999
 
 
 def _locus():

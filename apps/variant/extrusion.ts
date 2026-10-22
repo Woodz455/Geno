@@ -1,8 +1,8 @@
 /** L'extrusion de boucles en 1D, et les contacts qu'elle prédit — dans le navigateur.
  *
  *  Port de `pipeline/geno_pipeline/fine/extrusion.py` (Fudenberg 2016, cinq règles) et de
- *  `sv/predict.py` (distance effective par les boucles tenues, loi `min(1, (d/d0)^−α)` calée sur
- *  le 3D). Mêmes règles, même ordre des opérations par pas ; le générateur aléatoire diffère
+ *  `sv/predict.py` (distance effective par les boucles tenues, loi `min(1, (d/d0)^−α + c)` calée
+ *  sur le 3D). Mêmes règles, même ordre des opérations par pas ; le générateur aléatoire diffère
  *  (numpy n'est pas là), donc l'accord avec Python se mesure en statistique, pas au tirage près
  *  (`tools/test-variant.mjs`).
  */
@@ -160,6 +160,8 @@ function bfs(n: number, legs: Int32Array, nLef: number, f: number, src: number, 
 export interface Law {
   alpha: number;
   d0: number;
+  /** Plancher : le mélange dû au confinement (`sv/predict.py`). */
+  c?: number;
 }
 
 /** Lignes de contact prédit : (sources × n), moyennées sur les instantanés de toutes les
@@ -171,7 +173,7 @@ export function rows(n: number, runs: { legs: Int32Array; nLef: number; snapshot
   const jump = new Int32Array(n);
   // P(d) en table : les distances sont entières et bornées par n.
   const table = new Float32Array(n + 1);
-  for (let d = 0; d <= n; d++) table[d] = d === 0 ? 1 : Math.min(1, Math.pow(d / law.d0, -law.alpha));
+  for (let d = 0; d <= n; d++) table[d] = d === 0 ? 1 : Math.min(1, Math.pow(d / law.d0, -law.alpha) + (law.c ?? 0));
   let frames = 0;
   for (const r of runs) {
     for (let f = 0; f < r.snapshots; f++) {
