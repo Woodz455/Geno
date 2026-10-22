@@ -85,6 +85,8 @@ export interface Layer {
   /** Les deux palettes téléversées (territoires, compartiments), pour revenir d'une surbrillance. */
   colors: Float32Array;
   colors2: Float32Array;
+  /** Semaine 15 : une couche clinique peinte à la place des deux palettes, ou null. */
+  painted: Float32Array | null;
 }
 
 /** Semaine 14 : un intervalle génomique, 0-based demi-ouvert, sans copie — la sélection
@@ -104,6 +106,14 @@ export interface Highlighted {
   fiber: [number, number] | null;
   /** Copies qui portent une bille surlignée. */
   copies: string[];
+}
+
+/** Semaine 15 : couleur d'une valeur clinique dans [0, 1] — une seule teinte (pourpre), du clair
+ *  au foncé ; gris neutre sans donnée. Le jaune de la surbrillance n'y figure pas. */
+export function paintColor(v: number): [number, number, number] {
+  if (!Number.isFinite(v) || v <= 0) return [0.36, 0.39, 0.44];
+  const t = Math.min(1, v);
+  return [0.93 - 0.45 * t, 0.78 - 0.68 * t, 0.95 - 0.35 * t];
 }
 
 /** Okabe–Ito jaune : absent des palettes de territoire et de compartiment. */
@@ -135,7 +145,7 @@ function layer(gl: WebGL2RenderingContext, frame: Frame, e1: Float32Array | null
   renderer.upload({ centers, radii, ids, colors, colors2: compartmentColors(e1, n), groups: frame.copy, count: n });
   const sorted = Array.from(lv.radius_nm).sort((a, b) => a - b);
   const colors2 = compartmentColors(e1, n);
-  return { name: lv.name, renderer, frame, radiusUm: sorted[sorted.length >> 1] / 1000, idBase, e1, colors, colors2 };
+  return { name: lv.name, renderer, frame, radiusUm: sorted[sorted.length >> 1] / 1000, idBase, e1, colors, colors2, painted: null };
 }
 
 export interface DiveScene {
@@ -204,6 +214,9 @@ export interface DiveScene {
    *  autres assombries, les copies sans sélection presque effacées, monomères de la fibre ;
    *  `null` rend la scène telle qu'elle était. Synchrone : les intervalles sont en mémoire. */
   highlight(regions: Region[] | null): Highlighted;
+  /** Semaine 15 : peint une couche par bille (`values[i]` dans [0, 1], NaN : pas de donnée)
+   *  sur le niveau nommé, à la place des territoires et des compartiments ; `null` les rend. */
+  paint(level: string, values: Float32Array | null): void;
 }
 
 export interface OpenOptions {
@@ -248,6 +261,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   const which = TARGETS[opts.target ?? "tp53"];
   /** Semaine 14 : les copies qui portent une bille surlignée ; `null` sans sélection. */
   let hlCopy: Uint8Array | null = null;
+  let lastRegions: Region[] | null = null;
 
   const scene: DiveScene = {
     gl,
@@ -393,6 +407,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
     },
 
     highlight(regions: Region[] | null): Highlighted {
+      lastRegions = regions;
       const out: Highlighted = { preview: [], nucleus: [], fiber: null, copies: [] };
       const on = !!regions && regions.length > 0;
       hlCopy = on ? new Uint8Array(copies.length) : null;
@@ -401,8 +416,8 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
         if (!lay) continue;
         const b = beads.now(lay.name);
         const n = lay.frame.count;
-        const c1 = lay.colors.slice();
-        const c2 = lay.colors2.slice();
+        const c1 = (lay.painted ?? lay.colors).slice();
+        const c2 = (lay.painted ?? lay.colors2).slice();
         const groups = lay.frame.copy.slice();
         if (on && b) {
           const labels = lay.frame.level.copies;
@@ -442,6 +457,19 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
         out.fiber = lo >= 0 ? [lo, hi] : null;
       }
       return out;
+    },
+
+    paint(level: string, values: Float32Array | null): void {
+      const lay = [preview, scene.fine].find((l) => l?.name === level);
+      if (!lay) return;
+      if (!values) lay.painted = null;
+      else {
+        const c = new Float32Array(lay.frame.count * 3);
+        for (let i = 0; i < lay.frame.count; i++) c.set(paintColor(values[i]), 3 * i);
+        lay.painted = c;
+      }
+      // Même chemin que la surbrillance, qui part de la peinture si elle existe.
+      scene.highlight(lastRegions);
     },
 
     probe(x: number, y: number, n: number) {

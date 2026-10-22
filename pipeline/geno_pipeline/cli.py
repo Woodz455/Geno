@@ -1256,6 +1256,46 @@ def cmd_linked(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_sv(args: argparse.Namespace) -> int:
+    """Le mode variant structural (semaine 15) : allèles du locus EPHA4, vérification, export."""
+    import json as _json
+
+    from .sv import check as C
+
+    if args.action == "run":
+        from .sv.run import run
+
+        run(Path(args.dir), args.only.split(",") if args.only else None)
+        return 0
+    if args.action == "dump":
+        C.dump(Path(args.dump))
+        print(f"attendus : {args.dump}")
+        return 0
+    if args.action == "clinical":
+        C.clinical_beads(ROOT / "data" / "g3d" / "gm12878.fiche", Path(args.dump))
+        print(f"attendus : {args.dump}")
+        return 0
+    if args.action == "export":
+        from .sv.export import export
+
+        rep = export(Path(args.dir), Path(args.out))
+        c = rep["clinical_check"]
+        print(f"{args.out} : {rep['bytes'] / 1e3:.1f} ko, allèles {rep['alleles']}")
+        print(f"couches cliniques recomptées sur les fichiers bruts, {c['monomers']} monomères : "
+              f"ClinVar P/LP {c['equal']['clinvar']}/{c['monomers']}, GWAS {c['equal']['gwas']}/{c['monomers']} "
+              f"(témoin décalé : {c['shifted']['clinvar']}, {c['shifted']['gwas']})")
+        return 0 if c["equal"]["clinvar"] == c["equal"]["gwas"] == c["monomers"] else 1
+    res = C.check(Path(args.dir), family_seeds=args.seeds)
+    Path(args.report).write_text(_json.dumps(res, ensure_ascii=False, indent=1))
+    for dim in ("3d", "1d"):
+        v = res[f"verdict_{dim}"]
+        print(f"{dim} : sauvage EPHA4/PAX3 {v['wt_ratio']:.2f} · DEL-B/DelBS {v['vs_delbs']:.2f} · "
+              f"DEL-B/frontière épargnée {v['vs_keep']:.2f} · DEL-B/sauvage {v['vs_wt']:.2f} · IHH {v['ihh']:.2f}")
+    for k, ok in res["pass"].items():
+        print(f"  {'PASS' if ok else 'FAIL'}  {k}")
+    return 0 if all(res["pass"].values()) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1469,6 +1509,16 @@ def main(argv: list[str] | None = None) -> int:
     lk.add_argument("--igv", default=str(ROOT / "data" / "g3d" / "igv"))
     lk.add_argument("--n", type=int, default=200, help="check : pixels recomposés")
     lk.set_defaults(fn=cmd_linked)
+
+    sv = sub.add_parser("sv", help="mode variant structural : le cas EPHA4 de Lupiáñez 2015 (semaine 15)")
+    sv.add_argument("action", choices=["run", "check", "dump", "export", "clinical"])
+    sv.add_argument("--dir", default=str(ROOT / "data" / "sv"))
+    sv.add_argument("--only", default=None, help="run : allèles, séparés par des virgules (wt, delb, delbs, delb-keep)")
+    sv.add_argument("--seeds", type=int, default=8, help="check : exécutions 1D par allèle de la famille")
+    sv.add_argument("--report", default=str(ROOT / "data" / "sv" / "check.json"))
+    sv.add_argument("--dump", default=str(ROOT.parent / "dist" / "variant-test" / "expected.json"))
+    sv.add_argument("--out", default=str(ROOT / "data" / "g3d" / "epha4.variant.json"))
+    sv.set_defaults(fn=cmd_sv)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

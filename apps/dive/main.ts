@@ -441,6 +441,57 @@ async function main(): Promise<void> {
     }
   };
 
+  // Semaine 15 : la surimpression clinique, bille par bille, depuis les fiches — ClinVar P/LP,
+  // associations GWAS, contrainte gnomAD (LOEUF le plus bas des gènes de la bille).
+  const layer = document.createElement("select");
+  layer.innerHTML = `<option value="">surimpression : aucune</option><option value="clinvar">ClinVar P/LP par bille</option>
+    <option value="gwas">associations GWAS par bille</option><option value="loeuf">contrainte gnomAD (LOEUF minimal)</option>`;
+  layer.setAttribute("aria-label", "Surimpression clinique sur la structure");
+  layer.style.cssText = "font: inherit; margin: 6px 6px 0 0; padding: 3px 6px; border-radius: 6px; border: 1px solid #3a4658; background: #1b2330; color: inherit;";
+  hud.appendChild(layer);
+  const legend = document.createElement("div");
+  legend.className = "k";
+  hud.appendChild(legend);
+  const overlay2: Record<string, Record<string, Float64Array>> = {};
+  const clinicalRaw = async (level: string, kind: string): Promise<Float64Array> => {
+    overlay2[level] ??= {};
+    if (overlay2[level][kind]) return overlay2[level][kind];
+    const r = (await opened)!;
+    const n = r.level(level)!.n_beads;
+    const out = new Float64Array(n);
+    for (let k = 1; k <= n; k++) {
+      const c = r.card(level, k) ?? (await r.cardAsync(level, k));
+      if (kind === "clinvar") out[k - 1] = c.clinvar?.v?.plp_total ?? NaN;
+      else if (kind === "gwas") out[k - 1] = c.gwas?.v?.n ?? NaN;
+      else {
+        const v = Object.values((c.contrainte?.v ?? {}) as Record<string, { loeuf: number | null }>)
+          .map((x) => x.loeuf).filter((x): x is number => typeof x === "number");
+        out[k - 1] = v.length ? Math.min(...v) : NaN;
+      }
+    }
+    overlay2[level][kind] = out;
+    return out;
+  };
+  const toUnit = (kind: string, raw: Float64Array): Float32Array => {
+    const fin = Array.from(raw).filter(Number.isFinite).sort((a, b) => a - b);
+    const q99 = fin.length ? Math.max(1, fin[Math.floor(0.99 * (fin.length - 1))]) : 1;
+    return Float32Array.from(raw, (x) => !Number.isFinite(x) ? NaN
+      : kind === "loeuf" ? Math.max(0, Math.min(1, 1 - x / 1.2)) : Math.sqrt(Math.min(1, x / q99)));
+  };
+  layer.onchange = async () => {
+    const kind = layer.value;
+    const t0 = performance.now();
+    for (const lv of [scene.g3d.header.first, "noyau"]) {
+      scene.paint(lv, kind ? toUnit(kind, await clinicalRaw(lv, kind)) : null);
+    }
+    legend.textContent = !kind ? "" : kind === "loeuf"
+      ? "foncé : gènes contraints (LOEUF bas) · gris : pas de gène codant noté — gnomAD v4.1, annotation"
+      : `foncé : beaucoup ${kind === "clinvar" ? "de variants ClinVar pathogènes ou probablement pathogènes" : "d'associations GWAS"} dans l'intervalle de la bille (racine, plafond au 99e centile) — annotation`;
+    paintMs = performance.now() - t0;
+    dirty = true;
+  };
+  let paintMs = 0;
+
   const status = document.createElement("div");
   const evidence = document.createElement("div");
   evidence.id = "evidence";
@@ -571,6 +622,9 @@ async function main(): Promise<void> {
       },
       /** Plus rien à dessiner : ni image demandée, ni génération ou lecture en cours. */
       idle: () => !dirty && !anim && !scene.busy,
+      /** Semaine 15 : les valeurs brutes de la surimpression, par bille, et le temps de la peindre. */
+      clinical: async (level: string, kind: string) => Array.from(await clinicalRaw(level, kind), (x) => (Number.isFinite(x) ? x : null)),
+      paint: async (kind: string) => { layer.value = kind; await layer.onchange!(new Event("change")); return paintMs; },
       reader: () => (reader ? { bytes: reader.bytes, requests: reader.requests, tables: reader.tablesBytes(),
         levels: Object.fromEntries(reader.header.levels.map((l) => [l.name, reader!.levelBytes(l.name)])) } : null),
     };

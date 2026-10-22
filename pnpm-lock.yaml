@@ -63,6 +63,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/viewer
 
+  apps/variant:
+    dependencies:
+      '@geno/viewer':
+        specifier: workspace:*
+        version: link:../../packages/viewer
+
   packages/g3d: {}
 
   packages/viewer: {}

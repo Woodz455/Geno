@@ -7,6 +7,8 @@ synthetic/
 nucleus/
 ensemble/
 fine/
+# Semaine 15 : les allèles du locus EPHA4 (OpenMM), `geno sv run`.
+sv/
 g3d/
 # Semaine 13 : sources de la fiche décodées une fois (pickle), indexées par empreinte.
 cache/
