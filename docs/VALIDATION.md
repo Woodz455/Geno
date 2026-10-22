@@ -9,6 +9,194 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S15 — Le cas EPHA4 n'est pas rejoué : le modèle n'isole pas un TAD de 1,8 Mb
+
+**Verdict : non fait.** La page `variant.html` existe — préréglages, délétions tracées à la main,
+prédiction 1D en direct, 3D précalculée, surimpressions cliniques exactes — mais le critère de la
+semaine, « la suppression d'une frontière rejoue en direct le cas EPHA4 », n'est pas atteint. Ni le
+3D ni la prédiction 1D ne montrent l'effet de la frontière que Lupiáñez 2015 mesure, et le 3D
+n'isole même pas le type sauvage dès qu'on lui donne assez de réplicats pour le juger. Ce qui suit
+consigne les critères fixés d'avance, ce qu'ils donnent, les deux révisions faites après coup — et
+pourquoi elles ne changent pas la conclusion.
+
+### Le locus, et ce qui en est reconstruit
+
+Région chr2:218–223 Mb (hg38) à 2 kb, 2 500 monomères. **Mesuré ou annoté** : les gènes (GENCODE
+v50 : WNT6, WNT10A, IHH, NHEJ1, EPHA4, PAX3, SGPP2), les 105 pics CTCF d'ENCODE GM12878 dont 96
+orientés par MA0139.1 (occupation = 0,95·signal / 90e centile du génome, bornée à [0,05 ; 0,95]),
+la boucle de Rao 2014 qui borne le TAD d'EPHA4 (219,735 ↔ 221,575 Mb, levée hg19 → hg38), et la
+frontière : la grappe CTCF orientée à ± 20 kb du TSS d'EPHA4 (221,572–221,574 Mb). Ce sont des
+CTCF de **lignée lymphoblastoïde**, pas de bourgeon de membre.
+
+**Reconstruit depuis le texte** — la Table S1 de Lupiáñez 2015 (points de cassure des patients)
+n'a pas pu être lue : PMC derrière un reCAPTCHA, Europe PMC en 403/500, aucun fichier
+supplémentaire exposé, aucune entrée ClinVar/dbVar. Le texte intégral (API BioC) contraint :
+délétions de 1,75 à 1,9 Mb emportant EPHA4 et la frontière EPHA4/PAX3 ; grappe de trois enhancers
+dans 30 kb, au contact du promoteur d'EPHA4 « across 1.66 Mb » (distance mesurée chez la souris,
+appliquée telle quelle) ; DelBS, le témoin murin, garde la frontière. D'où non pas **un** variant
+mais **la famille** que le texte autorise : 34 DEL-B (longueurs 1,75/1,80/1,85/1,90 Mb,
+extrémité centromérique au pas de 50 kb au-delà des enhancers, extrémité télomérique entre la
+frontière et la fin 3' de PAX3), et pour chacun deux témoins — **DelBS** (même extrémité
+centromérique, s'arrête 2 kb avant la frontière ; 10 distincts) et **« frontière épargnée »**
+(mêmes points de cassure, les sites CTCF de la frontière gardés au point de recollement : seule la
+frontière diffère, pas la distance). Chaque coordonnée reconstruite est étiquetée comme telle dans
+le fichier exporté (`evidence`).
+
+### Les critères, fixés avant de regarder les mutants
+
+1. **Le type sauvage isole** : en 3D, enhancers → promoteur d'EPHA4 ≥ 3 × enhancers → PAX3.
+2. **La frontière décide** : sur le DEL-B central (220,20–222,00 Mb), enhancers → PAX3 ≥ 1,5 ×
+   chacun des deux témoins, en 3D ; et en 1D pour **chacun** des 34 DEL-B.
+3. **Les autres frontières tiennent** : DEL-B / sauvage, enhancers → IHH, dans [0,67 ; 1,5].
+4. **La prédiction 1D suit le 3D** : Pearson des log du 4C virtuel depuis PAX3 (casiers de 20 kb)
+   ≥ 0,9 sur les trois mutants, et le rapport du critère 2 du même côté de 1,5.
+
+Plus, pour la page : geste → lecture affichée < 1 s au 95e centile, et les rapports 2 et 3 lus
+dans la page.
+
+### Plan pré-enregistré : un critère sur quatre
+
+OpenMM, 8 réplicats × 150 instantanés par allèle, mêmes graines ; chaque allèle mutant est la
+région moins la délétion (DEL-B 1 600 monomères, DelBS 1 815). Loi 1D `P = min(1, (d/d0)^−α + c)`
+sur la distance effective (plus court chemin le long de la chaîne, boucles tenues comprises),
+calée sur le 3D du type sauvage par déviance de Poisson : α = 1,253, d0 = 0,686, c = 0,00082,
+r(log, 20 kb) = 0,651.
+
+| | sauvage EPHA4/PAX3 | DEL-B / DelBS | DEL-B / épargnée | DEL-B / sauvage | IHH |
+|---|---|---|---|---|---|
+| 3D | **4,55** | 1,05 | 1,78 | 5,65 | 4,87 |
+| 1D | 1,17 | 1,45 | 1,16 | 2,23 | 1,03 |
+| 1D, famille (min sur 34) | — | 1,03 | 0,89 | — | — |
+
+PASS 1 · FAIL 2 (3D) · FAIL 2 (famille 1D) · FAIL 3 · FAIL 4 (r 0,64–0,73).
+
+### Deux défauts du modèle, trouvés en regardant pourquoi
+
+**Le confinement dépend de la longueur.** La sphère est réglée sur la quantité de chromatine ; une
+chaîne plus courte y a un plancher de contacts lointains plus haut — 3D, séparations de 500 à 800
+monomères : 0,0012 pour le type sauvage, 0,0023 pour DEL-B. DEL-B et DelBS n'étaient donc pas
+comparés à confinement égal, et l'IHH « monte » ×4,9 pour cette raison.
+
+**Le plancher de la loi 1D est cet artefact.** c = 0,0008 reproduit le plateau que la sphère
+impose au-delà d'un mégabase — déjà relevé à la semaine 7 (« la sphère décide : artefact ») — et il
+dépasse les contacts lointains eux-mêmes : en 1D, le type sauvage n'isolait plus (1,17).
+
+### Plan révisé (après coup, seuils inchangés)
+
+- **Fenêtre constante** : chaque allèle garde 5 Mb (2 500 monomères), la délétion faisant entrer la
+  séquence en aval (`Locus.sites(window=True)`). Le type sauvage ne change pas.
+- **Loi sans plancher** : c = 0, calée sur les paires à moins de 1 Mb : α = 1,128, d0 = 0,535,
+  r(log, 20 kb) = 0,801.
+
+À 8 réplicats, il échoue aussi. Mais le détail par réplicat montre que **ni le plan pré-enregistré
+ni la révision ne pouvaient trancher** : chaque contact enhancer → promoteur à ~1 Mb tient à un ou
+deux réplicats (erreur type de 50 à 100 % de la moyenne). Un réplicat, c'est 150 000 pas de mise en
+place puis 30 000 d'échantillonnage : ses 150 instantanés partagent à peu près **une** conformation
+à grande échelle. Le tirage indépendant est le réplicat, pas l'instantané. IC à 95 % par
+rééchantillonnage des réplicats, plan pré-enregistré : sauvage [0,94 ; 21,8], DEL-B/DelBS
+[0,28 ; 6,1], DEL-B/épargnée [0,40 ; 99,9], IHH [0,47 ; 9,1]. Le « PASS » du critère 1 était un
+tirage.
+
+D'où `geno sv extend` : des réplicats ajoutés au plan révisé, 8 par tour, les quatre allèles
+ensemble, graines à la suite. Visé : 48 par allèle. **Arrêté à 24** par la limite de durée des
+tâches de fond de l'environnement (2 h) ; les tours étant enregistrés un à un, les quatre allèles
+sont à 24, cohérents. Résultat, plan révisé, 24 réplicats :
+
+| | sauvage EPHA4/PAX3 | DEL-B / DelBS | DEL-B / épargnée | DEL-B / sauvage | IHH |
+|---|---|---|---|---|---|
+| 3D | 0,90 | 1,02 | 2,66 | 1,03 | 1,46 |
+| IC 95 % (réplicats) | [0,36 ; 2,17] | [0,37 ; 4,90] | [1,03 ; 9,56] | [0,44 ; 2,49] | [0,23 ; 5,89] |
+| 1D | 1,67 | 1,86 | 1,18 | 5,10 | 0,93 |
+| 1D, famille (min / médiane sur 34) | — | 1,05 / 1,59 | 0,87 / 1,03 | — | — |
+
+FAIL 1 · FAIL 2 (3D) · FAIL 2 (famille 1D) · PASS 3 · FAIL 4 (r 0,67–0,81 ; le 3D contre lui-même,
+moitiés de réplicats : 0,33–0,62).
+
+### Ce que ça dit
+
+- **Le 3D n'isole pas le TAD d'EPHA4.** À 24 réplicats, l'enhancer touche PAX3 autant qu'EPHA4
+  (0,0020 contre 0,0018). À 1,7–2,4 Mb, les contacts du modèle sont le mélange du confinement, pas
+  une structure de domaine : avec des cohésines de 200 kb de processivité, la boucle de 1,84 Mb que
+  Rao 2014 mesure dans GM12878 ne se forme presque jamais. Sans type sauvage isolé, il n'y a pas
+  d'isolement à supprimer.
+- **Le seul rapport 3D dont l'IC exclut 1** est DEL-B / « frontière épargnée » (2,66 [1,03 ; 9,56]),
+  à la limite.
+- **La prédiction 1D ne voit pas la frontière.** Contre « frontière épargnée », le rapport médian
+  sur la famille est 1,03. Contre DelBS il passe souvent 1,5, mais c'est la **distance** : DelBS
+  enlève moins de séquence et laisse les enhancers plus loin de PAX3. Le témoin du papier mélange
+  les deux effets ; le témoin in silico les sépare, et ne laisse rien.
+- **Exploratoire, pas un résultat** : la processivité ne sauve pas le 1D. Balayée de 200 kb à 2 Mb
+  (16 exécutions, loi inchangée), le rapport sauvage EPHA4/PAX3 reste entre 1,22 et 1,84, DEL-B /
+  épargnée entre 1,01 et 1,51, sans tendance hors du bruit.
+
+### Ce qui marche, et est vérifié
+
+- **L'extrusion 1D en TypeScript** (`apps/variant/extrusion.ts`) est celle de Python : densité de
+  pieds Pearson 0,961 (Python contre Python : 0,959), occupation 1,000 des deux côtés, lignes de
+  contact Pearson des log 0,9991, et contacts enhancer → EPHA4/PAX3/IHH indiscernables sur 16 lots
+  (Welch |t| ≤ 1,05). **Un biais trouvé en route** : avec le générateur mulberry32, enhancer → PAX3
+  sortait 3,6 % sous Python (Welch p = 0,004 sur 20 lots) alors que les statistiques de boucles
+  concordaient ; passé à sfc32, plus d'écart (p 0,07–0,49). Les premiers seuils de ce test (Pearson
+  0,97, écart 10 %) avaient été posés avant de connaître le bruit d'un lot unique ; remplacés par
+  « pas pire que Python contre Python » et Welch sur 16 lots.
+- **La loi** : la première version, moindres carrés sur le log des seules paires non nulles (20 %),
+  sélectionnait les paires chanceuses et dégénérait (α = 0,23, d0 → 0, r = 0,61) ; remplacée par la
+  déviance de Poisson sur toutes les paires, zéros compris.
+- **Surimpression clinique** dans la plongée (`dive.html`, menu « surimpression ») et la page du
+  variant : P/LP ClinVar, associations GWAS, LOEUF gnomAD minimal, par bille. Relue dans le
+  navigateur contre le lecteur Python du fichier de fiches : aperçu 2 032/2 032 billes égales pour
+  chacune des trois couches, noyau 8 082/8 082 ; peinte en 21–29 ms. Sur le locus (809 monomères
+  porteurs), recomptée depuis les fichiers bruts : ClinVar 809/809, GWAS 809/809 ; témoin décalé
+  d'un monomère : 677 et 215.
+- **La page** : 4 préréglages 3D (fondu sauvage → mutant, alignés par Kabsch sur les monomères
+  communs ; les structures exportées sont celles du plan révisé, 24 réplicats, médoïde), délétions
+  tracées sur la piste, deux 4C virtuels, et pour toute délétion qui emporte la frontière, le même
+  allèle « frontière épargnée » calculé à côté.
+
+### La page, mesurée (`node tools/variant.mjs 12`)
+
+28 gestes CDP : 4 préréglages, 12 DEL-B tirés dans la famille et tracés à la souris, leurs 12 DelBS.
+
+| | mesuré | critère |
+|---|---|---|
+| geste → lecture affichée | p50 1 828 ms · p95 2 800 ms · max 3 000 ms | p95 < 1 s — **échec** |
+| DEL-B / frontière épargnée | min 0,80 · médiane 1,05 | ≥ 1,5 — **échec** |
+| DEL-B / DelBS | min 1,12 · médiane 1,83 | ≥ 1,5 — **échec** (min) |
+| DEL-B / sauvage, IHH | 0,93 – 1,10 | [0,67 ; 1,5] — tient |
+
+La latence : une délétion qui emporte la frontière coûte deux prédictions (l'allèle et son témoin),
+16 extrusions et ~20 lignes de plus court chemin chacune, sur un conteneur à 4 vCPU sans GPU.
+
+### Ce que ça ne dit pas
+
+- Rien sur la biologie d'EPHA4 : le modèle échoue, le cas de Lupiáñez reste ce qu'il est.
+- Les points de cassure sont reconstruits ; les CTCF sont lymphoblastoïdes. Aucun des deux n'explique
+  l'échec du type sauvage, qui ne dépend d'aucune délétion.
+- SOX9 (Franke 2016) n'est pas commencé.
+
+### Pistes, non tentées
+
+Faire tenir un domaine de 1,8 Mb demande soit des cohésines de processivité locale bien plus
+grande **avec** un 3D assez échantillonné pour le juger (≥ 48 réplicats par allèle : ~4 h de calcul
+par allèle ici), soit un modèle contraint par le Hi-C mesuré du locus — le `.hic` de Rao 2014 reste
+`unverified` (DATA_SOURCES § 8 ter). L'un ou l'autre est un choix de conception, pas un réglage.
+
+### Reproduire
+
+```console
+$ cd pipeline
+$ geno sv run                           # plan pré-enregistré : 4 allèles × 8 réplicats (~50 min)
+$ geno sv run --window --only delb,delbs,delb-keep    # plan révisé (~45 min)
+$ geno sv extend --replicates 24        # réplicats ajoutés, 8 par tour
+$ geno sv check                         # critères, plan pré-enregistré (+ révisé si présent)
+$ geno sv revised                       # plan révisé seul (loi sans plancher calée au besoin)
+$ geno sv export                        # data/g3d/epha4.variant.json + recomptage clinique
+$ cd .. && node tools/build.mjs && node tools/test-variant.mjs && node tools/overlay.mjs
+$ node tools/variant.mjs 12
+```
+
+---
+
 ## S14 — Trois vues, une sélection : 90/90 vues ailleurs, zéro rebond
 
 ### Le critère, traduit

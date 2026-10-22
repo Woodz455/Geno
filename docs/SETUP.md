@@ -95,10 +95,18 @@ embarque (4,3 Mo). Quatre particularités, chacune vue avant d'être contournée
 
 `make linked` (pipeline) n'ajoute aucune dépendance Python : numpy et scipy, déjà là.
 
+## Mode variant structural (semaine 15)
+
+Aucune dépendance nouvelle : OpenMM, numpy et scipy côté pipeline, rien côté page. Les allèles 3D
+sont longs à calculer — ~13 min pour 8 réplicats d'un allèle de 2 500 monomères sur 4 vCPU — et
+`geno sv extend` ajoute des réplicats 8 par tour, en enregistrant chaque tour : une tâche de fond
+limitée en durée peut s'arrêter sans rien perdre. `data/sv/` (≈ 100 Mo par allèle à 24
+réplicats) reste hors du dépôt ; seul `data/g3d/epha4.variant.json` (159 ko) sert la page.
+
 ## Vérifier
 
 ```console
-$ make test            # 283 tests (… + 10 liftover, + 23 fiche, + 1 parseurs, + 7 vues liées)
+$ make test            # 291 tests (… + 23 fiche, + 1 parseurs, + 7 vues liées, + 8 variant structural)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

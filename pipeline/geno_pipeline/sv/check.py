@@ -204,11 +204,15 @@ def verdict(res: dict) -> dict:
 
 def revised(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
     """Les quatre critères, seuils inchangés, sur le plan à fenêtre constante
-    (`epha4-<allèle>.w.npz`) et, si elle est calée (`law-nofloor.json`), la loi sans plancher."""
+    (`epha4-<allèle>.w.npz`) et la loi sans plancher (`law-nofloor.json`, calée au besoin)."""
     loc = L.build()
     nofloor = sv_dir / "law-nofloor.json"
-    fit = _law(nofloor if nofloor.exists() else sv_dir / "law.json")
-    why = [REVISION["window"]] + ([REVISION["law"]] if nofloor.exists() else []) + [REVISION["thresholds"]]
+    if not nofloor.exists():
+        log("calage de la loi sans plancher (paires à moins de 1 Mb) sur le 3D du type sauvage …")
+        coords, legs, _ = load(sv_dir / "epha4-wt.npz")
+        nofloor.write_text(json.dumps(P.calibrate(coords, legs, floor=False, max_sep=500).__dict__))
+    fit = _law(nofloor)
+    why = [REVISION["window"], REVISION["law"], REVISION["thresholds"]]
     runs = {t: load(run_path(sv_dir, t, window=True)) for t in alleles(loc)}
     log(f"plan révisé : fenêtre constante de 5 Mb ; loi α = {fit.alpha}, d0 = {fit.d0}, c = {fit.c:.3g}")
     res: dict = {"why": why, "law": fit.__dict__, "criteria": CRITERIA}

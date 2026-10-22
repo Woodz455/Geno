@@ -9,7 +9,7 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–3, semaine 14.** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–3, semaine 15 (non faite).** Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
@@ -158,6 +158,15 @@ sélection passe par un store unique, et les deux autres vues la surlignent et s
 sélections sur 90, une publication chacune, zéro rebond, là où des vues synchronisées deux à deux
 s'emballent (190 messages en une demi-seconde après un seul geste). La carte de HiGlass est celle
 du **modèle**, simulée, et le dit ([`docs/VALIDATION.md` § S14](docs/VALIDATION.md)).
+
+La semaine 15 **n'est pas faite**, et le dit. `dist/variant.html` rejoue le locus EPHA4 de
+Lupiáñez 2015 — supprimer la frontière d'un TAD, voir l'enhancer de membre atteindre PAX3 —, avec
+la vraie annotation, les vrais CTCF de GM12878 et des points de cassure reconstruits depuis le
+texte ; on y trace une délétion à la souris et l'extrusion recalcule en direct. Mais le modèle
+n'isole pas ce TAD de 1,8 Mb : dès qu'on lui donne assez de réplicats pour en juger, l'enhancer y
+touche PAX3 autant qu'EPHA4, et il n'y a pas d'isolement à supprimer. Les surimpressions ClinVar,
+GWAS et gnomAD, elles, sont exactes au bille près
+([`docs/VALIDATION.md` § S15](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et

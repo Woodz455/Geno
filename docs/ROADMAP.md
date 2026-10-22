@@ -344,6 +344,20 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   et Franke 2016 (néo-TAD, SOX9), rejouable en direct.
 - **Fait quand** : la suppression d'une frontière rejoue en direct le cas EPHA4 des
   malformations des membres.
+- **Non fait.** `variant.html` est construite : 4 préréglages 3D (OpenMM, fondu sauvage → mutant),
+  délétions tracées à la souris sur la piste, extrusion 1D en direct en TypeScript (identique à
+  Python : Welch |t| ≤ 1,05 sur 16 lots), deux 4C virtuels, et pour chaque délétion qui emporte la
+  frontière le même allèle « frontière épargnée » calculé à côté. Surimpression ClinVar / GWAS /
+  LOEUF dans la plongée et la page, exacte au bille près (2 032/2 032 et 8 082/8 082 contre Python).
+  Les points de cassure sont **reconstruits depuis le texte** de Lupiáñez 2015 (Table S1 illisible) :
+  une famille de 34 DEL-B et leurs témoins. Mais le **modèle n'isole pas le TAD d'EPHA4** : à 24
+  réplicats par allèle, l'enhancer touche PAX3 autant qu'EPHA4 (0,90, IC [0,36 ; 2,17]), et la
+  prédiction 1D ne voit pas la frontière (DEL-B / frontière épargnée : médiane 1,03 sur 34). Un
+  critère sur quatre au plan pré-enregistré — un tirage, révèle le rééchantillonnage des réplicats —,
+  un sur quatre au plan révisé (fenêtre constante, loi sans plancher, seuils inchangés) ; la page
+  répond en 2,8 s au p95 (critère : 1 s). SOX9 non commencé. Reprendre demande un choix de
+  conception — processivité locale avec ≥ 48 réplicats par allèle, ou un modèle contraint par le
+  Hi-C mesuré du locus ([`VALIDATION.md` § S15](VALIDATION.md)).
 
 #### Semaine 16 — Recherche et navigation
 - Recherche « BRCA1 », « chr17:43,044,295 », « rs334 » → vol de caméra vers la cible.

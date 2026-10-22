@@ -433,6 +433,44 @@ pas la sélection.
   tailles, et `index.json` (empreintes, évidence de chaque piste). La séquence est le `.2bit`
   verrouillé, servi par plages sous `/ref/`.
 
+## 7 bis. Mode variant structural
+
+Le locus EPHA4 (semaine 15, `pipeline/geno_pipeline/sv/`, `apps/variant/`, page
+`dist/variant.html`). Deux moteurs, un même jeu de sites :
+
+```
+  sv/locus.py   gènes · CTCF orientés (occupation ∝ signal) · TAD (Rao 2014) · enhancers et
+                famille de délétions reconstruits du texte · Locus.sites(variant, window)
+      │
+      ├── sv/run.py      OpenMM, 4 allèles × réplicats   → data/sv/epha4-<allèle>[.w].npz
+      ├── sv/predict.py  extrusion 1D → distance effective (BFS, boucles = raccourcis)
+      │                  → P = min(1, (d/d0)^−α + c), calée sur le 3D du type sauvage
+      ├── sv/check.py    critères (plan pré-enregistré, plan révisé), IC par réplicats
+      └── sv/export.py   → data/g3d/epha4.variant.json   (format geno-variant/1)
+                                   │
+  apps/variant/   extrusion.ts (même extrusion, sfc32, même loi) · model.ts (allèle, 4C)
+                  main.ts : 3D médoïde + fondu, piste, 4C, lecture
+```
+
+**Un allèle**, c'est la région moins la délétion, recollée : les sites CTCF suivent leurs
+monomères, ceux qu'une délétion « épargne » (le témoin in silico) sont posés au point de
+recollement. Avec `window=True` (plan révisé), l'allèle garde la longueur du type sauvage : la
+séquence en aval entre dans la fenêtre (`REACH` = région + 2 Mb), pour que le confinement — réglé
+sur la quantité de chromatine — soit le même pour tous les allèles.
+
+**Dans la page**, une délétion tracée sur la piste (glisser) ou choisie dans les préréglages
+construit l'allèle, lance 16 extrusions (graines 1–16) et calcule les lignes de contact depuis
+la grappe d'enhancers et le promoteur de PAX3 ; pour une délétion qui emporte la frontière, la
+même chose avec les CTCF de la frontière épargnés. La 3D montre le médoïde de l'ensemble OpenMM
+de l'allèle (préréglages seulement), aligné par Kabsch sur le type sauvage par les monomères
+communs ; une délétion tracée efface son segment du type sauvage. `window.__variant` expose de
+quoi la mesurer (`tools/variant.mjs`).
+
+**Surimpression clinique.** `DiveScene.paint(level, values)` repeint une couche de billes avec une
+valeur par bille (une teinte, du clair au foncé ; gris sans donnée) : P/LP ClinVar, associations
+GWAS, LOEUF gnomAD minimal des gènes de la bille, lus dans le fichier de fiches de la semaine 13.
+La surbrillance de sélection se pose par-dessus (`painted ?? colors`).
+
 ---
 
 ## 8. Socle 1D — index d'intervalles et mesures

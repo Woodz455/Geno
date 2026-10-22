@@ -232,6 +232,23 @@ vient (`data/g3d/igv/index.json`, champ `provenance`) :
 `unverified` : plusieurs dizaines de Go, jamais téléchargé, donc jamais verrouillé ; le `.mcool` de
 4DN est `unresolved`. Les montrer est le rattrapage S1–S8, pas la semaine 14.
 
+## 8 quater. Semaine 15 : une source lue, pas téléchargée
+
+Aucune entrée nouvelle au manifeste. Le locus EPHA4 se construit depuis ce qui est déjà verrouillé
+— GENCODE v50, les pics CTCF d'ENCODE GM12878 orientés par MA0139.1 (§ 8), les boucles de Rao 2014
+levées en hg38 —, et les couches cliniques depuis le fichier de fiches (ClinVar, catalogue GWAS,
+gnomAD v4.1 constraint, § 8).
+
+**Lupiáñez et al., Cell 161:1012–1025 (2015)**, doi:10.1016/j.cell.2015.04.004 : le **texte**
+seulement, lu par l'API BioC de PMC, pour contraindre la reconstruction (longueurs des délétions,
+distance enhancers → promoteur, témoin DelBS). La **Table S1** (points de cassure des patients) n'a
+pas été lue : PMC répond par un reCAPTCHA, Europe PMC par 403/500, les fichiers supplémentaires ne
+sont pas exposés, et les délétions ne sont ni dans ClinVar ni dans dbVar. Les copies hébergées
+ailleurs ne sont pas acceptées comme source (§ 7). Toute coordonnée qui en dépend est donc
+étiquetée **reconstruite depuis le texte** dans `epha4.variant.json` (`evidence`), et les mesures
+portent sur toute la famille de points de cassure que le texte autorise. Les CTCF sont ceux d'une
+lignée **lymphoblastoïde**, pas d'un bourgeon de membre.
+
 ## 8 bis. État au 2026-10-18 : le réseau s'est ouvert
 
 Jusqu'à la semaine 11, l'environnement d'exécution appliquait une politique d'egress fermée :
