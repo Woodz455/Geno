@@ -90,8 +90,13 @@ def measure(loc: L.Locus, runs: dict, fit: P.Fit, log=print) -> tuple[dict, dict
              for c in (coords[:half], coords[half:])]
         okh = np.isfinite(h[0]) & (h[0] > 0) & (h[1] > 0)
         split = float(np.corrcoef(np.log(h[0][okh]), np.log(h[1][okh]))[0, 1])
+        # Par réplicat : ses instantanés partagent une conformation à grande échelle, c'est donc
+        # le réplicat, pas l'instantané, qui est le tirage indépendant (intervalles ci-dessous).
+        R = len(meta["seeds"])
+        per = [contacts(P.observed(x, src), src, lm) for x in np.split(coords, R)]
         out[t] = {
             "name": (meta.get("variant") or {}).get("name", "type sauvage"),
+            "replicates": R, "3d_per_replicate": {g: [p[g] for p in per] for g in per[0]},
             "monomers": int(coords.shape[1]), "frames": int(coords.shape[0]),
             "3d": contacts(obs, src, lm), "1d": contacts(pre, src, lm),
             "r_log_4c_pax3": float(np.corrcoef(np.log(p4c[ok]), np.log(r4c[ok]))[0, 1]),
@@ -110,7 +115,32 @@ def measure(loc: L.Locus, runs: dict, fit: P.Fit, log=print) -> tuple[dict, dict
             "vs_wt": out["delb"][dim]["PAX3"] / out["wt"][dim]["PAX3"],
             "ihh": out["delb"][dim]["IHH"] / out["wt"][dim]["IHH"],
         }
+    verdicts["ci95_3d"] = intervals(out)
+    ci = verdicts["ci95_3d"]
+    log("  3D, IC 95 % (rééchantillonnage des réplicats) : " + " · ".join(
+        f"{k} [{a:.2f} ; {b:.2f}]" for k, (a, b) in ci.items()))
     return out, verdicts
+
+
+def intervals(al: dict, draws: int = 4000, seed: int = 0) -> dict[str, tuple[float, float]]:
+    """IC à 95 % des rapports 3D des critères, par rééchantillonnage des réplicats de chaque
+    allèle (indépendamment) — le tirage indépendant est le réplicat."""
+    rng = np.random.default_rng(seed)
+
+    def boot(t: str, g: str) -> np.ndarray:
+        x = np.asarray(al[t]["3d_per_replicate"][g])
+        return x[rng.integers(0, len(x), (draws, len(x)))].mean(axis=1)
+
+    pairs = {"wt_ratio": (("wt", "EPHA4"), ("wt", "PAX3")), "vs_delbs": (("delb", "PAX3"), ("delbs", "PAX3")),
+             "vs_keep": (("delb", "PAX3"), ("delb-keep", "PAX3")), "vs_wt": (("delb", "PAX3"), ("wt", "PAX3")),
+             "ihh": (("delb", "IHH"), ("wt", "IHH"))}
+    out = {}
+    for k, (a, b) in pairs.items():
+        with np.errstate(divide="ignore", invalid="ignore"):
+            r = boot(*a) / boot(*b)
+        r = r[np.isfinite(r)]
+        out[k] = (float(np.percentile(r, 2.5)), float(np.percentile(r, 97.5))) if len(r) else (float("nan"),) * 2
+    return out
 
 
 REVISION = {

@@ -1262,6 +1262,11 @@ def cmd_sv(args: argparse.Namespace) -> int:
 
     from .sv import check as C
 
+    if args.action == "extend":
+        from .sv.run import extend
+
+        extend(Path(args.dir), args.only.split(",") if args.only else None, replicates=args.replicates)
+        return 0
     if args.action == "run":
         from .sv.run import run
 
@@ -1524,11 +1529,12 @@ def main(argv: list[str] | None = None) -> int:
     lk.set_defaults(fn=cmd_linked)
 
     sv = sub.add_parser("sv", help="mode variant structural : le cas EPHA4 de Lupiáñez 2015 (semaine 15)")
-    sv.add_argument("action", choices=["run", "check", "revised", "dump", "export", "clinical"])
+    sv.add_argument("action", choices=["run", "extend", "check", "revised", "dump", "export", "clinical"])
     sv.add_argument("--dir", default=str(ROOT / "data" / "sv"))
     sv.add_argument("--only", default=None, help="run : allèles, séparés par des virgules (wt, delb, delbs, delb-keep)")
     sv.add_argument("--window", action="store_true",
                     help="run : plan révisé, chaque allèle garde 5 Mb (même confinement que le type sauvage)")
+    sv.add_argument("--replicates", type=int, default=48, help="extend : réplicats par allèle visés (plan révisé)")
     sv.add_argument("--seeds", type=int, default=8, help="check : exécutions 1D par allèle de la famille")
     sv.add_argument("--report", default=str(ROOT / "data" / "sv" / "check.json"))
     sv.add_argument("--dump", default=str(ROOT.parent / "dist" / "variant-test" / "expected.json"))
