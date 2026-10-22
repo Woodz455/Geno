@@ -66,8 +66,14 @@ def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
     tags = alleles(loc)
     runs = {t: load(sv_dir / f"epha4-{t}.npz") for t in tags}
     coords, legs, _ = runs["wt"]
-    log("calage de la loi sur le 3D du type sauvage …")
-    fit = P.calibrate(coords, legs)
+    cache = sv_dir / "law.json"
+    if cache.exists():
+        fit = P.Fit(**json.loads(cache.read_text()))
+        log("loi relue (law.json, calée sur le 3D du type sauvage) :")
+    else:
+        log("calage de la loi sur le 3D du type sauvage …")
+        fit = P.calibrate(coords, legs)
+        cache.write_text(json.dumps(fit.__dict__))
     log(f"  α = {fit.alpha}, d0 = {fit.d0} monomère(s), plancher c = {fit.c:.3g}, r(log, casiers de 20 kb) = {fit.r_log:.3f}")
 
     res: dict = {"law": fit.__dict__, "criteria": CRITERIA, "alleles": {}}
@@ -86,15 +92,24 @@ def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
         far = np.abs(np.arange(len(r4c)) - lm["PAX3"].mean()) >= 10
         r4c, p4c = (P.binned(np.where(far, x, np.nan)[None])[0] for x in (r4c, p4c))
         ok = np.isfinite(r4c) & (r4c > 0)
+        # Le plafond : le 3D contre lui-même, réplicats 1–4 contre 5–8 (le bruit du 3D borne
+        # l'accord qu'aucune prédiction ne peut dépasser).
+        half = len(coords) // 2
+        h = [P.binned(np.where(far, P.observed(c, lm["PAX3"]).mean(axis=0), np.nan)[None])[0]
+             for c in (coords[:half], coords[half:])]
+        okh = np.isfinite(h[0]) & (h[0] > 0) & (h[1] > 0)
+        split = float(np.corrcoef(np.log(h[0][okh]), np.log(h[1][okh]))[0, 1])
         res["alleles"][t] = {
             "name": "type sauvage" if v is None else v.name, "monomers": int(coords.shape[1]),
             "frames": int(coords.shape[0]),
             "3d": contacts(obs, src, lm), "1d": contacts(pre, src, lm),
             "r_log_4c_pax3": float(np.corrcoef(np.log(p4c[ok]), np.log(r4c[ok]))[0, 1]),
+            "r_log_4c_pax3_split_half": split,
         }
         a = res["alleles"][t]
         log(f"  {t:10s} 3D  enh→EPHA4 {a['3d']['EPHA4']:.4f}  enh→PAX3 {a['3d']['PAX3']:.4f}  enh→IHH {a['3d']['IHH']:.4f}"
-            f"   | 1D enh→PAX3 {a['1d']['PAX3']:.4f}  · r(log, 4C PAX3) {a['r_log_4c_pax3']:.3f}")
+            f"   | 1D enh→PAX3 {a['1d']['PAX3']:.4f}  · r(log, 4C PAX3, 20 kb) {a['r_log_4c_pax3']:.3f}"
+            f" (3D contre 3D, moitiés : {a['r_log_4c_pax3_split_half']:.3f})")
 
     A = res["alleles"]
     for dim in ("3d", "1d"):
