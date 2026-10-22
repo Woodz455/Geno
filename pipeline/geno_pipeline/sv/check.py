@@ -13,6 +13,10 @@ Critères fixés **avant** de regarder les allèles mutants (seuils dans `CRITER
    the adjacent boundaries »).
 4. **La prédiction 1D suit le 3D** sur les allèles qu'elle n'a pas vus : Pearson des log du 4C
    virtuel depuis PAX3 ≥ 0,9, et le rapport du critère 2 du même côté de 1,5.
+
+Ces critères sont jugés tels quels sur le plan pré-enregistré (`check`). Le plan révisé
+(`revised`, fenêtre constante, raison dans `REVISION`) les rejuge à seuils inchangés ; le
+rapport garde les deux.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from ..fine.extrusion import simulate as extrude
 from . import locus as L
 from . import predict as P
 from .run import alleles, load
+from .run import path as run_path
 
 CRITERIA = {"wt_ratio": 3.0, "boundary": 1.5, "ihh_lo": 0.67, "ihh_hi": 1.5, "r_log": 0.9}
 PARAMS = {"separation": 200_000, "processivity": 200_000, "velocity": 1.0, "release": 0.003,
@@ -61,24 +66,10 @@ def predicted(loc: L.Locus, v: L.Variant | None, law: P.Fit, seeds: range, sourc
     return P.rows(region.n, legs, src, law.alpha, law.d0, law.c), src, lm, mids
 
 
-def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
-    loc = L.build()
-    tags = alleles(loc)
-    runs = {t: load(sv_dir / f"epha4-{t}.npz") for t in tags}
-    coords, legs, _ = runs["wt"]
-    cache = sv_dir / "law.json"
-    if cache.exists():
-        fit = P.Fit(**json.loads(cache.read_text()))
-        log("loi relue (law.json, calée sur le 3D du type sauvage) :")
-    else:
-        log("calage de la loi sur le 3D du type sauvage …")
-        fit = P.calibrate(coords, legs)
-        cache.write_text(json.dumps(fit.__dict__))
-    log(f"  α = {fit.alpha}, d0 = {fit.d0} monomère(s), plancher c = {fit.c:.3g}, r(log, casiers de 20 kb) = {fit.r_log:.3f}")
-
-    res: dict = {"law": fit.__dict__, "criteria": CRITERIA, "alleles": {}}
-    for t, v in tags.items():
-        coords, legs, meta = runs[t]
+def measure(loc: L.Locus, runs: dict, fit: P.Fit, log=print) -> tuple[dict, dict]:
+    """Contacts 3D et 1D de chaque allèle, accord du 4C, et les rapports des critères 2 et 3."""
+    out: dict = {}
+    for t, (coords, legs, meta) in runs.items():
         mids = np.asarray(meta["mids_hg38"])
         lm = landmarks(loc, mids)
         src = np.unique(np.r_[lm["enhancer"], lm["PAX3"]])
@@ -99,27 +90,75 @@ def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
              for c in (coords[:half], coords[half:])]
         okh = np.isfinite(h[0]) & (h[0] > 0) & (h[1] > 0)
         split = float(np.corrcoef(np.log(h[0][okh]), np.log(h[1][okh]))[0, 1])
-        res["alleles"][t] = {
-            "name": "type sauvage" if v is None else v.name, "monomers": int(coords.shape[1]),
-            "frames": int(coords.shape[0]),
+        out[t] = {
+            "name": (meta.get("variant") or {}).get("name", "type sauvage"),
+            "monomers": int(coords.shape[1]), "frames": int(coords.shape[0]),
             "3d": contacts(obs, src, lm), "1d": contacts(pre, src, lm),
             "r_log_4c_pax3": float(np.corrcoef(np.log(p4c[ok]), np.log(r4c[ok]))[0, 1]),
             "r_log_4c_pax3_split_half": split,
         }
-        a = res["alleles"][t]
+        a = out[t]
         log(f"  {t:10s} 3D  enh→EPHA4 {a['3d']['EPHA4']:.4f}  enh→PAX3 {a['3d']['PAX3']:.4f}  enh→IHH {a['3d']['IHH']:.4f}"
             f"   | 1D enh→PAX3 {a['1d']['PAX3']:.4f}  · r(log, 4C PAX3, 20 kb) {a['r_log_4c_pax3']:.3f}"
             f" (3D contre 3D, moitiés : {a['r_log_4c_pax3_split_half']:.3f})")
-
-    A = res["alleles"]
+    verdicts = {}
     for dim in ("3d", "1d"):
-        res[f"verdict_{dim}"] = {
-            "wt_ratio": A["wt"][dim]["EPHA4"] / A["wt"][dim]["PAX3"],
-            "vs_delbs": A["delb"][dim]["PAX3"] / A["delbs"][dim]["PAX3"],
-            "vs_keep": A["delb"][dim]["PAX3"] / A["delb-keep"][dim]["PAX3"],
-            "vs_wt": A["delb"][dim]["PAX3"] / A["wt"][dim]["PAX3"],
-            "ihh": A["delb"][dim]["IHH"] / A["wt"][dim]["IHH"],
+        verdicts[f"verdict_{dim}"] = {
+            "wt_ratio": out["wt"][dim]["EPHA4"] / out["wt"][dim]["PAX3"],
+            "vs_delbs": out["delb"][dim]["PAX3"] / out["delbs"][dim]["PAX3"],
+            "vs_keep": out["delb"][dim]["PAX3"] / out["delb-keep"][dim]["PAX3"],
+            "vs_wt": out["delb"][dim]["PAX3"] / out["wt"][dim]["PAX3"],
+            "ihh": out["delb"][dim]["IHH"] / out["wt"][dim]["IHH"],
         }
+    return out, verdicts
+
+
+REVISION = (
+    "Plan révisé après lecture des allèles mutants du plan pré-enregistré : chaque allèle garde "
+    "5 Mb (2 500 monomères), la délétion faisant entrer la séquence en aval. Raison : le "
+    "confinement est réglé sur la longueur de la chaîne, et une chaîne plus courte a un plancher "
+    "de contacts lointains plus haut (3D, séparations de 500 à 800 monomères : 0,0012 pour le type "
+    "sauvage à 2 500 monomères, 0,0023 pour DEL-B à 1 600) ; DEL-B (1 600) et DelBS (1 815) "
+    "n'étaient donc pas comparés à confinement égal. Les seuils ne changent pas.")
+
+
+def revised(sv_dir: Path, log=print) -> dict:
+    """Les critères 2 et 3 sur le plan à fenêtre constante (`epha4-<allèle>.w.npz`), même loi."""
+    loc = L.build()
+    fit = P.Fit(**json.loads((sv_dir / "law.json").read_text()))
+    runs = {t: load(run_path(sv_dir, t, window=True)) for t in alleles(loc)}
+    log("plan révisé, fenêtre constante de 5 Mb :")
+    al, verdicts = measure(loc, runs, fit, log)
+    C = CRITERIA
+    v3 = verdicts["verdict_3d"]
+    return {
+        "why": REVISION, "alleles": al, **verdicts,
+        "pass": {
+            "2_boundary_3d": v3["vs_delbs"] >= C["boundary"] and v3["vs_keep"] >= C["boundary"],
+            "3_other_boundaries": C["ihh_lo"] <= v3["ihh"] <= C["ihh_hi"],
+        },
+    }
+
+
+def check(sv_dir: Path, *, family_seeds: int = 8, log=print) -> dict:
+    loc = L.build()
+    tags = alleles(loc)
+    runs = {t: load(sv_dir / f"epha4-{t}.npz") for t in tags}
+    coords, legs, _ = runs["wt"]
+    cache = sv_dir / "law.json"
+    if cache.exists():
+        fit = P.Fit(**json.loads(cache.read_text()))
+        log("loi relue (law.json, calée sur le 3D du type sauvage) :")
+    else:
+        log("calage de la loi sur le 3D du type sauvage …")
+        fit = P.calibrate(coords, legs)
+        cache.write_text(json.dumps(fit.__dict__))
+    log(f"  α = {fit.alpha}, d0 = {fit.d0} monomère(s), plancher c = {fit.c:.3g}, r(log, casiers de 20 kb) = {fit.r_log:.3f}")
+
+    res: dict = {"law": fit.__dict__, "criteria": CRITERIA}
+    res["alleles"], verdicts = measure(loc, runs, fit, log)
+    res.update(verdicts)
+    A = res["alleles"]
 
     # — toute la famille, en 1D (graines indépendantes de celles du 3D) —
     log(f"famille : {sum(v.kind == 'DEL-B' for v in loc.variants)} DEL-B, {family_seeds} exécutions 1D par allèle …")

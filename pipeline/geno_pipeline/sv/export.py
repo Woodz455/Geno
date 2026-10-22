@@ -21,6 +21,7 @@ from . import locus as L
 from .check import PARAMS
 from .predict import calibrate
 from .run import alleles, load
+from .run import path as run_path
 
 FORMAT = "geno-variant/1"
 
@@ -117,13 +118,17 @@ def export(sv_dir: Path, out: Path) -> dict:
     ref = None
     ref_mids = None
     for tag, v in alleles(loc).items():
-        path = sv_dir / f"epha4-{tag}.npz"
-        if not path.exists():
+        # Le plan à fenêtre constante s'il a tourné (même confinement que le type sauvage) ;
+        # la séquence entrée dans la fenêtre au-delà de la région n'est pas montrée.
+        path = next((q for q in (run_path(sv_dir, tag, window=True), run_path(sv_dir, tag)) if q.exists()), None)
+        if path is None:
             continue
         coords, _, meta = load(path)
+        mids = np.asarray(meta["mids_hg38"])
+        inside = mids < loc.region.end
+        coords, mids = coords[:, inside], mids[inside]
         k = medoid(coords)
         x = coords[k].astype(np.float64)
-        mids = np.asarray(meta["mids_hg38"])
         if ref is None:
             ref, ref_mids = x - x.mean(axis=0), mids
             x = ref
@@ -137,7 +142,8 @@ def export(sv_dir: Path, out: Path) -> dict:
         al[tag] = {"name": "type sauvage" if v is None else v.name, "kind": None if v is None else v.kind,
                    "variant": None if v is None else {"start": v.start, "end": v.end, "keep": [list(q) for q in v.keep]},
                    "frame": k, "frames": int(len(coords)), "n": int(coords.shape[1]),
-                   "sigma_nm": meta["sigma_nm"], "coords": _f32(x), "mids_first": int(mids[0])}
+                   "sigma_nm": meta["sigma_nm"], "coords": _f32(x), "mids_first": int(mids[0]),
+                   "window": bool(meta.get("window", False))}
     clin = clinical(loc)
     clin["check"] = clinical_check(loc, clin)
     doc = {
@@ -147,7 +153,8 @@ def export(sv_dir: Path, out: Path) -> dict:
                    "bp_per_bead": loc.region.bp_per_bead, "n": loc.region.n},
         "genes": [{"name": g.name, "start": g.start, "end": g.end, "strand": g.strand, "tss": g.tss} for g in loc.genes.values()],
         "ctcf": [{"start": p.start, "end": p.end, "motif": p.motif, "signal": round(p.signal, 1),
-                  "occupancy": None if p.motif is None else round(loc.occupancy(p.signal), 4)} for p in loc.peaks],
+                  "occupancy": None if p.motif is None else round(loc.occupancy(p.signal), 4)}
+                 for p in loc.peaks if p.start < loc.region.end],
         "enhancer": list(loc.enhancer), "boundary": list(loc.boundary), "tad": list(loc.tad),
         "promoter_half": L.PROMOTER_HALF,
         "variants": [{"name": v.name, "kind": v.kind, "start": v.start, "end": v.end, "keep": [list(q) for q in v.keep]}

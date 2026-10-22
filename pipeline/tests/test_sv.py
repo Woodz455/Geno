@@ -130,3 +130,19 @@ def test_occupancy_follows_the_signal_with_floor_and_ceiling():
     loc = _locus()
     assert loc.occupancy(274.0) == 0.95 and loc.occupancy(1_000.0) == 0.95
     assert abs(loc.occupancy(137.0) - 0.475) < 1e-9 and loc.occupancy(1.0) == 0.05
+
+
+def test_constant_window_keeps_the_length_and_pulls_in_downstream_sites():
+    loc = _locus()
+    loc.reach = Region("chr2", 0, 6_000_000, 2_000)
+    loc.peaks.append(L.Peak(4_500_000, 4_500_400, "-", 274.0))   # au-delà de la région
+    v = next(x for x in loc.variants if x.kind == "DEL-B")
+    s0, m0 = loc.sites(None)
+    sw, mw = loc.sites(None, window=True)
+    assert np.array_equal(s0.pos, sw.pos) and np.array_equal(m0, mw)    # le type sauvage ne change pas
+    s1, m1 = loc.sites(v, window=True)
+    assert len(m1) == loc.region.n == loc.allele_region(v, window=True).n
+    k = int(((m0 >= v.start) & (m0 < v.end)).sum())
+    assert m1[-1] == m0[-1] + k * 2_000                                  # la séquence en aval est entrée
+    sn, _ = loc.sites(v)
+    assert s1.k == sn.k + (4_500_000 < m1[-1])                           # avec ses sites

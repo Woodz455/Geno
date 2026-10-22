@@ -31,6 +31,9 @@ from ..fine.region import Region, Sites
 
 CHROM = "chr2"
 REGION = Region(CHROM, 218_000_000, 223_000_000, 2_000)
+# Fenêtre constante (révision, voir `sites`) : une délétion fait entrer la séquence en aval dans
+# la fenêtre simulée ; 2 Mb de marge couvrent la plus longue (1,9 Mb).
+REACH = Region(CHROM, REGION.start, REGION.end + 2_000_000, REGION.bp_per_bead)
 ENHANCER_OFFSET = 1_660_000          # bp, du promoteur d'EPHA4 vers le centromère (texte)
 ENHANCER_SPAN = 30_000               # la grappe des trois enhancers actifs (texte)
 DEL_LENGTHS = (1_750_000, 1_800_000, 1_850_000, 1_900_000)   # « 1.75–1.9 Mb » (texte)
@@ -93,6 +96,7 @@ class Locus:
     boundary: tuple[int, int]                # la grappe CTCF du bord télomérique du TAD d'EPHA4
     tad: tuple[int, int]                     # la boucle de Rao 2014 qui le borne
     variants: list[Variant] = field(default_factory=list)
+    reach: Region | None = None              # la séquence au-delà de la région, pour `window`
 
     # — sites —
     def occupancy(self, signal: float) -> float:
@@ -101,26 +105,41 @@ class Locus:
         celle des pics forts ; un pic faible doit pouvoir laisser passer une cohésine."""
         return float(np.clip(0.95 * signal / self.p90, 0.05, 0.95))
 
-    def sites(self, variant: Variant | None = None, *, constant: float | None = None) -> tuple[Sites, np.ndarray]:
+    def sites(self, variant: Variant | None = None, *, constant: float | None = None,
+              window: bool = False) -> tuple[Sites, np.ndarray]:
         """Les sites orientés de l'allèle — sauvage, ou délété et recollé —, et la position
-        génomique (hg38, milieu) de chaque monomère de cet allèle."""
-        bp = self.region.bp_per_bead
-        mids = self.region.bp(np.arange(self.region.n)).astype(np.int64)
-        keep = np.ones(self.region.n, bool)
+        génomique (hg38, milieu) de chaque monomère de cet allèle.
+
+        `window=False` (le plan pré-enregistré) : l'allèle est la région moins la délétion, une
+        chaîne plus courte. `window=True` (la révision) : l'allèle garde les `region.n` premiers
+        monomères recollés, la délétion faisant entrer la séquence en aval (`reach`) — même
+        longueur, donc même confinement, que le type sauvage. Le confinement est réglé sur la
+        quantité de chromatine : une chaîne plus courte dans une sphère plus petite a un
+        plancher de contacts lointains plus haut (~0,0020 contre ~0,0012 au-delà de 600 kb),
+        qui se confond avec l'effet de la frontière."""
+        base = self.reach if window else self.region
+        if base is None:
+            raise ValueError("window=True demande la séquence au-delà de la région (reach)")
+        bp = base.bp_per_bead
+        mids = base.bp(np.arange(base.n)).astype(np.int64)
+        keep = np.ones(base.n, bool)
         if variant is not None:
             keep &= ~((mids >= variant.start) & (mids < variant.end))
-        index = np.full(self.region.n, -1, np.int64)
+        if window:
+            keep[np.flatnonzero(keep)[self.region.n:]] = False
+        index = np.full(base.n, -1, np.int64)
         index[keep] = np.arange(int(keep.sum()))
         pos, strand, occ = [], [], []
         for p in self.peaks:
             if p.motif is None:
                 continue
-            k = int((p.mid - self.region.start) // bp)
-            if not (0 <= k < self.region.n):
+            k = int((p.mid - base.start) // bp)
+            if not (0 <= k < base.n):
                 continue
             j = index[k]
             if j < 0:
-                kept = variant is not None and any(a <= p.mid < b for a, b in variant.keep)
+                kept = (variant is not None and any(a <= p.mid < b for a, b in variant.keep)
+                        and variant.start <= p.mid < variant.end)
                 if not kept:
                     continue
                 # Site épargné dans la délétion : posé au point de recollement.
@@ -133,9 +152,10 @@ class Locus:
         return (Sites(np.asarray(pos, np.int64)[order], np.asarray(strand, np.int64)[order],
                       np.asarray(occ, float)[order], src), mids[keep])
 
-    def allele_region(self, variant: Variant | None) -> Region:
-        """La région à simuler : contiguë, de la longueur de l'allèle recollé."""
-        n = self.region.n - (0 if variant is None else
+    def allele_region(self, variant: Variant | None, *, window: bool = False) -> Region:
+        """La région à simuler : contiguë, de la longueur de l'allèle recollé (celle du type
+        sauvage avec `window`)."""
+        n = self.region.n - (0 if variant is None or window else
                              int(((self.region.bp(np.arange(self.region.n)) >= variant.start) &
                                   (self.region.bp(np.arange(self.region.n)) < variant.end)).sum()))
         return Region(self.region.chrom, self.region.start, self.region.start + n * self.region.bp_per_bead,
@@ -171,7 +191,7 @@ def build(m=None) -> Locus:
     p90 = float(np.percentile([d["signal"] for d in ct.items], 90))
     peaks = [Peak(int(s), int(e), ct.items[int(i)]["motif"], float(ct.items[int(i)]["signal"]))
              for s, e, i in zip(ct.starts[CHROM], ct.ends[CHROM], ct.idx[CHROM])
-             if REGION.start <= s < REGION.end]
+             if REACH.start <= s < REACH.end]
 
     epha4 = genes["EPHA4"]
     near = [p for p in peaks if p.motif is not None and abs(p.mid - epha4.tss) <= BOUNDARY_WINDOW]
@@ -193,7 +213,7 @@ def build(m=None) -> Locus:
 
     c = epha4.tss - ENHANCER_OFFSET
     enh = (c - ENHANCER_SPAN // 2, c + ENHANCER_SPAN // 2)
-    loc = Locus(REGION, genes, peaks, p90, enh, boundary, tad)
+    loc = Locus(REGION, genes, peaks, p90, enh, boundary, tad, reach=REACH)
     loc.variants = family(loc)
     return loc
 

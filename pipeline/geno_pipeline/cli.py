@@ -1265,7 +1265,7 @@ def cmd_sv(args: argparse.Namespace) -> int:
     if args.action == "run":
         from .sv.run import run
 
-        run(Path(args.dir), args.only.split(",") if args.only else None)
+        run(Path(args.dir), args.only.split(",") if args.only else None, window=args.window)
         return 0
     if args.action == "dump":
         C.dump(Path(args.dump))
@@ -1285,14 +1285,27 @@ def cmd_sv(args: argparse.Namespace) -> int:
               f"ClinVar P/LP {c['equal']['clinvar']}/{c['monomers']}, GWAS {c['equal']['gwas']}/{c['monomers']} "
               f"(témoin décalé : {c['shifted']['clinvar']}, {c['shifted']['gwas']})")
         return 0 if c["equal"]["clinvar"] == c["equal"]["gwas"] == c["monomers"] else 1
-    res = C.check(Path(args.dir), family_seeds=args.seeds)
-    Path(args.report).write_text(_json.dumps(res, ensure_ascii=False, indent=1))
-    for dim in ("3d", "1d"):
-        v = res[f"verdict_{dim}"]
-        print(f"{dim} : sauvage EPHA4/PAX3 {v['wt_ratio']:.2f} · DEL-B/DelBS {v['vs_delbs']:.2f} · "
-              f"DEL-B/frontière épargnée {v['vs_keep']:.2f} · DEL-B/sauvage {v['vs_wt']:.2f} · IHH {v['ihh']:.2f}")
-    for k, ok in res["pass"].items():
-        print(f"  {'PASS' if ok else 'FAIL'}  {k}")
+    def show(res: dict, title: str) -> None:
+        print(title)
+        for dim in ("3d", "1d"):
+            v = res[f"verdict_{dim}"]
+            print(f"{dim} : sauvage EPHA4/PAX3 {v['wt_ratio']:.2f} · DEL-B/DelBS {v['vs_delbs']:.2f} · "
+                  f"DEL-B/frontière épargnée {v['vs_keep']:.2f} · DEL-B/sauvage {v['vs_wt']:.2f} · IHH {v['ihh']:.2f}")
+        for k, ok in res["pass"].items():
+            print(f"  {'PASS' if ok else 'FAIL'}  {k}")
+
+    report = Path(args.report)
+    if args.action == "revised":
+        res = _json.loads(report.read_text())
+    else:
+        res = C.check(Path(args.dir), family_seeds=args.seeds)
+    show(res, "plan pré-enregistré")
+    from .sv.run import path as run_path
+
+    if all(run_path(Path(args.dir), t, window=True).exists() for t in ("delb", "delbs", "delb-keep")):
+        res["revised"] = C.revised(Path(args.dir))
+        show(res["revised"], "plan révisé, fenêtre constante de 5 Mb (seuils inchangés)")
+    report.write_text(_json.dumps(res, ensure_ascii=False, indent=1))
     return 0 if all(res["pass"].values()) else 1
 
 
@@ -1511,9 +1524,11 @@ def main(argv: list[str] | None = None) -> int:
     lk.set_defaults(fn=cmd_linked)
 
     sv = sub.add_parser("sv", help="mode variant structural : le cas EPHA4 de Lupiáñez 2015 (semaine 15)")
-    sv.add_argument("action", choices=["run", "check", "dump", "export", "clinical"])
+    sv.add_argument("action", choices=["run", "check", "revised", "dump", "export", "clinical"])
     sv.add_argument("--dir", default=str(ROOT / "data" / "sv"))
     sv.add_argument("--only", default=None, help="run : allèles, séparés par des virgules (wt, delb, delbs, delb-keep)")
+    sv.add_argument("--window", action="store_true",
+                    help="run : plan révisé, chaque allèle garde 5 Mb (même confinement que le type sauvage)")
     sv.add_argument("--seeds", type=int, default=8, help="check : exécutions 1D par allèle de la famille")
     sv.add_argument("--report", default=str(ROOT / "data" / "sv" / "check.json"))
     sv.add_argument("--dump", default=str(ROOT.parent / "dist" / "variant-test" / "expected.json"))

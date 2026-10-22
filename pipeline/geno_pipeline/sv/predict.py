@@ -88,7 +88,7 @@ def binned(rows_: np.ndarray, k: int = 10) -> np.ndarray:
 
 
 def calibrate(coords: np.ndarray, legs: np.ndarray, *, every: int = 25, frames: int = 300,
-              cutoff: float = 1.5) -> Fit:
+              cutoff: float = 1.5, floor: bool = True, max_sep: int | None = None) -> Fit:
     """Cale `α, d0, c` sur une exécution 3D, par la **déviance de Poisson** sur toutes les paires,
     zéros compris : le contact observé d'une paire est un compte sur les instantanés, et la
     première version — moindres carrés sur le log des seules paires non nulles (20 %) — sélectionnait
@@ -96,7 +96,10 @@ def calibrate(coords: np.ndarray, legs: np.ndarray, *, every: int = 25, frames: 
 
     Contacts observés : tous les instantanés ; distances effectives : `frames` d'entre eux,
     réguliers (la moyenne de la loi n'a pas besoin de plus). Grille grossière, puis Nelder–Mead
-    sur `(α, log d0, log c)`."""
+    sur `(α, log d0, log c)`.
+
+    `floor=False, max_sep` (révision) : sans plancher (`c = 0`), calé sur les seules paires à
+    moins de `max_sep` monomères — là où la sphère de confinement ne décide pas encore."""
     from scipy.optimize import minimize
 
     n = coords.shape[1]
@@ -105,20 +108,27 @@ def calibrate(coords: np.ndarray, legs: np.ndarray, *, every: int = 25, frames: 
     pick = np.linspace(0, len(coords) - 1, min(frames, len(coords))).astype(int)
     d = distances(n, legs[pick], src)                                # (f, s, n)
     sep = np.abs(src[:, None] - np.arange(n)[None, :])
-    ok = sep >= 3
+    ok = (sep >= 3) & (sep < (max_sep or n))
     F = len(coords)
     o = obs[ok]
 
+    def full(x):
+        return x if floor else np.r_[x[:2], -np.inf]
+
     def dev(x) -> float:
+        x = full(x)
         p = np.clip(law(d, x[0], float(np.exp(x[1])), float(np.exp(x[2]))).mean(axis=0)[ok], 1e-12, 1.0)
         with np.errstate(divide="ignore", invalid="ignore"):
             t = np.where(o > 0, o * np.log(o / p), 0.0)
         return float(2 * F * np.sum(t - (o - p)) / o.size)
 
     grid = [(a, np.log(d0), np.log(c)) for a in (1.0, 1.5, 2.0) for d0 in (0.5, 1.0, 2.0) for c in (3e-4, 1e-3, 3e-3)]
+    if not floor:
+        grid = sorted({g[:2] for g in grid})
     x0 = min(grid, key=dev)
     r = minimize(dev, np.array(x0), method="Nelder-Mead", options={"xatol": 1e-3, "fatol": 1e-7, "maxiter": 400})
-    a, d0, c = float(r.x[0]), float(np.exp(r.x[1])), float(np.exp(r.x[2]))
+    x = full(r.x)
+    a, d0, c = float(x[0]), float(np.exp(x[1])), float(np.exp(x[2]))
     p = law(d, a, d0, c).mean(axis=0)
     bo, bp = binned(np.where(ok, obs, np.nan)), binned(np.where(ok, p, np.nan))
     good = np.isfinite(bo) & (bo > 0)
