@@ -5,7 +5,7 @@ LOCK  := $(HERE)/scripts/lock.sh
 PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
 GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine fine-tp53 g3d g3d-bench
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine fine-tp53 g3d g3d-bench fiche linked search
 
 help:
 	@echo "Geno — pipeline de données"
@@ -51,6 +51,7 @@ help:
 	@echo "Fiches (semaine 13)"
 	@echo "  make fiche           écrit data/g3d/gm12878.fiche — une fiche par bille, sources réelles"
 	@echo "  make linked          carte de contacts du modèle (gm12878.contacts) + pistes igv — semaine 14"
+	@echo "  make search          index de recherche : gènes GENCODE, rsID ClinVar et GWAS (gm12878.search) — semaine 16"
 	@echo "                       du manifeste — puis la vérifie (complétude, exactitude, faits)"
 
 data:           ; @TIERS="core annot" $(FETCH)
@@ -78,6 +79,7 @@ g3d:            ; @$(GENO) g3d build $(if $(COMPARTMENTS),--compartments $(COMPA
 g3d-bench:      ; @$(GENO) g3d bench
 fiche:          ; @$(GENO) fiche build && $(GENO) fiche check
 linked:         ; @$(GENO) linked build && $(GENO) linked check
+search:         ; @$(GENO) search build && $(GENO) search check
 fine:           ; @$(GENO) fine $(if $(N),--bp-per-bead $(N),) $(if $(CTCF),--ctcf $(CTCF),)
 # Semaine 12. D'autres graines que la région ACTB : avec les mêmes, le 1D (numpy pur, graines
 # fixes) planterait exactement les mêmes sites aux mêmes rangs, et rendrait les mêmes boucles.

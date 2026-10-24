@@ -1169,6 +1169,34 @@ def cmd_fiche(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_search(args: argparse.Namespace) -> int:
+    """L'index de recherche (semaine 16) : gènes GENCODE, rsID de ClinVar et du GWAS."""
+    import json as _json
+
+    from .fiche import sources as S
+    from .search import build as B
+    from .search import check as K
+
+    out = Path(args.out)
+    if args.action == "build":
+        print("index de recherche")
+        rep = B.build(S.manifest(), out)
+        print(f"  {rep['path']} : {rep['bytes'] / 1e6:.2f} Mo — {rep['genes']:,} gènes, {rep['rs']:,} rsID "
+              f"({rep['rs_rows']:,} positions), blocs {rep['blocks']}")
+        return 0
+    if args.action == "dump":
+        rep = K.dump(out, Path(args.dump))
+        print(f"attendus : {args.dump} — {rep['queries']} requêtes {rep['groups']}")
+        return 0
+    rep = K.check(out, S.manifest(), n=args.n)
+    Path(args.report).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.report).write_text(_json.dumps(rep, ensure_ascii=False, indent=1))
+    ok = (rep["rs_present"]["equal"] == rep["rs_present"]["n"] and rep["rs_present"]["shifted_control"] == 0
+          and rep["rs_absent"]["absent_both"] == rep["rs_absent"]["n"] and rep["genes"]["equal"] == rep["genes"]["n"])
+    print("  " + ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
 def cmd_linked(args: argparse.Namespace) -> int:
     """Les données des vues liées (semaine 14) : carte de contacts du modèle et pistes igv."""
     import json as _json
@@ -1527,6 +1555,14 @@ def main(argv: list[str] | None = None) -> int:
     lk.add_argument("--igv", default=str(ROOT / "data" / "g3d" / "igv"))
     lk.add_argument("--n", type=int, default=200, help="check : pixels recomposés")
     lk.set_defaults(fn=cmd_linked)
+
+    se = sub.add_parser("search", help="index de recherche : gènes, positions, rsID (semaine 16)")
+    se.add_argument("action", choices=["build", "check", "dump"])
+    se.add_argument("--out", default=str(ROOT / "data" / "g3d" / "gm12878.search"))
+    se.add_argument("--n", type=int, default=500, help="check : rsID et gènes recomptés")
+    se.add_argument("--report", default=str(ROOT / "data" / "search-check.json"))
+    se.add_argument("--dump", default=str(ROOT.parent / "dist" / "search-test" / "expected.json"))
+    se.set_defaults(fn=cmd_search)
 
     sv = sub.add_parser("sv", help="mode variant structural : le cas EPHA4 de Lupiáñez 2015 (semaine 15)")
     sv.add_argument("action", choices=["run", "extend", "check", "revised", "dump", "export", "clinical"])
