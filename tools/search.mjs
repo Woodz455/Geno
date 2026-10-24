@@ -151,8 +151,9 @@ try {
       const ms = Date.now() - t0;
       const f = await A.ev("window.__nav.flight()");
       const a = await A.ev("JSON.stringify(window.__nav.arrived())").then(JSON.parse);
-      const flew = (await A.ev("window.__nav.flights().length")) > n0;
-      const both = a && [`${f.hit.chrom}:a`, `${f.hit.chrom}:b`].every((c) => a.copies.includes(c));
+      const flew = (await A.ev("window.__nav.flights().length")) > n0 && f.query === text.trim();
+      // Les deux homologues : a et b, ou Xa et Xi pour le X du modèle 46,XX.
+      const both = a && a.copies.filter((c) => c.startsWith(`${f.hit.chrom}:`)).length === 2;
       const cardOk = a?.card && a.card.level === f.level && a.card.bead === f.bead && f.start <= f.pos && f.pos < f.end;
       const ok = flew && a && a.pixels >= 1 && a.central && both && cardOk;
       arrivals.push({ form, query: text, ok, ms, depth: a?.depth, pixels: a?.pixels, central: a?.central, copies: a?.copies,

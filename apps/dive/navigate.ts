@@ -1,7 +1,7 @@
 /** Semaine 16 : où va la caméra pour une cible de recherche, et ce qu'elle y montre.
  *
- *  Partout, la **bille du noyau** (750 kb) qui porte la cible, sur la copie `a` — la copie
- *  maternelle par convention du modèle, l'autre homologue reste surligné ailleurs. Dans la région
+ *  Partout, la **bille du noyau** (750 kb) qui porte la cible, sur la copie `a` (l'X actif, `Xa`,
+ *  pour le chromosome X du modèle 46,XX) ; l'autre homologue reste surligné ailleurs. Dans la région
  *  fine chargée (TP53 par défaut), plus bas : le monomère de 2 kb, et la paire de bases si elle
  *  est dans la fenêtre où l'hélice se dessine. La profondeur atteinte est rendue, et dite.
  */
@@ -36,6 +36,9 @@ export interface Destination {
 /** Le champ d'une bille : celui de l'arrivée de la semaine 10. */
 const BEAD_FIELD = 2.6;
 const FIBRE_FIELD = 0.6;
+/** Hors de la fenêtre isolée, la fibre s'efface sous 1,4 µm de champ (`SCHEDULE.loopUm`) : on
+ *  s'arrête là où elle est encore entière. */
+const FIBRE_FIELD_OUTSIDE = 1.5;
 const BASE_FIELD = 0.004;
 
 export async function destination(scene: DiveScene, t: Target, from: Orbit): Promise<Destination | null> {
@@ -55,13 +58,14 @@ export async function destination(scene: DiveScene, t: Target, from: Orbit): Pro
                centre: orbit.target as [number, number, number] };
     }
     const c: [number, number, number] = [F.points[3 * k], F.points[3 * k + 1], F.points[3 * k + 2]];
-    return { orbit: { target: c, yaw: from.yaw, pitch: from.pitch, distance: distanceFor(FIBRE_FIELD, FOV) },
+    return { orbit: { target: c, yaw: from.yaw, pitch: from.pitch, distance: distanceFor(inWindow ? FIBRE_FIELD : FIBRE_FIELD_OUTSIDE, FOV) },
              depth: "fibre", level: R.level, bead, copy: R.copy, start: info.start, end: info.end, centre: c };
   }
   const lay = scene.fine;
   if (!lay) return null;
-  const copy = `${t.chrom}:a`;
-  const span = (await scene.g3d.locate(lay.name, t.chrom, t.start, Math.max(t.end, t.start + 1))).find((h) => h.copy === copy);
+  const hits = await scene.g3d.locate(lay.name, t.chrom, t.start, Math.max(t.end, t.start + 1));
+  const copy = [`${t.chrom}:a`, `${t.chrom}:Xa`].find((c) => hits.some((h) => h.copy === c)) ?? hits[0]?.copy;
+  const span = hits.find((h) => h.copy === copy);
   const at = (await scene.g3d.locate(lay.name, t.chrom, t.pos, t.pos + 1)).find((h) => h.copy === copy);
   if (!span?.ids.length || !at?.ids.length) return null;
   const P = lay.frame.positions;

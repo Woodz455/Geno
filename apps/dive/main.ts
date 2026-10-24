@@ -88,6 +88,11 @@ document.body.appendChild(canvas);
 const overlay = document.createElement("canvas");
 overlay.id = "overlay";
 document.body.appendChild(overlay);
+// Semaine 16 : la surimpression est rastérisée par le processeur dès le départ. Chrome bascule
+// sinon un canevas 2D du GPU au processeur après la première relecture de ses pixels, et ses
+// arcs et ses lettres ne se dessinent plus au même pixel près : une vue relue depuis son URL
+// différait de l'originale pour cette seule raison (8 vues sur 30).
+overlay.getContext("2d", { willReadFrequently: true });
 
 function fit(): [number, number] {
   if (BENCH || VIEW || STREAM || RECORD) {
