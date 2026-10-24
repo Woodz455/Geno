@@ -60,7 +60,9 @@ def gene_rows(m) -> list[list]:
                 raise ValueError(f"nom de gène non ASCII : {name!r} — la comparaison TS ne serait plus la même")
             base = [g["name"], g["id"], chrom, int(g["start"]), int(g["end"]), g["strand"], g["type"]]
             rows.append([name.upper(), *base])
-            rows.append([g["id"].upper(), *base])
+            # Un gène sans nom (GENCODE lui donne son ENSG) n'a qu'une clé, pas deux identiques.
+            if g["id"].upper() != name.upper():
+                rows.append([g["id"].upper(), *base])
     rows.sort(key=lambda r: (r[0], r[3], r[4], r[2]))
     return rows
 
@@ -158,7 +160,8 @@ def build(m, out: Path, log=print) -> dict:
         return spec
 
     genes = gene_rows(m)
-    log(f"  gènes : {len(genes) // 2:,} lignes GENCODE, {len(genes):,} clés")
+    n_genes = len({(r[2], r[3], r[4], r[5]) for r in genes})
+    log(f"  gènes : {n_genes:,} lignes GENCODE, {len(genes):,} clés")
     gblocks = []
     for k in range(0, len(genes), GENE_BLOCK):
         part = genes[k:k + GENE_BLOCK]
@@ -210,7 +213,7 @@ def build(m, out: Path, log=print) -> dict:
         for b in blobs:
             f.write(b)
     return {"path": str(out), "bytes": PREAMBLE + len(hbytes) + offset, "header": len(hbytes),
-            "genes": len(genes) // 2, "rs": n_rs, "rs_rows": int(len(rs)),
+            "genes": n_genes, "rs": n_rs, "rs_rows": int(len(rs)),
             "blocks": {"genes": len(gblocks), "rs": len(rblocks)}}
 
 

@@ -913,7 +913,10 @@ async function main(): Promise<void> {
         }
         const [x, y] = scene.project(f.centre);
         const hl = scene.highlight(selRegions);
-        return { pixels: px, x, y, W, H, central: x >= W / 3 && x <= (2 * W) / 3 && y >= H / 3 && y <= (2 * H) / 3,
+        // Ce qui est sous le centre projeté : la cible, ou ce qui la couvre.
+        const cx = Math.round(x), cy = Math.round(y);
+        const centreId = cx >= 0 && cx < W && cy >= 0 && cy < H ? ids[(H - 1 - cy) * W + cx] : -1;
+        return { pixels: px, x, y, W, H, centreId, central: x >= W / 3 && x <= (2 * W) / 3 && y >= H / 3 && y <= (2 * H) / 3,
                  copies: hl.copies, card: cardState, depth: f.depth, widthUm: scene.last.widthUm };
       },
       async snapshot() {

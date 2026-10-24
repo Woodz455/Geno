@@ -8,6 +8,7 @@
 
 import { distanceFor, type Orbit } from "@geno/viewer";
 import { type DiveScene, FOV, sideOrbit } from "./dive.js";
+import { IDS } from "./fiber.js";
 
 export type Depth = "bille" | "fibre" | "base";
 
@@ -58,7 +59,8 @@ export async function destination(scene: DiveScene, t: Target, from: Orbit): Pro
                centre: orbit.target as [number, number, number] };
     }
     const c: [number, number, number] = [F.points[3 * k], F.points[3 * k + 1], F.points[3 * k + 2]];
-    return { orbit: { target: c, yaw: from.yaw, pitch: from.pitch, distance: distanceFor(inWindow ? FIBRE_FIELD : FIBRE_FIELD_OUTSIDE, FOV) },
+    const near: Orbit = { target: c, yaw: from.yaw, pitch: from.pitch, distance: distanceFor(inWindow ? FIBRE_FIELD : FIBRE_FIELD_OUTSIDE, FOV) };
+    return { orbit: unobstructed(scene, near, IDS.fiber + k + 1),
              depth: "fibre", level: R.level, bead, copy: R.copy, start: info.start, end: info.end, centre: c };
   }
   const lay = scene.fine;
@@ -78,6 +80,30 @@ export async function destination(scene: DiveScene, t: Target, from: Orbit): Pro
   const info = await scene.g3d.identify(lay.name, bead);
   return { orbit: { target: c, yaw: from.yaw, pitch: from.pitch, distance: distanceFor(field, FOV) },
            depth: "bille", level: lay.name, bead, copy, start: info.start, end: info.end, centre: c };
+}
+
+/** À l'échelle de la fibre, la pelote se cache à elle-même : un autre tronçon passe souvent devant
+ *  le monomère visé (chr17:8,16 Mb : le monomère 1 190, à 112 kb, couvrait le 1 246). On garde
+ *  l'orientation d'arrivée si la cible s'y voit assez ; sinon, parmi douze autour d'elle, celle
+ *  où elle couvre le plus de pixels — rendues hors de la vue de l'utilisateur, avant le vol. */
+function unobstructed(scene: DiveScene, o: Orbit, id: number): Orbit {
+  const count = (q: Orbit) => {
+    scene.render(q);
+    let n = 0;
+    for (const v of scene.ids()) if (v === id) n++;
+    return n;
+  };
+  let best = o;
+  let most = count(o);
+  if (most >= 50) return o;
+  for (const dp of [0, -0.6, 0.6]) {
+    for (let j = 0; j < 4; j++) {
+      const q = { ...o, yaw: o.yaw + (j * Math.PI) / 2 + (dp ? Math.PI / 4 : 0), pitch: Math.max(-1.2, Math.min(1.2, o.pitch + dp)) };
+      const n = count(q);
+      if (n > most) [best, most] = [q, n];
+    }
+  }
+  return best;
 }
 
 /** La profondeur, dite à l'écran. */
