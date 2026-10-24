@@ -364,6 +364,20 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
 - Signets, URL partageables encodant caméra + sélection.
 - **Fait quand** : les trois formes de requête amènent la caméra au bon endroit, et l'URL
   rejoue la vue à l'identique.
+- **Fait.** Un champ de recherche dans la plongée : un gène (GENCODE v50, nom ou ENSG), une
+  position hg38 (`chr17:43,044,295`, intervalles), un rsID (ClinVar et catalogue GWAS — **pas**
+  dbSNP, décision de l'utilisateur). Index `gm12878.search` (21,9 Mo, 78 733 gènes, 3 062 314 rsID,
+  un bloc par requête Range), recompté depuis les fichiers bruts (501/501 rsID, 503/503 gènes) et
+  relu au bit près par TypeScript (645/645). Le vol se pose sur la bille de 750 kb de la copie `a`
+  (l'Xa pour le X), les deux homologues surlignés, la fiche ouverte ; dans la région fine chargée,
+  sur le monomère ou la paire de bases. La vue vit dans le fragment de l'URL (orbite au bit près,
+  sélection, surimpression, fiche) ; signets dans le navigateur. Mesuré par de vrais gestes :
+  **645/645** résolutions égales à Python, témoins compris ; **90/90** requêtes tapées amènent la
+  cible au centre de l'image, fiche juste ; **30/30** vues rejouées dans un onglet neuf **au pixel
+  près** (le lacet décalé de 10⁻³ rad change 37 000 à 67 000 pixels) ; 5/5 signets. Six défauts
+  trouvés et corrigés en route (chrX nommé Xa/Xi, la fibre effacée hors de la fenêtre, la pelote
+  qui cache le monomère visé, la surimpression 2D rastérisée autrement après sa première relecture,
+  des clés de gènes en double, la grammaire des rsID longs) ([`VALIDATION.md` § S16](VALIDATION.md)).
 
 ---
 

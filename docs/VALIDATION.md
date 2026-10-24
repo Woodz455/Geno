@@ -9,6 +9,145 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S16 — Trois formes de requête, 90/90 vols au bon endroit ; l'URL rejoue 30 vues sur 30 au pixel près
+
+### Le critère, traduit
+
+**Fait quand : les trois formes de requête amènent la caméra au bon endroit, et l'URL rejoue la
+vue à l'identique.** Deux décisions de l'utilisateur, prises avant d'écrire une ligne :
+
+- **la profondeur** — partout, le vol s'arrête sur la **bille de 750 kb** du noyau qui porte la
+  cible ; il ne descend à la fibre ou à la paire de bases que **dans la région fine chargée**
+  (TP53, chr17:5,67–9,67 Mb, par défaut). La page dit la profondeur atteinte. Aucune simulation
+  nouvelle ;
+- **les rsID** — un index construit depuis ClinVar et le catalogue GWAS déjà verrouillés, **pas
+  dbSNP** ; la page le dit pour un rsID qu'elle ne connaît pas.
+
+Puis, fixé avant de mesurer (`node tools/search.mjs`, page `dive.html?nav`, 1 280 × 760,
+SwiftShader, de vrais événements CDP) :
+
+1. **Résolution exacte** : 645 requêtes tirées par `geno search dump` — 200 gènes (dont BRCA1, des
+   minuscules, des ENSG), 200 positions (dont chr17:43,044,295, quatre écritures, des
+   intervalles), 200 rsID (dont rs334) ; et leurs témoins : 20 rsID absents, 20 requêtes mal
+   formées, 5 hors du modèle ou hors bornes. La page rend la cible de Python, **645/645** ; les
+   témoins ne volent pas et le disent.
+2. **La caméra au bon endroit** : 30 requêtes **tapées** par forme (clic dans le champ, touches,
+   Entrée), les trois de la feuille de route comprises. À la fin du vol : la cible — bille, ou
+   monomère, ou paire de bases — est lue dans le tampon d'identifiants (≥ 1 pixel), son centre
+   projeté est dans le tiers central de l'image, les deux homologues sont surlignés, la fiche
+   ouverte est celle de la bille (ou du monomère) qui porte la position. **90/90.**
+3. **L'URL rejoue la vue à l'identique** : 30 vues — après une recherche, une orbite (glisser),
+   un zoom (molette), une surimpression, un clic sur une bille — relues dans un **onglet neuf** :
+   état égal au bit près (orbite, sélection, surimpression, fiche, repère), texte de la fiche
+   égal, image **égale au pixel près**, WebGL et surimpression 2D. **30/30.** Témoin : le lacet
+   décalé de 10⁻³ rad doit changer l'image. Signets : 5 enregistrés, page rechargée, liste
+   rendue, chacun rejoue sa vue.
+
+### L'index : `gm12878.search`
+
+`make search` (`geno search build && geno search check`) écrit l'index que la page interroge :
+**78 733 gènes** GENCODE v50 (nom en majuscules et ENSG, une clé seule pour un gène sans nom) et
+**3 062 314 rsID** — ClinVar, toutes classes (2 896 577 lignes porteuses d'un `RS`), et le
+catalogue GWAS (985 569 associations placées dont SNPS est un seul rsID) —, 3 062 763 positions.
+Format `geno-search/1`, du moule de `.contacts` : préambule, en-tête JSON signé, puis deux tables
+triées par clé en blocs deflate signés, un bloc par requête Range. **21,9 Mo**, 120 blocs de gènes,
+749 de rsID. La grammaire (`query.py`, `parseQuery` en TypeScript) lit ce que tout le monde tape —
+1-based, bornes incluses, avec ou sans `chr`, séparateurs de milliers ignorés — et rend du 0-based
+demi-ouvert.
+
+| | Résultat | Témoin |
+|---|---|---|
+| 501 rsID présents (dont rs334), recomptés par une expression régulière sur le VCF et le TSV bruts | **501/501** positions égales | décalées d'une base : 0/501 |
+| 500 numéros absents de l'index | **500/500** absents des fichiers bruts aussi | — |
+| 503 clés de gènes (dont BRCA1, TP53, HBB), recomptées sur le GTF brut | **503/503** | — |
+| lecture croisée Python → TypeScript, 645 requêtes | **645/645** résolutions identiques | un octet corrompu : bloc refusé |
+
+rs334 → chr11:5,227,002 (HBB ; ClinVar et GWAS) ; BRCA1 → chr17:43,044,292–43,170,245 (le gène
+GENCODE v50, transcrits étendus compris).
+
+### La page
+
+Un champ de recherche dans le HUD de la plongée. La cible est surlignée sur les deux homologues
+(la sélection de la semaine 14), la caméra vole (chemin de van Wijk–Nuij de la semaine 10) vers la
+bille de la copie `a` (l'X actif, `Xa`, pour le X du modèle 46,XX) en gardant son orientation, et
+la fiche de la semaine 13 s'ouvre. Un gène : la bille de son TSS, le champ assez large pour toutes
+ses billes. Plusieurs loci (homonymes, rsID placé deux fois) : le premier, les autres au choix.
+Dans la région fine : le monomère de 2 kb, et la paire de bases vue de côté si elle est dans la
+fenêtre où l'hélice se dessine (`sideOrbit`, partagée avec la plongée).
+
+La vue vit dans le fragment de l'URL (`#v=1&o=…`), mis à jour au repos par `replaceState` :
+l'orbite en nombres JavaScript écrits par `String(x)` — la plus courte écriture qui se relit **au
+bit près** —, la sélection, la surimpression, la fiche ouverte (niveau, bille, base, et ce que le
+clic en disait), le repère du point cliqué. Les signets (nom + fragment) restent dans ce
+navigateur (`localStorage`).
+
+### Mesuré
+
+| | Résultat | Critère |
+|---|---|---|
+| 1 · résolution | **645/645** égales à Python (gènes 200/200, positions 200/200, rsID 200/200, témoins 45/45) ; p50 2 ms, p95 20 ms | 645/645 |
+| témoins | 45/45 sans vol, chacun avec son message : rsID absent de ClinVar et du GWAS, requête illisible, gène inconnu de GENCODE, chrY et chrM hors du modèle (46,XX), chromosome inconnu, au-delà de la fin du chromosome | — |
+| 2 · la caméra | **90/90** (gènes 30/30, positions 30/30, rsID 30/30) ; 88 billes, 1 monomère, 1 paire de bases ; au moins 320 pixels de cible | 90/90 |
+| requête tapée → fin du vol | p50 2 374 ms, p95 3 029 ms (le vol seul : p50 2,0 s) | — |
+| 3 · l'URL | **30/30** vues rejouées dans un onglet neuf : état, fiche, image WebGL et surimpression égales | 30/30 |
+| témoin, lacet + 10⁻³ rad | 37 478 à 66 510 pixels changés sur 972 800 | > 0 |
+| signets | 5 rendus après rechargement, **5/5** rejoués à l'identique | 5/5 |
+
+### Six défauts trouvés en route, chacun corrigé avant la mesure qui passe
+
+La première mesure complète donnait **85/90** et **22/30**.
+
+- **chrX** : le modèle nomme ses deux X `Xa` et `Xi`, pas `a` et `b` ; la caméra cherchait
+  `chrX:a`, ne trouvait rien, et ne volait pas (3 échecs sur 5 : DOCK11, X:93735936, rs758719615).
+- **La fibre hors de la fenêtre** : sous 1,4 µm de champ, l'isolement de la semaine 11 efface la
+  fibre hors de la boucle visée ; le monomère visé à 0,6 µm était donc invisible. Hors de la
+  fenêtre, le vol s'arrête à 1,5 µm, où elle est entière (chr17:9,000,000 : 0 pixel, puis 320).
+- **La pelote se cache à elle-même** : à 1,5 µm, un autre tronçon de la fibre passait devant le
+  monomère visé (chr17:8,16 Mb : le monomère 1 190, à 112 kb, couvrait le 1 246 ; 0 pixel). À
+  l'échelle de la fibre, la page essaie désormais douze orientations autour de la cible, avant le
+  vol, et garde celle où elle couvre le plus de pixels (73 pour ce cas).
+- **La surimpression 2D** : 8 vues sur 30 différaient d'un onglet neuf **par leurs seules lettres
+  ou leur repère**, l'image WebGL étant égale. Chrome bascule un canevas 2D du GPU au processeur
+  après la première relecture de ses pixels ; dans l'onglet d'origine, déjà relu, les arcs et les
+  lettres ne tombaient plus au même pixel. Le canevas est créé rastérisé par le processeur
+  (`willReadFrequently`) : la relecture est exacte.
+- **Les gènes sans nom** : GENCODE leur donne leur ENSG pour nom ; l'index posait deux clés
+  identiques, et la recherche rendait deux fois la même cible. Une clé.
+- **La grammaire** : « rs » suivi de plus de dix chiffres était lu comme un nom de gène ; une
+  requête sans cible remplaçait la requête de la vue dans l'URL.
+
+**Ce que la mesure finale ne couvre pas.** Corriger les clés a changé le tirage des 30 gènes :
+le cas du monomère caché n'est plus parmi les 90, et la mesure finale n'a que deux vols sous la
+bille. Vérifié à part, par la même instrumentation (sans frappe) : ENSG00000263620 et douze
+positions réparties sur la région fine — **13/13** cibles vues au centre, 21 à 414 pixels pour la
+fibre, plus de 20 000 pour les deux paires de bases.
+
+### Ce que ça ne dit pas
+
+- **Pas dbSNP** : 3 062 314 rsID, ceux qu'annotent ClinVar ou le GWAS — une fraction de dbSNP. Un
+  rsID fréquent sans association ni variant clinique n'est pas trouvé, et la page le dit.
+- **La profondeur** : 88 vols sur 90 s'arrêtent sur une bille de 750 kb, la seule échelle que le
+  modèle a partout. Seule la région fine **chargée** descend plus bas : ACTB demande
+  `?target=actb`.
+- **Le bon endroit est celui du modèle** : la bille est où le modèle simulé la place ; « au bon
+  endroit » veut dire sur la bonne bille, pas à la bonne place dans un noyau réel.
+- **L'identité au pixel** vaut à rendu et taille de fenêtre égaux : même navigateur, même
+  SwiftShader, 1 280 × 760. Sur un autre GPU, la même URL donne la même vue, pas forcément les
+  mêmes octets.
+- **L'orientation** du vol est celle de la vue de départ : la même requête depuis deux vues
+  donne deux arrivées. C'est l'URL, pas la requête, qui fixe la vue.
+- **Signets** : dans ce navigateur seulement.
+
+### Reproduire
+
+```console
+$ cd pipeline && make search          # index + recomptage depuis les fichiers bruts
+$ cd .. && node tools/test-search.mjs # lecture croisée Python → TypeScript
+$ node tools/build.mjs && node tools/search.mjs
+```
+
+---
+
 ## S15 — Le cas EPHA4 n'est pas rejoué : le modèle n'isole pas un TAD de 1,8 Mb
 
 **Verdict : non fait.** La page `variant.html` existe — préréglages, délétions tracées à la main,

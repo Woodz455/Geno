@@ -471,6 +471,43 @@ valeur par bille (une teinte, du clair au foncé ; gris sans donnée) : P/LP Cli
 GWAS, LOEUF gnomAD minimal des gènes de la bille, lus dans le fichier de fiches de la semaine 13.
 La surbrillance de sélection se pose par-dessus (`painted ?? colors`).
 
+## 7 ter. Recherche et vue dans l'URL
+
+Semaine 16 : un champ dans la plongée (`apps/dive/main.ts`), trois modules :
+
+```
+  « BRCA1 » · « chr17:43,044,295 » · « rs334 »
+      │  parseQuery (packages/g3d/src/search.ts ≡ pipeline/geno_pipeline/search/query.py)
+      ▼
+  SearchIndex.resolve ── gm12878.search : en-tête (répertoire des blocs), un bloc par Range
+      │  cibles hg38 0-based, marquées hors du modèle (chrY, chrM)
+      ▼
+  scene.highlight (S14) · destination (navigate.ts) · dive() (S10) · fiche (S13)
+      │
+      ▼
+  url.ts : #v=1&o=…&s=…&q=…&l=…&c=…&w=…&p=…&m=…  ── replaceState au repos, relu au chargement
+```
+
+**L'index** (`geno-search/1`, `pipeline/geno_pipeline/search/build.py`) : deux tables triées par
+clé — gènes (nom en majuscules, ENSG ; lignes JSON) et rsID (colonnes binaires : Δrs u32, chrom
+u8, pos u32, sources u8) — en blocs deflate signés (sha256 tronqué), comme les tuiles de
+`.contacts`. Une clé de gène peut déborder sur plusieurs blocs : la lecture part du dernier bloc
+qui commence avant elle. Un rsID ne chevauche jamais deux blocs ; un bloc s'arrête avant qu'un
+écart à son premier rsID dépasse 2³² (le GWAS a quelques numéros au-delà).
+
+**La destination** (`navigate.ts`) : hors de la région fine, la bille du niveau `noyau` qui porte
+la base visée (TSS d'un gène), sur la copie `a` (`Xa` pour le X), champ de 2,6 µm ou assez pour
+toutes les billes du gène, orientation de la vue de départ gardée. Dans la région fine chargée :
+la paire de bases vue de côté (`sideOrbit`, la même que l'arrêt final de la plongée) si le
+monomère est dans la fenêtre de la boucle, sinon le monomère — à 0,6 µm dans la fenêtre, à 1,5 µm
+hors d'elle (l'isolement efface la fibre en dessous) ; à cette échelle, la page rend douze
+orientations avant le vol et garde celle où la cible couvre le plus de pixels.
+
+**L'URL** porte ce qui décide de l'image et rien d'autre ; `?target=` (la région fine chargée)
+reste dans la requête. L'orbite s'écrit par `String(x)`, qui se relit au bit près. La surimpression
+2D est créée rastérisée par le processeur (`willReadFrequently`) : sinon Chrome la bascule après
+la première relecture de ses pixels, et une vue relue différait de l'originale par ses lettres.
+
 ---
 
 ## 8. Socle 1D — index d'intervalles et mesures

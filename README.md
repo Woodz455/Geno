@@ -9,7 +9,7 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–3, semaine 15 (non faite).** Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–3, semaine 16** (la 15 non faite). Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
@@ -167,6 +167,13 @@ n'isole pas ce TAD de 1,8 Mb : dès qu'on lui donne assez de réplicats pour en 
 touche PAX3 autant qu'EPHA4, et il n'y a pas d'isolement à supprimer. Les surimpressions ClinVar,
 GWAS et gnomAD, elles, sont exactes au bille près
 ([`docs/VALIDATION.md` § S15](docs/VALIDATION.md)).
+
+Et on y **cherche** : « BRCA1 », « chr17:43,044,295 », « rs334 » — la caméra vole jusqu'à la
+bille qui porte la cible, les deux homologues surlignés, la fiche ouverte, et jusqu'à la paire de
+bases dans la région fine de TP53. L'URL porte la vue : relue dans un onglet neuf, elle redonne la
+même image au pixel près, 30 vues sur 30 ; 90 requêtes tapées sur 90 posent la caméra au bon
+endroit. Les rsID viennent de ClinVar et du GWAS, pas de tout dbSNP, et la page le dit
+([`docs/VALIDATION.md` § S16](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et

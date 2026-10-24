@@ -103,10 +103,18 @@ sont longs à calculer — ~13 min pour 8 réplicats d'un allèle de 2 500 monom
 limitée en durée peut s'arrêter sans rien perdre. `data/sv/` (≈ 100 Mo par allèle à 24
 réplicats) reste hors du dépôt ; seul `data/g3d/epha4.variant.json` (159 ko) sert la page.
 
+## Recherche (semaine 16)
+
+Aucune dépendance nouvelle. `make search` lit ClinVar, le catalogue GWAS et GENCODE (déjà
+verrouillés) et écrit `data/g3d/gm12878.search` (21,9 Mo) en une demi-minute, puis le recompte
+depuis les fichiers bruts (une minute). La page le lit par plages, à côté du `.g3d`
+(`?search=` pour un autre fichier). `node tools/search.mjs` mesure la recherche et l'URL ; il
+ouvre une trentaine d'onglets successifs et prend une vingtaine de minutes sous SwiftShader.
+
 ## Vérifier
 
 ```console
-$ make test            # 291 tests (… + 23 fiche, + 1 parseurs, + 7 vues liées, + 8 variant structural)
+$ make test            # 301 tests (… + 1 parseurs, + 7 vues liées, + 8 variant structural, + 10 recherche)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

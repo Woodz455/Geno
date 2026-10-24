@@ -232,6 +232,22 @@ vient (`data/g3d/igv/index.json`, champ `provenance`) :
 `unverified` : plusieurs dizaines de Go, jamais téléchargé, donc jamais verrouillé ; le `.mcool` de
 4DN est `unresolved`. Les montrer est le rattrapage S1–S8, pas la semaine 14.
 
+## 8 quinquies. Semaine 16 : aucune source nouvelle, un index dérivé
+
+`gm12878.search` est **écrit** par `make search` depuis ce qui est déjà verrouillé, et porte
+l'empreinte de chaque source dans son en-tête (`provenance`) :
+
+| Table | Vient de | Ce qui en est gardé |
+|---|---|---|
+| gènes | `gencode.annotation.gtf` (v50), toutes les lignes `gene` | nom, ENSG, chrom, début, fin, brin, biotype |
+| rsID | `clinvar.vcf` (champ `RS`, toutes classes) | rsID, chrom, POS − 1 |
+| rsID | `gwas.catalog` (SNPS = un seul rsID, position GRCh38 du catalogue) | rsID, chrom, CHR_POS − 1 |
+| bornes | `hg38.chrom.sizes`, chromosomes primaires | validation des positions |
+
+**Pas dbSNP**, par décision de l'utilisateur : un rsID sans variant ClinVar ni association GWAS
+n'est pas dans l'index, et la page le dit. Ajouter dbSNP serait une source nouvelle (des dizaines
+de Go) à verrouiller.
+
 ## 8 quater. Semaine 15 : une source lue, pas téléchargée
 
 Aucune entrée nouvelle au manifeste. Le locus EPHA4 se construit depuis ce qui est déjà verrouillé
