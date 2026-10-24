@@ -1,0 +1,64 @@
+{
+ "rs_present": {
+  "n": 501,
+  "equal": 501,
+  "shifted_control": 0,
+  "mismatch": []
+ },
+ "rs_absent": {
+  "n": 500,
+  "absent_both": 500
+ },
+ "genes": {
+  "n": 503,
+  "equal": 503
+ },
+ "named": {
+  "rs334": {
+   "kind": "rs",
+   "hits": [
+    {
+     "label": "rs334",
+     "chrom": "chr11",
+     "start": 5227001,
+     "end": 5227002,
+     "sources": [
+      "clinvar",
+      "gwas"
+     ],
+     "in_model": true
+    }
+   ],
+   "error": ""
+  },
+  "BRCA1": {
+   "kind": "gene",
+   "hits": [
+    {
+     "label": "BRCA1",
+     "id": "ENSG00000012048",
+     "chrom": "chr17",
+     "start": 43044291,
+     "end": 43170245,
+     "strand": "-",
+     "type": "protein_coding",
+     "in_model": true
+    }
+   ],
+   "error": ""
+  },
+  "chr17:43,044,295": {
+   "kind": "position",
+   "hits": [
+    {
+     "label": "chr17:43,044,295",
+     "chrom": "chr17",
+     "start": 43044294,
+     "end": 43044295,
+     "in_model": true
+    }
+   ],
+   "error": ""
+  }
+ }
+}

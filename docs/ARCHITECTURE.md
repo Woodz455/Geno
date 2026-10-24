@@ -1,0 +1,792 @@
+# Geno — Architecture technique
+
+Décisions arrêtées avant le code. Ce document est révisé en semaine 4, après le spike de
+rendu, puis figé.
+
+---
+
+## 1. Structure du dépôt
+
+```
+geno/
+├── pipeline/              # Python — données → structures 3D
+│   ├── rules/             # Snakemake
+│   ├── geno_pipeline/
+│   │   ├── hic/           # cooler, cooltools : balancing, eigs, insulation, boucles
+│   │   ├── recon/         # contact→distance, recuit, ensembles
+│   │   ├── polymer/       # polychrom / OpenMM : extrusion de boucles
+│   │   └── export/        # écriture .g3d
+│   └── envs/              # conteneurs
+├── packages/
+│   ├── core/              # TS — modèle de données, index génomique, mapping coord↔3D
+│   ├── g3d/               # TS — lecture du format, streaming, octree
+│   ├── viewer/            # TS — moteur Three.js, LOD, picking GPU
+│   └── annotate/          # TS — requêtes d'annotation (prévu ; la fiche est dans apps/dive/fiche.ts
+│                          #      et packages/g3d/src/fiche.ts depuis la semaine 13)
+├── apps/
+│   └── web/               # l'application, les deux modes
+└── docs/
+```
+
+Monorepo pnpm. Le pipeline Python et le front TypeScript ne se parlent que par le format
+`.g3d` et des fichiers d'annotation indexés — jamais par un couplage de code.
+
+---
+
+## 2. Les deux modes : un noyau, deux coquilles
+
+Le mode Découverte **est** le mode Recherche, avec un préréglage curaté et une couche
+narrative par-dessus. Pas de fork, pas de duplication.
+
+```
+packages/viewer  ─┐
+packages/core    ─┼─→  apps/web  ─┬─→ /recherche   (feature flags : import, params, export, ensemble)
+packages/annotate ┘               └─→ /decouverte  (preset figé + narration + glossaire)
+```
+
+Un contexte `GenoMode` porte les flags. Règle : **aucun `if (mode === ...)` dans
+`packages/*`.** Le branchement vit uniquement dans `apps/web`. Si un package a besoin de
+connaître le mode, c'est que l'abstraction est fausse.
+
+---
+
+## 3. Format `.g3d`
+
+Binaire, multi-résolution, **disposé pour la requête HTTP Range**. Un fichier = le médoïde d'un
+ensemble pour une lignée et un assemblage, à plusieurs résolutions. Écrit par
+`pipeline/geno_pipeline/export/g3d.py`, relu par `packages/g3d` ; les deux sont tenus
+d'accord par une lecture croisée sur un fichier commun (`node tools/test-g3d.mjs`).
+
+```
+┌─ préambule, 64 o ────────────────────────────────────────────────────────────┐
+│  signature \x89G3D\r\n\x1a\n · version u32 · longueur de l'en-tête u32         │
+│  fin du premier rendu u32 (octet absolu) · réservé u32 · sha256 de l'en-tête  │
+├─ en-tête : JSON compressé deflate-raw ───────────────────────────────────────┤
+│  assembly, cell_type, karyotype, provenance {pipeline, sources[] + sha256},   │
+│  warnings[], first (niveau du premier rendu), levels[] :                      │
+│    name, bp_per_bead, n_beads, evidence, copies[], radius_nm[],               │
+│    frame {transform 4×4 vers le noyau, fit {méthode, ancres, RMSD, échelle}}, │
+│    quant {origin, step, max_error_nm, rule}, variability {kind, step, …},    │
+│    chunks[] {first, n, bbox, sphere, columns{nom → offset, length, dtype,     │
+│              planes, filters[], sha256}},  index {copy_offsets, columns},     │
+│    attributes {nom → origin, step, missing, max_error, kind, source, …}       │
+│    links {n, kinds[], weight, columns},  targets[] {gène, position, brin, …}  │
+│  sequences[] {assembly, chrom, start, end, chunk_bp, n_runs, hashes, source}  │
+├─ colonnes du premier rendu du niveau `first`, tous chunks, contiguës ────────┤
+│  copy u8 · position u16 × 3 plans                                           │
+├─ le reste : colonnes paresseuses, index, autres niveaux ─────────────────────┤
+│  variability u16 · start u32 · end u32 · attr.<nom> u16 · index u32 × 3     │
+├─ séquence de référence (semaine 12), à la fin ──────────────────────────────┤
+│  par intervalle : table d'empreintes (16 o par bloc) · blocs de 2 bits/base  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Tout préfixe est utile.** Le préambule dit où finit le premier rendu ; si le client lit ce
+préfixe en une requête, il a de quoi dessiner sans aller-retour de plus. S'il a lu trop court,
+la requête qui complète l'en-tête va **jusqu'à la fin du premier rendu** — deux requêtes au
+plus, jamais trois. C'est la seule disposition compatible avec un réseau où chaque requête coûte
+une demi-seconde.
+
+**Positions quantifiées sur 16 bits, au pas que l'incertitude autorise.** L'erreur maximale
+admise vaut **1 % de l'incertitude médiane du niveau** — 2,8 nm pour le noyau, dont la
+profondeur varie de 280 nm d'un tirage à l'autre ([`VALIDATION.md` § S7](VALIDATION.md)). La
+règle est écrite dans l'en-tête. Le float32 du projet initial stockait sept chiffres
+significatifs que le modèle n'a pas, et ils se payaient : 40,6 ko de positions au lieu de 26,4.
+
+**Des colonnes, compressées une à une.** Chaque colonne essaie quatre chaînes de filtres —
+`deflate`, `shuffle` puis `deflate`, `delta` puis `deflate`, et les trois — et garde la plus
+courte ; le choix est écrit, le lecteur ne devine rien. Le `delta` est **modulaire** et
+**par plan** (x, y, z séparés). Compression par bloc, jamais `Content-Encoding` HTTP : une
+plage d'un flux compressé à la volée ne désigne rien d'utile (même choix que PMTiles et COPC).
+
+**Octree adaptatif.** Un nœud se coupe en huit tant qu'il porte plus de 16 384 billes ; chaque
+feuille est un chunk, l'unité de lecture, avec sa sphère englobante pour le *frustum culling*.
+À l'intérieur d'un chunk, les billes sont triées par (copie, début) pour que le delta suive la
+chaîne. Le noyau à 750 kb tient en un seul chunk : l'octree sert à partir de 250 kb.
+
+**Index génomique.** Par niveau, les identifiants de billes dans l'ordre (copie, début), avec
+les débuts et fins. Les billes d'une copie ne se chevauchent pas, donc une dichotomie suffit —
+le maximum de fin par bloc du § 8 servait des gènes, qui se chevauchent. Une requête rend
+**toutes les copies** du chromosome, étiquetées (§ 6).
+
+**Un repère par niveau.** Chaque niveau vit dans son repère et porte la transformation vers
+celui du noyau, **avec le bilan de l'ajustement**. Le niveau fin de la semaine 8 est posé par
+Kabsch sur six billes de chr7:a ; le RMSD restant — 426 nm, et 375 nm pour la région de TP53 sur
+chr17:a — est l'échec du raccord de la semaine 8, et le fichier le transporte au lieu de le cacher.
+
+**Intégrité par bloc.** Un sha256 (tronqué à 128 bits) par colonne, vérifié par le client à
+chaque lecture via `crypto.subtle` ; un sha256 complet de l'en-tête dans le préambule. Une
+empreinte du fichier entier ne servirait à rien à qui n'en lit que des morceaux.
+
+Le champ `evidence` est structurel, pas cosmétique : c'est lui qui pilote le code couleur
+exigé par le principe n°2 de la feuille de route. `predicted` est réservé aux positions issues
+d'un modèle séquence → contact (Akita, Orca, C.Origami) — hors périmètre v1, mais le champ le
+prévoit pour qu'une telle position ne puisse jamais se faire passer pour une mesure.
+Voir [`DATA_SOURCES.md` § 7](DATA_SOURCES.md).
+
+**Attributs par bille (semaine 10).** Une valeur par bille au-delà des colonnes de base — le
+premier est `compartment`, l'E1 des compartiments A/B. Colonne `attr.<nom>` par chunk, sur
+16 bits au pas `(max − min) / 65 534`, le code 65 535 réservé à « absente » (l'X inactif n'a
+pas de compartiment, et le dire vaut mieux qu'un zéro). L'en-tête porte ce que la valeur est
+et d'où elle vient (`evidence`, `source`, mesures de qualité). Les attributs sont **paresseux** :
+aucune de leurs colonnes n'est lue au premier rendu, et un test le garde ; seul l'en-tête,
+qui fait partie de la première requête, grandit de leurs métadonnées : le premier rendu du
+fichier par défaut finit à l'octet 11 619 au lieu de 11 149. Un fichier sans
+attribut se lit comme avant ; un lecteur qui ne les connaît pas les ignore.
+
+**Liens entre billes (semaine 11).** Des paires `(i, j)` d'un niveau, typées et pondérées :
+colonnes paresseuses `links.i`, `links.j` (u32, index dans l'ordre stocké), `links.kind` (u8,
+indice dans `kinds`), `links.weight` (u16, comme un attribut). Le niveau fin en porte deux sortes :
+les **boucles tenues** par une cohésine dans la conformation affichée (`cohesin_ctcf` si ses deux
+pieds sont arrêtés sur des CTCF qui leur font face, `cohesin_one_side`, `cohesin_free`), sans
+poids ; et les **paires CTCF** candidates (`ctcf_pair`, site `+` puis site `−` à moins de 1 Mb),
+pondérées par la fraction des conformations où une cohésine les tient. Les candidates ne doivent
+rien à la vérité plantée, ce qui permet de les juger contre elle. Les sites CTCF sont deux
+attributs (`ctcf_forward`, `ctcf_reverse` : occupation, absente sans site). 326 octets de
+colonnes pour 86 liens.
+
+**Séquence de référence (semaine 12).** Rattachée à un intervalle d'assemblage, pas à un niveau :
+`chr7:4–8 Mb` et `chr17:5,67–9,67 Mb`, la séquence sous les deux régions fines, lue dans
+`hg38.2bit` verrouillé (§ 8 de [`DATA_SOURCES.md`](DATA_SOURCES.md)). 2 bits par base (A C G T,
+poids fort d'abord), par **blocs fixes de 16 384 bases** : l'offset d'un bloc se calcule, donc
+l'en-tête ne liste rien bloc par bloc — il ne grandit que de quelques champs par intervalle. Pas
+de compression : l'ADN à 2 bits ne gagne presque rien au deflate. Les N sont empaquetés comme
+des A et listés en plages. L'intégrité passe par une **table d'empreintes** à part (16 octets par
+bloc, elle-même empreinte dans l'en-tête), lue une fois : un client qui ne lit que la fenêtre
+visible vérifie quand même chaque octet qu'il lit. Le lecteur (`packages/g3d/src/sequence.ts`)
+vit **hors de la classe `G3D`**, que la page du premier rendu embarque tout entière : y mettre la
+séquence lui coûtait 2 Kio. Il ne lit que les blocs de la fenêtre demandée, en une lecture pour
+des blocs contigus, et dit de façon synchrone si une fenêtre est déjà là (`has`) — c'est ce qui
+permet au rendu de **compter** une image qui montrerait un chargement. 4 Mb tiennent en 1 Mo ;
+une plongée jusqu'à une base en lit 11,8 Kio.
+
+**Cibles (semaine 12).** Un niveau fin porte les bases que la plongée sait viser, désignées par
+l'annotation plutôt que recopiées : `TP53 c.818` est recalculé à l'écriture depuis les CDS du
+transcrit MANE de GENCODE v50, et la base y est lue dans le génome (C sur le brin +, G sur le
+brin codant). Le client affiche ce que l'en-tête dit, provenance comprise.
+
+**Le fichier de fiches (semaine 13) — à côté, pas dedans.** `gm12878.fiche` porte, pour chaque
+bille de chaque niveau du `.g3d`, ce que l'on sait de l'intervalle qu'elle porte : coordonnées
+(hg38, T2T levé, cytobande), structure (compartiment du modèle, sous-compartiment et domaines
+de Rao 2014, ancres HiCCUPS, position radiale, LAD, speckles, NAD, timing de réplication), gènes
+(GENCODE, GTEx, gnomAD), régulation (cCRE, ChromHMM, CTCF orienté), clinique (ClinVar, GWAS),
+séquence. Il est **à part** pour que le premier rendu de la semaine 9 n'en paie rien. Même
+conteneur que le `.g3d` : préambule de 64 octets (signature `\x89FCH`, version, longueur et
+empreinte de l'en-tête), en-tête JSON compressé, puis des blocs deflate lus par requête Range,
+chacun vérifié contre son empreinte.
+
+- **Un champ, c'est une valeur et sa provenance** : `{v, e, s}` — `e` l'évidence (`mesure` dans
+  GM12878, `autre` lignée avec `cell`, `simule`, `reference`, `annotation`), `s` l'identifiant
+  du manifeste. Sans valeur, `absent` : une phrase qui dit pourquoi. Aucun champ n'est muet,
+  et c'est vérifié (`geno fiche check`).
+- **Partagé par les homologues, sauf le modèle.** Les annotations ne dépendent que de
+  l'intervalle : un enregistrement par intervalle distinct (4 041 pour 8 082 billes du noyau),
+  par blocs de 64, rangés par chromosome. Ce qui dépend de la copie — E1 et position radiale du
+  modèle, LAD synthétique, CTCF plantés et boucles simulées aux niveaux fins — est une colonne
+  par bille. `record_of` relie une bille à son enregistrement.
+- **Tables partagées.** Gènes (un bloc par chromosome, en colonnes, avec GTEx et gnomAD),
+  maladies (MONDO/HPO nommées, OMIM en identifiant seulement) et traits GWAS sont écrits une
+  fois ; une fiche n'en garde que l'indice. Mesuré : recopiés dans chaque fiche, les gènes
+  pesaient à eux seuls 3,2 Mo sur 12.
+- **Ce qui ne descend qu'aux niveaux fins** : listes complètes (variants ClinVar avec allèles,
+  segments ChromHMM, cCRE, pics CTCF), pour que la fiche d'une base cliquée se compose sans
+  autre lecture ; et les blocs de la chaîne hg38 → T2T qui couvrent les deux régions, pour lever
+  une base exacte dans le navigateur.
+- **Lecteur** (`packages/g3d/src/fiche.ts`, hors de `G3D` comme la séquence) : `card()` est
+  synchrone — `null` si un bloc manque —, `cardAsync()` lit ce qui manque, `prefetch()` lit tout
+  en arrière-plan, une requête à la fois, le chromosome visé d'abord.
+
+**Zéro dépendance de lecture.** `DecompressionStream("deflate-raw")` et `crypto.subtle` sont
+dans tous les navigateurs récents et dans Node 22. Le lecteur n'importe rien.
+
+---
+
+## 4. Budget de niveaux de détail
+
+Ce paragraphe était de l'arithmétique sur des float32 : 12 octets par bille pour les seules
+positions. Depuis la semaine 9, ce sont des **octets écrits** par le format réel (§ 3),
+compressés, attributs compris — `make g3d-bench`.
+
+| Niveau | Bille | Billes (diploïde) | Structure mesurée | Chunks | Premier rendu | Niveau entier | o/bille |
+|--------|------:|------------------:|-------------------|-------:|--------------:|--------------:|--------:|
+| Aperçu | 3 Mb | 2 032 | médoïde S7 fusionné | 1 | 7,6 Kio | 11,3 Kio | 5,71 |
+| Noyau | 1 Mb | 6 058 | noyau S6 réel | 1 | 19,6 Kio | 27,8 Kio | 4,69 |
+| Territoire | 250 kb | 24 244 | noyau S6 réel | 8 | 76,1 Kio | 109,6 Kio | 4,63 |
+| Compartiment | 100 kb | 60 618 | noyau S6 réel | 8 | 173,5 Kio | 224,0 Kio | 3,78 |
+| TAD | 25 kb | 242 472 | raffinement synthétique | 64 | 677,1 Kio | 929,6 Kio | 3,93 |
+| Boucle | 10 kb | 606 180 | raffinement synthétique | 190 | 1 610 Kio | 2 218 Kio | 3,75 |
+| Fibre | 1 kb | 6,2 M | — | — | — | — | fenêtre visible seulement |
+| Séquence | 1 pb | — | — | — | — | — | géométrie procédurale |
+
+**Entre 3,8 et 4,7 octets par bille de 1 Mb à 10 kb** (5,7 pour l’aperçu : ses billes sont plus espacées, donc ses deltas plus grands, à un pas de quantification presque égal), positions, variabilité,
+coordonnées génomiques et index compris, contre 12 octets pour les seules positions en float32.
+Le niveau Boucle tient en 2,2 Mio là où l'arithmétique initiale donnait 7,4 Mo de positions
+seules. Deux réserves : en dessous de 100 kb, les structures sont un **raffinement synthétique**
+du noyau à 100 kb (pont brownien sous chaque bille), suffisant pour compter des octets et rien
+d'autre ; et la règle de précision est celle du noyau, 1 % de l'incertitude médiane.
+
+Ce n'est toujours pas une mesure de **rendu** : la colonne qui manque est le temps par frame à
+chaque palier, sur trois cibles matérielles. Le spike de la semaine 4 est écrit et sa correction
+est prouvée ([`VALIDATION.md` § S4](VALIDATION.md)), mais l'environnement de développement ne
+rend que via SwiftShader. `pnpm build` produit `dist/spike.html` ; l'ouvrir sur GPU desktop,
+iGPU portable et téléphone rend les trois tableaux qui manquent. Le go/no-go de la semaine 4
+attend ces chiffres.
+
+Une fois le budget arrêté, il est **tenu par des tests de non-régression** : un commit qui le
+fait dépasser casse la CI.
+
+---
+
+## 5. Rendu
+
+**Imposteurs de sphères, pas de maillages.** Un quad orienté caméra, le fragment shader
+calcule la normale de sphère et la profondeur. C'est ce que font Mol* et NGL. Une vraie
+géométrie de sphère, même grossière à 80 triangles, ferait 80 millions de triangles pour un
+million de billes ; un imposteur en fait deux millions.
+
+Le point critique est que `gl_FragDepth` vienne du **point d'impact réel**, pas du quad. Sans
+ça, deux billes qui s'interpénètrent se découpent selon l'arête du quad au lieu de la courbe
+d'intersection. Implémenté et testé dans `packages/viewer` — le test discriminant est que le
+résultat ne dépend pas de l'ordre de dessin.
+
+**Picking GPU.** Rendu des identifiants dans un attachement `R32UI`, en même temps que la
+couleur (cible multiple : une seule passe géométrique, ce qui à un million d'instances n'est
+pas une nuance). Lecture d'un pixel au clic, coût O(1) quel que soit le nombre d'objets — le
+raycasting CPU de Three.js est inutilisable à cette échelle. Vérifié exact parmi 250 005
+instances, identifiants sur toute la plage 32 bits.
+
+Les shaders sont écrits en GLSL ES 3.0 brut dans `packages/viewer/src/impostors.ts` et se
+transposent tels quels dans un `RawShaderMaterial` de Three.js.
+
+**Fibre et boucles (semaine 11).** `packages/viewer/src/tube.ts` : le tube est évalué dans le
+vertex shader — Hermite entre deux points, tangentes de Catmull-Rom, repère à transport parallèle
+précalculé —, un segment par instance d'un gabarit choisi à chaque image selon sa longueur à
+l'écran (1 à 16 subdivisions). Le nombre de côtés est choisi **une fois par image pour tout le
+tube** : deux segments voisins partagent donc exactement le même anneau, et la surface ne se fend
+pas (0 trou contre 257 pour le témoin à côtés par segment). Plusieurs polylignes par tube ; les
+arcs, les flèches CTCF (manchon puis pointe), les anneaux de cohésine et l'ADN de liaison en sont.
+Les arcs sont des Bézier quadratiques entre les deux ancres, bombées hors de la boucle d'au moins
+la moitié de son étendue, d'épaisseur proportionnelle à la fréquence de la paire.
+
+**Nucléosomes, et un ADN qui a une longueur (semaine 12).** `packages/viewer/src/dna.ts`
+construit l'ADN d'abord : chaque monomère de 2 kb porte 10 nucléosomes de 147 pb, de la jonction
+J(k−1), à mi-chemin du monomère précédent, à J(k). L'ADN enroulé suit une superhélice gauche de
+1,67 tour, rayon 4,18 nm, pas 2,39 nm ; un lien est une Hermite tangente à la sortie d'un cœur
+et à l'entrée du suivant, plus une bosse en sin²(πu) qui l'allonge sans toucher à ses tangentes,
+réglée par bissection pour que sa longueur soit **exactement** `pas × 0,34 nm`. Chaque base a
+donc une position, une tangente et une dyade qui tourne de 360°/10,5 par pas. Les longueurs de
+lien varient (la somme est fixée par monomère), les positions sont **illustratives** — aucun
+positionnement n'est lu — mais la géométrie est tenue, et vérifiée (§ S12) : 0,34 nm à 0,4 %
+près, aucune base coudée de plus de 20°, 0 cœur à moins de 10 nm d'un autre. Une réalisation de
+monomère est **jugée** à la construction et retirée si un lien se coude de plus de 18° par base :
+régler des paramètres jusqu'à ce qu'un tirage passe ne garantissait rien. Les cœurs restent du
+bon côté des deux plans de jonction de leur monomère, ce qui écarte deux voisins d'au moins
+11 nm sans que l'un connaisse l'autre : la génération reste **paresseuse, monomère par monomère**,
+déterministe par rang. Coût : 4,1 ms par monomère (médiane), les repères des liens n'étant
+calculés qu'à la première demande ; la plongée génère la fenêtre isolée par tranches réglées sur
+un quart de l'intervalle entre images, les plus proches du point visé d'abord, et **compte** ce
+qui manque encore quand ça devrait se voir. Dessin : l'octamère en ellipsoïde aplati
+(`disc.ts`, 3,2 × 2,9 nm), l'ADN en tube de 1 nm.
+
+**La double hélice (semaine 12).** `packages/viewer/src/helix.ts` pose, autour de chaque base du
+chemin, les deux phosphates par les coordonnées du modèle de fibre B d'Arnott (rayon 8,91 Å,
+±94,9° autour de la dyade, ±2,85 Å le long de l'axe) : c'est ce décalage, pas un réglage, qui
+ouvre un petit sillon de 5,4 Å et un grand de 11,8 Å (5,7 et 11,7 publiés). Deux squelettes en
+tube passent par les phosphates ; chaque paire est un barreau de phosphate à phosphate, coupé en
+son milieu, chaque moitié de la couleur de sa base (Okabe–Ito : A vert bleuté, C bleu ciel,
+G jaune, T vermillon). Identifiant d'une moitié : `2 × rang + brin`, si bien que le picking nomme
+une base et son brin. La géométrie n'est générée que pour la **fenêtre visible** — les paires dont
+l'axe tombe à moins de ¾ de champ du point visé, au plus 4 000 — quand celle-ci change. La couche
+de séquence (`apps/dive/sequence.ts`) précharge les blocs des monomères proches du point visé dès
+que la fibre apparaît (champ < 3 µm), un à la fois, les plus proches d'abord ; une image qui
+devrait montrer l'hélice sans sa séquence dessine l'ADN de 1 nm et est **comptée** comme un
+chargement visible. Sous 8 nm, la lettre de chaque base assez grande, tournée vers la caméra et
+dans le plan de la base visée, est posée en surimpression 2D ; la base visée porte son étiquette
+GENCODE. Sa couleur reste la sienne : l'éclaircir la faisait lire A au lieu de C, à la mesure
+comme à l'œil. Simplifications dites : 10,5 pb/tour partout, y compris sur le cœur (10,2 in
+vivo) ; le pas de l'ADN enroulé est celui qu'imposent 1,67 tour de 4,18 nm (0,30 nm), pas 0,34.
+
+**Isoler pour lire.** À l'échelle d'une boucle, la pelote de 4 Mb la cache entièrement (0 pixel
+d'ancre visible sans isolement). La boucle visée et 12 kb de contexte restent ; le reste de la
+région, **et ses annotations**, s'effacent par tramage. La caméra de la vue de boucle regarde
+perpendiculairement à l'axe base → boucle, pour que les deux flèches pointent dans le plan de
+l'image. Quand on plonge vers une base (semaine 12), la boucle isolée est celle qui la contient ;
+s'il n'y en a pas, ce sont les 80 kb de part et d'autre de la base.
+
+**Lisibilité du volume.** Occlusion ambiante en espace écran (`packages/viewer/src/ssao.ts`),
+hémisphère orienté par la normale, 16 échantillons, flou 4 × 4 qui respecte la profondeur. La
+normale voyage dans les trois canaux libres de la cible de profondeur flottante : pas de
+passe géométrique de plus. Le rayon est en unités de vue et le biais lui est proportionnel,
+si bien qu'une scène agrandie dix fois avec un rayon dix fois plus grand donne la même image —
+à un échantillon de bascule près sur 2 pixels sur 7 687 ; une plongée qui traverse deux ordres
+de grandeur en dépend. Profondeur de champ : pas encore.
+
+**Opacité par tramage, jamais par mélange.** Un fondu entre niveaux, ou un chromosome qui
+s'efface, ne passe pas par l'alpha : chaque pixel est gardé ou jeté selon un seuil fixe à
+l'écran (bruit à gradient entrelacé). Pas de tri, pas d'ordre de dessin, une profondeur exacte,
+et un picking qui rend ce qui est vu. Le mode inversé garde **exactement** les pixels que l'autre
+jette : un niveau à `1 − t` et le suivant à `t` se partagent l'écran sans trou ni doublon — le
+test le vérifie pixel à pixel, et un témoin à deux trames identiques troue 50 % de l'image. Un
+groupe (une copie de chromosome) éteint ne coûte rien : son quad sort du volume de vue dans le
+vertex shader.
+
+**Transitions entre niveaux, et l'état visuel comme fonction de la caméra.** Ce qui est montré
+— niveau de détail, chromosomes visibles, palette territoires ou compartiments, fibre, boucle,
+nucléosomes, hélice (40 → 20 nm de champ), lettres (8 → 5 nm) — se lit sur la largeur de champ
+et la taille des billes à l'écran (`apps/dive/scene.ts`), jamais sur le temps.
+Une plongée est donc réversible et un arrêt en chemin est un état stable. Seule l'arrivée d'un
+niveau par le réseau, qui ne dépend pas de la caméra, est fondue sur 400 ms. La caméra suit le
+chemin de van Wijk et Nuij (2003), parcouru à vitesse perçue constante (`camera.ts`).
+
+**Les shaders voyagent sans commentaires.** La minification ne touche pas au contenu des
+chaînes : `tools/build.mjs` retire les commentaires GLSL au bundle, ce qui rendait 2 Kio à la
+page du premier rendu. Les suites headless sont construites pareil, donc elles prouvent que les
+shaders dépouillés compilent.
+
+---
+
+## 6. Mapping coordonnée ↔ position 3D
+
+Les deux sens sont nécessaires, et les deux doivent être rapides.
+
+- **Génomique → 3D** : `G3D.locate` — dichotomie sur l'index `(copie, début)` → identifiants
+  de billes, sur toutes les copies. Sert à la recherche, aux signets, au brossage depuis
+  `igv.js`.
+- **3D → génomique** (semaine 13) : un clic lit **un pixel** de la cible d'identifiants,
+  RGBA32UI — R l'identifiant, G le type de rendu qui l'a écrit (sphère, tube, disque, hélice) —
+  et la profondeur. `DiveScene.select` est synchrone : début et fin de chaque bille sont lus une
+  fois par niveau (`BeadIndex`, à part de la classe `G3D` que la page du premier rendu embarque), le reste est en mémoire. La précision dépend de l'objet, et la
+  fiche la dit :
+  - bille de 3 Mb ou de 750 kb : son intervalle ;
+  - monomère de la fibre : ses 2 kb — la plus petite unité du polymère ; une position à
+    l'intérieur n'aurait pas de sens physique dans le modèle, on n'en invente pas ;
+  - ADN de liaison ou nucléosome : la base dont l'**axe** passe au plus près de la **ligne de
+    visée** du pixel (`DnaPath.basePoint`). Pas du point de surface touché : sur un tube de
+    1 nm vu de biais, il glisse le long de l'axe de r / tan θ, trois bases à 45° ;
+  - barreau de l'hélice : la base, exacte, par l'identifiant (`2 × rang + brin + 1`).
+
+  Plages d'identifiants de la plongée (`apps/dive/fiber.ts`) : billes 1–8 082, aperçu
+  1 000 001+, fibre 2 000 001+, glyphes 3 000 001+, cœurs de nucléosome 4 000 001+, bases
+  5 000 001+, ADN de liaison 14 000 001+ (jusqu'à la semaine 12, l'ADN réutilisait par erreur
+  la plage des cœurs).
+
+Les deux haplotypes sont distincts : une coordonnée génomique correspond à **deux** positions
+3D. L'interface doit le montrer, pas le masquer — c'est une information biologique réelle
+(expression allélique, inactivation du X, empreinte parentale).
+
+---
+
+## 7. Vues liées
+
+Trois vues, une seule sélection (semaine 14, `apps/linked/`, page `dist/vues.html`) :
+
+```
+                 ┌───────────────────────────────┐
+                 │  SelectionStore (store.ts)    │   1 ou 2 intervalles haploïdes
+                 │  égalité · garde d'application │   (chrom, début, fin)
+                 └──┬─────────────┬──────────┬───┘
+       publie ↑ ↓ applique      ↑ ↓        ↑ ↓
+       view3d.ts           viewIgv.ts   viewHiglass.ts
+       (openDive)          (igv.js 3.8)  (HiGlass 2.3, fetcher GenoContacts)
+```
+
+**La sélection.** Un ou deux intervalles 0-based demi-ouverts, **sans copie** : igv.js et HiGlass
+sont haploïdes, et la 3D surligne les deux homologues. Deux intervalles, c'est un pixel de la
+carte hors diagonale — deux loci en contact ; igv les ouvre côte à côte, la 3D les surligne
+ensemble.
+
+**Le store.** Chaque vue publie ce que l'utilisateur y sélectionne et applique ce que le store lui
+donne ; aucune ne parle à une autre, et la source ne reçoit pas sa propre sélection (elle la montre
+d'elle-même). Deux défenses, journalisées : une sélection **égale** à la courante n'est pas
+redistribuée ; pendant qu'une vue **applique**, ce qu'elle publierait est refusé comme écho. Et une
+règle de conception : **naviguer n'est pas sélectionner** — igv `locuschange`, HiGlass `location`
+et l'orbite de la 3D ne sont jamais publiés. C'est la synchronisation des déplacements, deux à
+deux, qui rebondit : la page la rejoue en témoin (`?naive`), et elle ne s'arrête pas (VALIDATION
+§ S14).
+
+**Sélectionner, dans chaque vue.**
+
+| Vue | Geste | Ce qui est publié |
+|---|---|---|
+| 3D | clic sur un pixel (picking de la semaine 13) | l'intervalle de la bille ou du monomère ; la base, pour l'hélice |
+| igv | clic sur un élément d'une piste (`trackclick`) | le gène, le pic, le bin de compartiment ; les deux ancres d'une boucle |
+| HiGlass | clic sur la carte (position par l'événement `cursorLocation`) | les deux bins du pixel, à la résolution affichée en ce point |
+
+**Montrer, dans chaque vue.** 3D : `DiveScene.highlight` — couleur jaune, groupes de fondu à part
+pour les billes sélectionnées (62, 63 : la copie visée, les autres), copies sans sélection à 15 % ;
+monomères de la fibre ; la caméra vise la sélection si rien n'en est à l'écran. igv : une région
+d'intérêt par intervalle, et une fenêtre par intervalle si la vue ne les contient pas. HiGlass :
+une surimpression DOM (bandes des intervalles, rectangle du pixel), recalée sur la piste centrale
+par l'événement `cursorLocation` et tenue à jour par `location` ; `zoomTo` si la vue ne contient
+pas la sélection.
+
+**Ce que lisent igv et HiGlass** (`make linked`, à côté du `.g3d`) :
+
+- `gm12878.contacts` — format `geno-contacts/1`, du moule du `.g3d` : préambule de 64 octets
+  (signature `\x89GCT\r\n\x1a\n`, version, longueur et sha256 de l'en-tête), en-tête JSON deflate,
+  puis une tuile par bloc — 256 × 256 float16, octets regroupés par rang, deflate, sha256 tronqué.
+  Deux jeux : `noyau` (24 Mb → 750 kb) et `fin` (512 kb → 2 kb, NaN hors des régions fines).
+  Tuile `z.x.y` : `dense[i·256 + j] = M[y·256 + i][x·256 + j]`, seules x ≤ y écrites. Coordonnées
+  absolues : chr1…chr22, chrX bout à bout (le modèle est 46,XX). Lu par `ContactsReader`
+  (`packages/g3d/src/contacts.ts`), une tuile par requête Range, vérifiée, gardée.
+- `igv/` — gènes, CTCF orientés, boucles (BEDPE), compartiments du modèle (bedGraph), cytobandes,
+  tailles, et `index.json` (empreintes, évidence de chaque piste). La séquence est le `.2bit`
+  verrouillé, servi par plages sous `/ref/`.
+
+## 7 bis. Mode variant structural
+
+Le locus EPHA4 (semaine 15, `pipeline/geno_pipeline/sv/`, `apps/variant/`, page
+`dist/variant.html`). Deux moteurs, un même jeu de sites :
+
+```
+  sv/locus.py   gènes · CTCF orientés (occupation ∝ signal) · TAD (Rao 2014) · enhancers et
+                famille de délétions reconstruits du texte · Locus.sites(variant, window)
+      │
+      ├── sv/run.py      OpenMM, 4 allèles × réplicats   → data/sv/epha4-<allèle>[.w].npz
+      ├── sv/predict.py  extrusion 1D → distance effective (BFS, boucles = raccourcis)
+      │                  → P = min(1, (d/d0)^−α + c), calée sur le 3D du type sauvage
+      ├── sv/check.py    critères (plan pré-enregistré, plan révisé), IC par réplicats
+      └── sv/export.py   → data/g3d/epha4.variant.json   (format geno-variant/1)
+                                   │
+  apps/variant/   extrusion.ts (même extrusion, sfc32, même loi) · model.ts (allèle, 4C)
+                  main.ts : 3D médoïde + fondu, piste, 4C, lecture
+```
+
+**Un allèle**, c'est la région moins la délétion, recollée : les sites CTCF suivent leurs
+monomères, ceux qu'une délétion « épargne » (le témoin in silico) sont posés au point de
+recollement. Avec `window=True` (plan révisé), l'allèle garde la longueur du type sauvage : la
+séquence en aval entre dans la fenêtre (`REACH` = région + 2 Mb), pour que le confinement — réglé
+sur la quantité de chromatine — soit le même pour tous les allèles.
+
+**Dans la page**, une délétion tracée sur la piste (glisser) ou choisie dans les préréglages
+construit l'allèle, lance 16 extrusions (graines 1–16) et calcule les lignes de contact depuis
+la grappe d'enhancers et le promoteur de PAX3 ; pour une délétion qui emporte la frontière, la
+même chose avec les CTCF de la frontière épargnés. La 3D montre le médoïde de l'ensemble OpenMM
+de l'allèle (préréglages seulement), aligné par Kabsch sur le type sauvage par les monomères
+communs ; une délétion tracée efface son segment du type sauvage. `window.__variant` expose de
+quoi la mesurer (`tools/variant.mjs`).
+
+**Surimpression clinique.** `DiveScene.paint(level, values)` repeint une couche de billes avec une
+valeur par bille (une teinte, du clair au foncé ; gris sans donnée) : P/LP ClinVar, associations
+GWAS, LOEUF gnomAD minimal des gènes de la bille, lus dans le fichier de fiches de la semaine 13.
+La surbrillance de sélection se pose par-dessus (`painted ?? colors`).
+
+## 7 ter. Recherche et vue dans l'URL
+
+Semaine 16 : un champ dans la plongée (`apps/dive/main.ts`), trois modules :
+
+```
+  « BRCA1 » · « chr17:43,044,295 » · « rs334 »
+      │  parseQuery (packages/g3d/src/search.ts ≡ pipeline/geno_pipeline/search/query.py)
+      ▼
+  SearchIndex.resolve ── gm12878.search : en-tête (répertoire des blocs), un bloc par Range
+      │  cibles hg38 0-based, marquées hors du modèle (chrY, chrM)
+      ▼
+  scene.highlight (S14) · destination (navigate.ts) · dive() (S10) · fiche (S13)
+      │
+      ▼
+  url.ts : #v=1&o=…&s=…&q=…&l=…&c=…&w=…&p=…&m=…  ── replaceState au repos, relu au chargement
+```
+
+**L'index** (`geno-search/1`, `pipeline/geno_pipeline/search/build.py`) : deux tables triées par
+clé — gènes (nom en majuscules, ENSG ; lignes JSON) et rsID (colonnes binaires : Δrs u32, chrom
+u8, pos u32, sources u8) — en blocs deflate signés (sha256 tronqué), comme les tuiles de
+`.contacts`. Une clé de gène peut déborder sur plusieurs blocs : la lecture part du dernier bloc
+qui commence avant elle. Un rsID ne chevauche jamais deux blocs ; un bloc s'arrête avant qu'un
+écart à son premier rsID dépasse 2³² (le GWAS a quelques numéros au-delà).
+
+**La destination** (`navigate.ts`) : hors de la région fine, la bille du niveau `noyau` qui porte
+la base visée (TSS d'un gène), sur la copie `a` (`Xa` pour le X), champ de 2,6 µm ou assez pour
+toutes les billes du gène, orientation de la vue de départ gardée. Dans la région fine chargée :
+la paire de bases vue de côté (`sideOrbit`, la même que l'arrêt final de la plongée) si le
+monomère est dans la fenêtre de la boucle, sinon le monomère — à 0,6 µm dans la fenêtre, à 1,5 µm
+hors d'elle (l'isolement efface la fibre en dessous) ; à cette échelle, la page rend douze
+orientations avant le vol et garde celle où la cible couvre le plus de pixels.
+
+**L'URL** porte ce qui décide de l'image et rien d'autre ; `?target=` (la région fine chargée)
+reste dans la requête. L'orbite s'écrit par `String(x)`, qui se relit au bit près. La surimpression
+2D est créée rastérisée par le processeur (`willReadFrequently`) : sinon Chrome la bascule après
+la première relecture de ses pixels, et une vue relue différait de l'originale par ses lettres.
+
+---
+
+## 8. Socle 1D — index d'intervalles et mesures
+
+Un intervalle `[s, e)` chevauche une requête `[qs, qe)` si et seulement si `s < qe` **et**
+`e > qs`. La première condition se résout par dichotomie sur les débuts triés. La seconde est
+le piège : les intervalles sont triés par début, pas par fin, donc un candidat peut se trouver
+arbitrairement loin en arrière. Un balayage naïf devient O(n) dès qu'un gène long traîne en
+tête de chromosome — et il y en a : DMD fait 2,2 Mb, CNTNAP2 2,3 Mb.
+
+D'où un **maximum de fin par bloc** de 512 entrées : un bloc dont le maximum est ≤ `qs` ne
+peut rien contenir et se saute d'un seul test. Le filtrage des blocs est une opération numpy
+vectorisée, pas une boucle Python.
+
+Mesures sur **1 000 000 d'intervalles** (dont 0,2 % de très longs), 2 000 requêtes par ligne :
+
+| Fenêtre | Features | Index seul (méd / p99) | Index + attributs (méd / p99) |
+|---------|---------:|------------------------|-------------------------------|
+| 3 kb — un gène | 42 | 0,028 / 0,074 ms | 0,204 / 0,472 ms |
+| 30 kb — un gène + flancs | 87 | 0,028 / 0,069 ms | 0,338 / **0,819 ms** |
+| 300 kb — un TAD | 530 | 0,031 / 0,082 ms | 1,535 / 6,090 ms |
+| 3 Mb — un compartiment | 5 094 | 0,044 / 0,110 ms | 17,8 / 42,6 ms |
+
+**Cible de la semaine 2 tenue** : p99 à 0,819 ms à l'échelle d'un locus, attributs compris.
+L'index seul reste sous 0,11 ms à toutes les échelles, y compris celle d'un compartiment.
+
+### Ce que ça dit pour la semaine 9
+
+La latence ne suit pas la taille du magasin, elle suit le **nombre de features ramenées** :
+environ 3 µs chacune, dominés par le parsing JSON des attributs. Conséquence directe sur le
+format `.g3d` : les attributs ne doivent pas y être du JSON par enregistrement, mais des
+**colonnes** — tableaux numpy de codes catégoriels plus une table de chaînes. On lit alors les
+colonnes utiles et on ne parse rien.
+
+Ce n'est pas un problème pour la v1 de la CLI : une requête qui ramène un compartiment entier
+est un export, pas une interaction, et la fiche de la semaine 13 clique **une** bille.
+
+---
+
+## 9. Ce qui ne rentre pas dans le navigateur
+
+La reconstruction (recuit simulé sur ~10 000 billes, × 200 structures) et la simulation
+polymère restent côté pipeline. Le mode Recherche déclenche un travail serveur et récupère
+un `.g3d`. On n'essaiera pas de porter OpenMM en WASM.
+
+Un ensemble complet (200 × 620 000 billes) pèse ~1,5 Go : jamais chargé entier. On streame le
+médoïde plus un scalaire de variabilité par bille ; l'ensemble ne se charge qu'à la demande,
+en résolution grossière.
+
+---
+
+## 10. Modèle de noyau — billes TAD, territoires, périphérie
+
+### La bille
+
+Une bille est un TAD. Encore faut-il dire lequel : Dixon 2012 en compte ~2 200 sur le génome
+haploïde, taille moyenne ~880 kb ; Rao 2014 en compte 9 274, médiane 185 kb. Ce ne sont pas
+deux mesures du même objet, ce sont deux définitions. Le modèle de noyau travaille à
+**750 kb par bille**, donc à l'échelle Dixon, et le génome diploïde tient en ~8 100 billes.
+
+La chromatine ayant une densité locale à peu près constante, le volume d'une bille suit sa
+longueur et son rayon la racine cubique : `r ∝ L^(1/3)`. La constante vient d'une seule
+quantité physique, la **fraction volumique** `phi` occupée par les billes — 0,30 par défaut,
+dans la fourchette 12–52 % mesurée par ChromEMT (Ou 2017).
+
+### Le rayon nucléaire n'est qu'une unité
+
+Le nombre de billes et la fraction volumique déterminent le rapport `r/R` :
+
+```
+N · (4/3)π r³ = phi · (4/3)π R³     ⟹     r / R = (phi / N)^(1/3)
+```
+
+Une fois `phi` et `N` fixés, toute la géométrie est en unités de `R`. Changer `R` change les
+micromètres affichés et rien d'autre. Les deux seuls paramètres physiques du modèle sont donc
+`phi` et la résolution.
+
+### Trois façons de dire « à la lamina », et elles ne coïncident pas
+
+Une bille **touche** l'enveloppe si l'écart entre sa surface et celle-ci est sous un demi-rayon.
+Cette bande est plus fine que l'écart entre deux couches empilées (~1,63 r), donc elle ne
+contient qu'une monocouche. Deux bornes l'encadrent :
+
+- **part à densité uniforme** — la part de volume de la coquille dans la boule accessible aux
+  centres, soit `[(R−r)³ − (R−1,5r)³] / (R−r)³`, environ `1,5 · r/(R−r)` ;
+- **borne d'empilement** — au plus `eta · 4(R−r)²/r²` billes peuvent toucher à la fois, avec
+  `eta ≤ 0,9069` la densité hexagonale.
+
+Les deux sont **linéaires en r**, donc dépendent de la résolution du modèle :
+
+| Résolution | Billes | Rayon | Densité uniforme | Borne d'empilement | Niveau `.g3d` |
+|-----------:|-------:|------:|-----------------:|-------------------:|--------------:|
+| 3 Mb | 2 021 | 264,7 nm | 8,2 % | 57 % | 24 ko |
+| **750 kb** | **8 083** | **166,8 nm** | **5,1 %** | **38 %** | **97 ko** |
+| 250 kb | 24 248 | 115,6 nm | 3,5 % | 27 % | 291 ko |
+| 100 kb | 60 621 | 85,2 nm | 2,6 % | 20 % | 727 ko |
+| 10 kb | 606 208 | 39,5 nm | 1,2 % | 9 % | 7,3 Mo |
+
+Conséquence directe : **« 35 % du génome est en LAD » et « 35 % du génome touche la lamina »
+ne sont pas la même phrase**, et la seconde ne découle pas de la première. Atteindre la borne
+d'empilement suppose un noyau à croûte dense et intérieur creux ; rester à densité uniforme
+plafonne à quelques pour cent. Une « fraction de LADs à la lamina » n'est donc pas comparable
+entre deux modèles de granularité différente sans dire laquelle.
+
+La dernière colonne donne le poids du niveau dans le `.g3d` de la semaine 9, à 12 octets par
+bille (§ 4) : à 750 kb le niveau fait **97 ko**, largement sous le budget de 500 ko de la
+semaine 10. La résolution du modèle de noyau tombe entre les paliers « Noyau » (1 Mb) et
+« Territoire » (250 kb) du § 4 ; c'est l'échelle TAD de Dixon qui l'a fixée, pas le budget.
+
+Sur les totaux : le caryotype 46,XX de GM12878 fait **6,06 Gb** d'assemblage primaire, deux
+exemplaires de chr1–22 plus deux X. Le « 6,2 Gb » du § 4 est la valeur ronde usuelle, scaffolds
+et chrY compris.
+
+### Hiérarchie des contraintes
+
+Trois conditions dures, une préférence molle, et l'ordre compte :
+
+| | Contrainte | Nature |
+|---|---|---|
+| 1 | volume exclu, `d ≥ r_i + r_j` | dure |
+| 2 | longueur de liaison **maximale**, `d ≤ stretch · (r_i + r_j)` | dure, unilatérale |
+| 3 | confinement, `\|x\| ≤ R − r` | dure |
+| 4 | rappel radial vers un rayon cible ordonné par contenu LAD | molle |
+
+La liaison est unilatérale : elle empêche la chaîne de casser, pas les billes de se rapprocher.
+Une longueur *imposée* se bat contre le volume exclu dans les replis serrés, et c'est le volume
+exclu qui cède — or c'est lui la condition.
+
+Le rappel radial vise un rayon par **rang** de contenu LAD, pas par valeur : la bille de rang
+`q` vise `q^(1/3)`, la loi des rayons d'une sphère uniforme. Le biais trie sans tasser. Le
+polissage final le coupe entièrement.
+
+### Topologie : ce que le recuit ne peut pas faire
+
+Une relaxation sous contraintes ne fait **jamais** se croiser deux chaînes. La topologie du
+noyau est donc celle de son initialisation, et la territorialité est une **entrée** du modèle,
+pas un résultat. Ce qui la justifie est la mitose : les chromosomes se décondensent là où la
+télophase les a laissés. Le seul énoncé vérifiable est que le recuit la conserve.
+
+Le solveur fait croître les rayons pendant le recuit plutôt que de partir à taille pleine
+(Lubachevsky–Stillinger). D'où une condition d'étanchéité : à l'échelle `s`, deux billes liées
+s'excluent au rayon `s·r` mais restent séparées d'au plus `stretch·2r`, donc une troisième
+bille passe entre elles dès que **`s ≤ stretch / 2`**. En dessous du seuil une chaîne traverse
+une liaison, et le défaut est difficile à défaire. Le défaut n'est pas construit : il est
+mesuré (`docs/VALIDATION.md` § S6).
+
+---
+
+## 11. Ensembles — `ensemble.zarr`
+
+Le principe n° 1 du projet dit qu'une structure Hi-C unique est un artefact statistique. Un
+ensemble en est la conséquence dans le format : **un génome, N repliements**.
+
+```
+ensemble.zarr/
+  .zattrs           caryotype, assemblage, provenance des longueurs, lad_source,
+                    lad_seed, first_seed, réglages de construction, avertissement
+  beads/            copy_id, start, end, radius, lad, acrocentric     ← écrits UNE fois
+  coords    (N, n, 3) float32, un chunk par structure
+  quality/          seed, max_overlap, bond_stretch, outside, shakes  (N,)
+  done      (N,) bool
+```
+
+Le découpage en billes et la piste LAD ne portent **pas** d'indice de structure. Ce n'est pas
+une économie de place — 200 copies du génome pèseraient 10 Mo — c'est ce qui rend l'objet
+interprétable : si chaque structure portait le sien, la variabilité mesurée mélangerait la
+variabilité de repliement et celle du génome, sans moyen de les séparer après coup. La
+génération le vérifie à chaque structure plutôt que de s'y fier (§ `ensemble/generate`).
+
+`done` est écrit **après** les coordonnées : une génération interrompue ne prétend jamais
+contenir une structure à moitié écrite, et `--resume` reprend où elle s'est arrêtée.
+
+### Ce qu'un ensemble permet de mesurer, et ce qu'il interdit
+
+Deux noyaux recuits séparément ne partagent **aucun repère** : ni orientation — rien ne
+distingue un axe dans une sphère — ni placement des territoires, puisque chr7:a atterrit
+ailleurs à chaque tirage. Une variance par bille en x, y, z est donc un nombre sans objet, et
+l'alignement de Procruste ne la sauve pas. C'est mesuré, pas supposé : après alignement
+optimal, **88 % de l'écart au hasard subsiste** ([`VALIDATION.md` § S7](VALIDATION.md)).
+
+Restent les grandeurs invariantes par rotation, et elles seules :
+
+| Grandeur | Ce qu'elle porte |
+|---|---|
+| position radiale par bille | profondeur nucléaire — la quantité comparable entre structures |
+| distances par paires | carte de contacts, P(s), fraction trans |
+| par copie | rayon de giration, profondeur du centroïde |
+
+Conséquence pour le viewer (semaine 10 et suivantes) : ce qui se streame d'un ensemble n'est
+pas « la » structure plus un nuage de points, c'est **le médoïde plus un scalaire de
+variabilité par bille** — et ce scalaire est une variabilité *de profondeur*, pas de position.
+L'interface doit dire laquelle.
+
+## 12. Échelle fine — extrusion de boucles sous le TAD
+
+La semaine 6 descend jusqu'à la bille de 750 kb, et pas plus bas. En dessous, le modèle de
+noyau n'a rien à dire : ses billes sont des sphères sans intérieur. La semaine 8 ouvre cet
+intérieur sur une région de quelques mégabases, et le fait avec un mécanisme plutôt qu'une
+interpolation — **l'extrusion de boucles** (Fudenberg 2016), qui est à ce jour la seule
+hypothèse qui explique d'un coup les domaines, les points d'angle et la règle de convergence
+des motifs CTCF.
+
+```
+geno_pipeline/fine/
+  region.py      la région, ses monomères, ses sites CTCF orientés, la vérité plantée
+  extrusion.py   modèle 1D : où sont les pieds des cohésines
+  polymer.py     dynamique de Langevin (OpenMM), liaisons pilotées par l'extrusion
+  observe.py     carte de contacts, insulation, points d'angle, P(s), raccord R(s)
+  run.py         assemblage, réplicats parallèles, sauvegarde `.npz` + sidecar JSON
+```
+
+### La règle de convergence, traduite en deux tableaux
+
+Tout le pouvoir explicatif du modèle tient dans une asymétrie :
+
+| Motif | Arrête une jambe qui va… |
+|---|---|
+| **forward (+)** | vers la **gauche** |
+| **reverse (−)** | vers la **droite** |
+
+Un cohésine chargé entre un `+` en `i` et un `−` en `j > i` bloque donc ses deux jambes, et la
+paire `(i, j)` accumule des contacts : c'est un point d'angle. Une paire **divergente** (`−`
+puis `+`) n'arrête rien. Inverser ces deux lignes produirait des boucles exactement là où Rao
+2014 n'en voit pas — c'est une prédiction binaire, et c'est ce qui rend le modèle réfutable.
+
+### Le rayon d'un monomère n'est pas un paramètre de la semaine 8
+
+Il sort de la loi de la semaine 6 (§ 10) : volume de chromatine proportionnel aux paires de
+bases, constante fixée par la fraction volumique `phi`. À 2 kb par monomère, `r = 23,1 nm`,
+donc `sigma = 46,2 nm` de diamètre. Le confinement suit : `n` monomères occupent la sphère de
+rayon `R = r·(n/phi)^(1/3)`, c'est-à-dire **exactement le volume que le modèle de noyau alloue
+à cette quantité de chromatine**.
+
+C'est ce qui rend le raccord falsifiable. Si la semaine 8 avait le droit de choisir la taille
+de ses monomères, on pourrait toujours faire coïncider les deux modèles et la coïncidence ne
+dirait rien.
+
+### Champ de force, et ce que chaque terme coûte
+
+| Terme | Forme | Valeur | Pourquoi |
+|---|---|---|---|
+| squelette | harmonique | `wiggle` 0,05 σ | la chaîne ne casse pas |
+| rigidité | `k(1 − cos θ)` | 1,5 kT | longueur de persistance de quelques monomères |
+| volume exclu | `trunc·(1 − r/σ)²` | 3 kT | **franchissable** — voir ci-dessous |
+| confinement | mur linéaire lissé | 30 kT/σ | densité du noyau, pas une forme |
+| cohésines | harmonique | `wiggle` 0,2 σ | plus molle que le squelette, pour encaisser les mises à jour |
+
+Le volume exclu est volontairement mou : à l'échelle de temps de l'extrusion, la
+topoisomérase II laisse passer les brins, et un volume exclu dur figerait des enlacements que
+la cellule défait. Le prix est explicite — **la topologie de la région n'est pas une
+prédiction du modèle**.
+
+### Une sphère, pas une boîte périodique
+
+Une boîte périodique n'a pas de paroi, ce qui serait préférable, mais elle remplace
+l'environnement du segment par ses propres images : `R(s)` y sature à la taille de la boîte.
+Pour 2 000 monomères à `phi = 0,30`, la boîte fait 13,8 σ de côté pour un blob de 9,4 σ de
+rayon — l'artefact tombe en plein dans la fenêtre où le raccord se mesure. La sphère a une
+paroi, c'est un défaut qu'on énonce, mais elle fixe le bon volume.
+
+### OpenMM ne déplace pas une liaison
+
+`updateParametersInContext` change les longueurs et les raideurs, jamais les particules d'une
+liaison. Une liaison par cohésine, qu'on déplacerait au fil de l'extrusion, lève « The set of
+particles in a bond has changed ». D'où `bond_catalogue` : **toutes** les paires du parcours
+sont déclarées d'emblée à raideur nulle, et seules celles tenues à l'instant présent sont
+allumées. Quelques milliers de liaisons éteintes ne pèsent rien devant les termes non liés.
+
+Corollaire de format : les instantanés d'extrusion gardent **un emplacement par cohésine**,
+`-1` quand elle est décrochée, au lieu de la liste compacte des seules cohésines chargées. Si
+l'identité des emplacements changeait d'un instantané à l'autre, une liaison sauterait d'une
+paire à une autre sans rapport et la dynamique encaisserait un choc là où l'extrusion n'avance
+que d'un cran.
+
+### Le raccord avec le noyau entier
+
+Les deux modèles se recouvrent entre 750 kb — une bille de la semaine 6 — et l'étendue de la
+région fine, **strictement exclue** : sur `n` monomères, la séparation `n` n'existe pas. Sur
+cette fenêtre les deux prétendent à la même grandeur, `R(s)`, la distance spatiale moyenne
+entre deux morceaux de chromatine séparés de `s` paires de bases, et ils ne partagent aucun
+paramètre ajusté. Le rapport des deux courbes est le critère de fin de semaine
+([`VALIDATION.md` § S8](VALIDATION.md)).

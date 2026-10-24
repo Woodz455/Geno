@@ -1,0 +1,15 @@
+# FIXTURE — pics CTCF fabriqués. Voir fixtures/README.md
+# chrom	start	end	nom	score	brin      (0-based, demi-ouvert)
+#
+# Le brin est l'ORIENTATION DU MOTIF, pas celle d'un transcrit. C'est la colonne
+# qui compte : la règle des motifs convergents veut qu'une boucle se forme entre
+# une ancre + et une ancre -, les motifs pointant l'un vers l'autre. La paire
+# ci-dessous encadre ACTB et forme une boucle convergente.
+chr7	5525100	5525300	CTCF_MA0139	887	+
+chr7	5533800	5534000	CTCF_MA0139	912	-
+chr7	5539200	5539400	CTCF_MA0139	643	+
+chr11	5222100	5222300	CTCF_MA0139	771	+
+chr11	5236400	5236600	CTCF_MA0139	824	-
+chr17	7665300	7665500	CTCF_MA0139	795	+
+chr17	7690100	7690300	CTCF_MA0139	868	-
+chr17	43041200	43041400	CTCF_MA0139	733	+

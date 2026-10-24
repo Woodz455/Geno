@@ -1,0 +1,10 @@
+{
+  "name": "@geno/first",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@geno/g3d": "workspace:*",
+    "@geno/viewer": "workspace:*"
+  }
+}

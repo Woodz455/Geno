@@ -1,0 +1,14 @@
+# FIXTURE — segmentation ChromHMM 18 états fabriquée. Voir fixtures/README.md
+# chrom	start	end	etat	score	strand      (0-based, demi-ouvert)
+chr7	5520000	5526200	Quies	0	.
+chr7	5526200	5527150	EnhWk	0	.
+chr7	5527150	5530400	Tx	0	.
+chr7	5530400	5530900	TssA	0	.
+chr7	5530900	5532400	TssFlnkD	0	.
+chr7	5532400	5536000	EnhA1	0	.
+chr11	5225000	5229200	Tx	0	.
+chr11	5229200	5229800	TssA	0	.
+chr17	7668000	7687300	Tx	0	.
+chr17	7687300	7687900	TssA	0	.
+chr17	43044000	43170000	Tx	0	.
+chr17	43170000	43170600	TssA	0	.

@@ -1,0 +1,469 @@
+# Geno — Feuille de route 24 semaines
+
+**Objectif** : un modèle 3D navigable du génome humain, construit sur des données de
+conformation réelles, où **chaque point cliqué répond de lui-même** : où suis-je sur le
+génome, dans quelle structure nucléaire, quel gène, quelle régulation, quelle pathologie.
+
+Deux publics servis par un seul moteur : **Mode Recherche** (bio-informatique, données
+propres, export publication) et **Mode Découverte** (grand public, parcours guidé).
+
+---
+
+## 1. Ce que nous construisons : les 7 échelles
+
+Le cœur du projet est un **zoom continu sur 4 ordres de grandeur**, du noyau (10 µm) à la
+paire de bases (2 nm). Dit autrement : 2 mètres d'ADN diploïde repliés dans une sphère de
+10 µm, et il faut pouvoir descendre jusqu'à la base.
+
+| # | Échelle | Objet biologique | Résolution génomique | Origine des positions |
+|---|---------|------------------|---------------------|----------------------|
+| 0 | ~10 µm | Noyau, lamina, nucléole, speckles | — | TSA-seq, DamID, imagerie |
+| 1 | 1–2 µm | Territoires chromosomiques | chromosome entier | Hi-C 1 Mb + contraintes radiales |
+| 2 | 0,5–1 µm | Compartiments A/B (A1, A2, B1–B4) | 100 kb – 1 Mb | Vecteur propre Hi-C, SNIPER/Calder |
+| 3 | 100–500 nm | TADs | 10–100 kb | Insulation score, Arrowhead |
+| 4 | 50–200 nm | Boucles CTCF, contacts enhancer–promoteur | 5–25 kb | HiCCUPS, Mustache, Micro-C |
+| 5 | 10–30 nm | Fibre de chromatine, nucléosomes | 200 pb – 5 kb | Micro-C + simulation polymère |
+| 6 | 2 nm | Double hélice B | 1 pb | Séquence de référence, géométrie procédurale |
+
+Les niveaux 0–4 viennent de **mesures**. Le niveau 5 vient d'une **simulation contrainte par
+les mesures**. Le niveau 6 est de la **géométrie déterministe**. L'interface doit dire
+laquelle des trois on regarde, à tout moment. C'est non négociable (§4).
+
+---
+
+## 2. Les deux modes
+
+Un seul noyau de code, deux coquilles. Pas deux applications.
+
+**Mode Recherche**
+- Import de ses propres `.mcool` / `.hic`
+- Choix des paramètres de reconstruction, exploration de l'ensemble de structures
+- Statistiques : position radiale, fréquence de contact, eigenvector de compartiment
+- Export figures (SVG/PNG haute résolution) et structures (glTF, PDB, 3DG)
+- Manifeste de session JSON → reproductibilité bit-à-bit
+
+**Mode Découverte**
+- Parcours narratif « du noyau à une base en 7 étapes »
+- Échelles comparées, glossaire au survol, aucun jargon sans définition
+- Haltes commentées : le locus HBB, l'enhancer FTO→IRX3, la frontière TAD de HOXD et les
+  malformations des membres, le superdomaine Xist du X inactif
+- Accessibilité : navigation clavier, palettes sûres pour daltoniens, `prefers-reduced-motion`
+- FR / EN
+
+Techniquement : même `packages/core`, un contexte `mode`, des feature flags. Le mode
+Découverte est le mode Recherche avec un préréglage curaté et une couche narrative.
+
+---
+
+## 3. Pile technique
+
+| Couche | Choix | Pourquoi |
+|--------|-------|----------|
+| Pipeline données | Python — `cooler`, `cooltools`, `bioframe`, `polychrom`/OpenMM | Standard de fait du domaine (consortium Open2C) |
+| Reconstruction | Chrom3D-like (recuit simulé) + Pastis pour comparaison | Chrom3D intègre les contraintes de lamina et sort un noyau diploïde complet |
+| Orchestration | Snakemake + conteneur | Chaque figure regénérable depuis les accessions brutes |
+| Format 3D | `.g3d` binaire multi-résolution + index d'intervalles | Requêtes HTTP Range, « Google Maps du génome » |
+| Rendu | Three.js / WebGL2, imposteurs de sphères, picking GPU | Millions de billes à 60 fps ; techniques éprouvées par Mol*/NGL |
+| Vues liées | `igv.js` (piste linéaire) + HiGlass (matrice de contacts) | La 3D seule désoriente ; il faut les trois vues synchronisées |
+| App | TypeScript, Vite, monorepo pnpm | — |
+
+---
+
+## 4. Principes non négociables
+
+1. **Une structure Hi-C unique est un artefact statistique.** Le Hi-C moyenne des millions de
+   cellules. On produit et on affiche un **ensemble** (N ≈ 200), avec la variabilité par bille
+   visible. Jamais une structure présentée comme « le » génome.
+2. **Mesuré ≠ simulé ≠ interpolé.** Un code couleur permanent distingue les trois.
+3. **Provenance traçable.** Chaque bille remonte à un accession + un hash de données + une
+   version de pipeline.
+4. **Validation contre données orthogonales.** DNA-FISH, chromatin tracing (ORCA), DamID
+   lamin B1, SPRITE/GAM. Un modèle non validé est une illustration, pas un résultat.
+5. **Coordonnées doubles.** hg38 *et* T2T-CHM13v2.0. Les centromères, l'ADNr et les bras
+   acrocentriques n'existent pas dans hg38 — on les marque explicitement comme modélisés
+   par contrainte.
+
+---
+
+## 5. Les 6 phases
+
+| Phase | Semaines | Titre | Fin de phase = |
+|-------|----------|-------|----------------|
+| 0 | 1–4 | Socle données & décisions | Toute donnée téléchargeable et vérifiée par `make data` |
+| 1 | 5–8 | Reconstruction 3D | Un ensemble de noyaux diploïdes validé quantitativement |
+| 2 | 9–12 | Moteur de rendu multi-échelle | Zoom continu noyau → paire de bases, sans couture |
+| 3 | 13–16 | Couche d'annotation & vues liées | Clic sur un point → fiche complète, 3 vues synchronisées |
+| 4 | 17–20 | Les deux modes | Recherche et Découverte livrés |
+| 5 | 21–24 | Validation, perf, publication | Déployé, DOI, méthodes publiables |
+
+---
+
+## 6. Semaine par semaine
+
+### Phase 0 — Socle données & décisions (S1–S4)
+
+#### Semaine 1 — Cadrage scientifique et lignée de référence
+- **Objectif** : figer le référentiel et la lignée cellulaire de référence.
+- **Décisions** : hg38 primaire, T2T-CHM13v2.0 secondaire. **GM12878** comme lignée de
+  référence (Rao 2014, GSE63525 — la carte Hi-C in situ la plus profonde publiée,
+  caryotype quasi normal, femelle → offre le X inactif en démonstration).
+  **H1-hESC / HFFc6 Micro-C** pour l'échelle fine.
+- **Livrable** : `docs/DATA_SOURCES.md` complété — accession, taille, licence, checksum
+  pour chaque jeu. Piège licence : OMIM n'est pas redistribuable → on passe par
+  MONDO / HPO / Orphanet et on ne garde d'OMIM que les identifiants liés.
+- **Fait quand** : `make data` télécharge tout et vérifie les sha256.
+
+#### Semaine 2 — Socle de données 1D
+- **Objectif** : pouvoir interroger n'importe quel intervalle génomique en moins d'une milliseconde.
+- **Travaux** : GENCODE (GTF → binaire indexé), cytobandes, centromères, télomères, gaps ;
+  cCREs ENCODE/SCREEN ; états ChromHMM ; pics CTCF **avec orientation du motif** (essentiel
+  pour l'extrusion de boucles).
+- **Livrable** : magasin d'intervalles unifié + CLI.
+- **Fait quand** : `geno query chr7:5,527,000-5,530,600` renvoie le locus ACTB complet.
+
+#### Semaine 3 — Socle de données 3D (Hi-C)
+- **Objectif** : extraire les features de conformation des cartes brutes.
+- **Travaux** : chargement `.mcool`, balancing ICE, décomposition en vecteurs propres →
+  compartiments A/B (orientation fixée par densité génique), insulation score → frontières
+  de TAD, HiCCUPS + Mustache → boucles. Résolutions 1 Mb / 250 kb / 100 kb / 25 kb / 10 kb / 5 kb / 1 kb.
+- **Fait quand** : nos appels de compartiments et de boucles recoupent ceux publiés par
+  Rao 2014 à plus de 80 %. Écart mesuré et expliqué, pas ignoré.
+
+#### Semaine 4 — Spike technique & architecture
+- **Objectif** : savoir ce que le navigateur encaisse *avant* d'écrire le moteur.
+- **Travaux** : prototype Three.js — 1 M d'imposteurs de sphères, mesure du framerate et de
+  la latence de picking GPU sur 3 cibles (GPU desktop, iGPU portable, téléphone).
+- **Livrable** : budget de billes par niveau de LOD, écrit et chiffré. Squelette du monorepo.
+  ADR sur la stratégie deux-modes.
+- **Fait quand** : go/no-go signé sur le budget de rendu.
+
+---
+
+### Phase 1 — Reconstruction 3D (S5–S8)
+
+#### Semaine 5 — Contact → distance
+- **Objectif** : la conversion la plus critique du projet. `d ∝ f^(-α)`, on balaie α.
+- **Travaux** : implémenter et comparer loi de puissance, approche Poisson (Pastis), MDS
+  métrique (ShRec3D).
+- **Fait quand** : le modèle reproduit des faits connus indépendants — chr19 (dense en gènes)
+  plus central que chr18, taille des territoires cohérente avec la FISH publiée.
+
+#### Semaine 6 — Noyau diploïde complet
+- **Objectif** : première structure entière.
+- **Travaux** : modèle bille-par-TAD, 46 chromosomes, contraintes LAD → périphérie, rayon
+  nucléaire, volume exclu, recuit simulé.
+- **Fait quand** : un noyau diploïde, ~6 000–10 000 billes TAD, sans interpénétration.
+- **Fait.** `make nucleus` — 8 082 billes de 750 kb, chevauchement maximal sous 0,5 % du
+  contact sur six graines, aucune bille hors du noyau. Résultat de fond : « en LAD » n'est pas
+  « à la lamina », et l'écart est une loi d'échelle ([`VALIDATION.md` § S6](VALIDATION.md)).
+
+#### Semaine 7 — Ensembles, pas une structure
+- **Objectif** : appliquer le principe n°1 (§4).
+- **Travaux** : N = 200 structures depuis des graines différentes ; variabilité par bille,
+  structure médoïde, distributions radiales.
+- **Livrable** : `ensemble.zarr` + rapport de validation chiffré (corrélation position radiale
+  modélisée vs. LADs DamID publiés).
+- **Fait quand** : le rapport existe avec ses nombres, réussite ou échec.
+- **Fait, en partie.** `make ensemble` — 200 structures en 36 min, `ensemble.zarr`, rapport
+  chiffré ([`VALIDATION.md` § S7](VALIDATION.md)). ICC 0,776 sur la profondeur : 22 % de la
+  position radiale d'une bille tient au tirage, pas à la bille. Résultat de fond : P(s)
+  **s'aplatit** au-delà de 15 Mb là où le Hi-C réel continue de décroître — le modèle a des
+  territoires, pas leur organisation interne, ce qui cadre la semaine 8. **Manque** la
+  corrélation au DamID publié, faute de fichier : le calcul est écrit et testé, il attend le
+  réseau.
+
+#### Semaine 8 — Échelle fine : polymère et extrusion de boucles
+- **Objectif** : descendre sous le TAD.
+- **Travaux** : sur une région choisie de 2–4 Mb, simulation polymère d'extrusion de boucles
+  (polychrom/OpenMM) conditionnée par les sites CTCF orientés et le Micro-C. Résolution 1–5 kb.
+- **Fait quand** : le segment fin se raccorde géométriquement au modèle de noyau entier.
+- **Écart au plan, dit d'emblée.** `polychrom` n'est pas sur PyPI et l'environnement n'atteint
+  pas GitHub : les cinq termes du champ de force sont écrits directement sur OpenMM, qui
+  s'installe depuis PyPI. Et **aucun Micro-C ni aucune piste CTCF publiée n'est lisible** —
+  même mur réseau qu'aux semaines 1 à 7. Les sites orientés sont donc **plantés**, avec
+  témoins divergents et en tandem, comme la semaine 3 plantait une structure Hi-C : ça valide
+  la méthode, pas la biologie. `make fine CTCF=motifs.bed` attend un fichier.
+- **Fait, et le critère n'est pas atteint — c'est le résultat.** `make fine` — 4 Mb autour
+  d'ACTB, 2 000 monomères de 2 kb, 1 200 conformations en 14 min. Le mécanisme marche : 12
+  frontières sur 13 retrouvées contre **0 sur 13** quand les mêmes sites sont inoccupés, et des
+  points d'angle 2,57× au-dessus du fond aux paires convergentes, qui retombent à 1,06 sans
+  CTCF. Mais le raccord **échoue à 2,42×**, et sa lecture utile est une pente : `R(s) ∝ s^0,68`
+  pour le noyau de la semaine 6 contre `s^−0,02` pour le modèle fin, quand le traçage de
+  chromatine donne 0,25–0,33. Les deux modèles encadrent la mesure par les deux bouts. Le noyau
+  gonfle comme une marche auto-évitante parce que ses billes ne sont liées que par une longueur
+  *maximale* — **c'est la même cause que le plateau de P(s) de la semaine 7**, vu de l'autre
+  côté ([`VALIDATION.md` § S8](VALIDATION.md)).
+
+---
+
+### Phase 2 — Moteur de rendu multi-échelle (S9–S12)
+
+#### Semaine 9 — Format et streaming
+- **Objectif** : ne jamais charger ce qu'on ne regarde pas.
+- **Travaux** : format `.g3d` — en-tête (assemblage, niveaux, type cellulaire, hash de
+  provenance) + tableaux de positions par LOD + index d'intervalles. Découpage octree,
+  requêtes HTTP Range.
+- **Fait quand** : niveau noyau < 500 ko, premier rendu < 1,5 s en 4G.
+- **Fait — tenu sous le profil Slow 4G de DevTools, avec 88 ms de marge.** `make g3d` écrit un
+  fichier de **57 ko** à trois niveaux (aperçu 3 Mb, noyau 750 kb, région fine 2 kb posée dans
+  le repère du noyau) ; le niveau noyau entier pèse **35 ko** contre 500 admis. La précision
+  stockée suit l'incertitude (erreur max = 1 % de la dispersion médiane, 2,8 nm) au lieu de
+  l'habitude du float32 : 3,8 à 4,7 octets par bille à toutes les échelles. Premier rendu
+  mesuré dans Chromium, rendu vérifié à chaque passage : **512 à 819 ms en Fast 4G**, toutes
+  variantes ; **1 412 ms en Slow 4G** avec l'aperçu et un préfixe de 16 Kio — le noyau seul
+  échoue à 1 602 ms, une seconde requête coûte 650 ms. La règle fixée avant la mesure a donc
+  fait de l'aperçu le niveau du premier rendu. Limite dite avec le chiffre : le bridage est par
+  requête, sans TCP ni TLS ; un vrai Slow 4G en HTTPS ajouterait un aller-retour et ferait
+  échouer toutes les variantes ([`VALIDATION.md` § S9](VALIDATION.md)). Aucune dépendance
+  nouvelle : `DecompressionStream`, `crypto.subtle`, `fetch` et `WebSocket` sont natifs.
+
+#### Semaine 10 — Niveaux macro
+- Noyau, territoires, compartiments. Imposteurs de sphères, occlusion ambiante écran-espace
+  (sans elle, un nuage de billes est illisible). Caméra orbitale + transition « plongée ».
+- **Fait quand** : on descend du noyau aux compartiments en plongée continue, à 60 fps sur la
+  cible matérielle médiane.
+- **Fait — continue, et 60 fps sur un GPU intégré.** `dist/dive.html`
+  descend de 80 à 2,6 µm de champ jusqu'à ACTB sur chr7:a, par le chemin de van Wijk et Nuij
+  (vitesse perçue constante, testée). Trois transitions — aperçu → noyau, autres chromosomes
+  effacés, territoires → compartiments — par **fondu tramé** complémentaire (aucun trou à aucun
+  `t`, profondeur exacte ; témoin : 50 % de trous) et **occlusion ambiante** invariante d'échelle.
+  Mesurée image par image : **0 saut** et chaque transition à 0,95–1,04× le mouvement seul, contre
+  1,7 à 3,8× pour le même parcours en marches sèches. Les **compartiments** sont ceux du modèle,
+  appelés sur sa propre carte de contacts : damier fort et reproductible (force croisée 4,76,
+  r = 0,98 d'une moitié de l'ensemble à l'autre) qui suit la position radiale — une prédiction,
+  pas une mesure. Le saddle habituel trouvait un damier de 2,8 dans un ensemble qui n'en a pas ;
+  il est croisé. Les 60 fps, mesurés après coup par la page de banc matériel sur deux vrais
+  appareils : **Intel Iris Xe (intégré) 16,7 / 16,8 ms** d'intervalle médian / p95 et 2,6 ms de rendu
+  seul, **iPhone 14 17 / 17 ms** et 3 ms — aucune image perdue (SwiftShader : 8 images/s, borne
+  haute sans portée). En chemin : la semaine 8 n'est reproductible qu'en
+  statistique (OpenMM), et `make fine` ne la reproduisait pas du tout — corrigé
+  ([`VALIDATION.md` § S10](VALIDATION.md)).
+
+#### Semaine 11 — Niveaux TAD, boucle, fibre
+- Géométrie tubulaire depuis la polyligne, tessellation adaptative. Ancres de boucles rendues
+  comme arcs de liaison. Nucléosomes à l'échelle 10 nm.
+- **Note scientifique** : on représente la fibre de 10 nm en chaîne désordonnée, pas en fibre
+  régulière de 30 nm — la ChromEMT en cellule (Ou et al. 2017) n'observe pas cette dernière
+  *in situ*.
+- **Fait quand** : une boucle CTCF se lit comme telle, ancres comprises, à l'échelle où elle
+  existe.
+- **Fait.** Sous 3 µm la bille de 750 kb cède à la fibre de 2 kb (tube à tessellation
+  adaptative, sans fissure) ; entre 1,4 µm et 600 nm la boucle visée s'isole, avec ses flèches
+  CTCF, ses anneaux de cohésine et l'arc de sa paire ; sous 250 nm, des nucléosomes illustratifs
+  en chaîne désordonnée. Mesurée sur le tampon de picking, la boucle 1527–1621 (188 kb, tenue ici
+  par deux cohésines et dans 18,7 % de l'ensemble) **se lit** : ancres 269 et 131 px, anneau,
+  arc, 85 % du corps visible, flèches dans le sens de leur brin (26/26 sur tous les arcs) ; sans
+  isolement, rien n'est visible. Les arcs sont les bonnes paires : 11 convergents plantés sur 14
+  au seuil de 5 % fixé d'avance, **aucun** dans le témoin sans CTCF. La plongée n'a aucun saut —
+  mais au milieu du fondu noyau → fibre, 45 % seulement de la fibre tombe dans la silhouette des
+  billes qu'elle détaille : **le fondu cache le saut du raccord S8, pas l'écart**, montré et
+  mesuré comme convenu ([`VALIDATION.md` § S11](VALIDATION.md)).
+
+#### Semaine 12 — Niveau séquence : la double hélice procédurale
+- **Objectif** : la démonstration qui fait le projet.
+- **Travaux** : génération de la géométrie B-ADN (10,5 pb/tour, pas de 3,6 nm, rise 0,34 nm,
+  grand et petit sillon) depuis la séquence réelle de la fenêtre visible uniquement.
+- **Fait quand** : un zoom continu enregistré, du noyau jusqu'à une base précise de TP53,
+  sans coupure ni chargement visible.
+- **Fait.** Le réseau s'est ouvert en début de semaine : `hg38.2bit` et GENCODE v50 sont
+  récupérés, verrouillés et confrontés à l'empreinte de leur dépôt. La plongée va de 80 µm à
+  4 nm de champ et s'arrête sur **chr17:7 673 802**, c.818 de TP53 (codon 273, CGT), recalculé
+  depuis les CDS du transcrit MANE — sur la région fine de TP53 simulée comme en S8, CTCF
+  plantés. Sous 40 nm, l'ADN de 1 nm cède à la double hélice B (10,5 pb/tour, 3,57 nm de pas,
+  sillons mesurés 5,4 et 11,8 Å contre 5,7 et 11,7 publiés) posée sur un chemin d'ADN dont chaque
+  base a une position — 0,34 nm par pas à 0,4 % près, à travers des nucléosomes illustratifs ;
+  sous 8 nm, les lettres. Mesures : **0 saut** sur 600 images (transitions à 0,94–1,00× le
+  mouvement seul, témoin jusqu'à 7,4×) ; **0 image en attente** jouée en temps réel sous Slow 4G,
+  contre 1 pour le témoin sans préchargement, en lisant 11,8 Kio de séquence sur 2 Mo ; **90/90**
+  bases dessinées égales au génome relu par Python. La vidéo enregistrée (49 s, 1 350 images)
+  est mesurée sur elle-même : 0 saut, lettres comprises. Le raccord S8, mesuré cette fois sur chr17, est pire qu'à ACTB : 11 % de la fibre
+  dans ses billes contre 45 % ([`VALIDATION.md` § S12](VALIDATION.md)). Sur vrai matériel
+  (iPhone 14, banc rejoué le 2026-10-20), la plongée jusqu'à la base **ne tient pas** 60 fps :
+  p95 de 28 à 31 ms, rendu seul de 22 à 27 ms entre les nucléosomes et l'hélice.
+
+---
+
+### Phase 3 — Annotation & vues liées (S13–S16)
+
+#### Semaine 13 — Picking GPU et fiche d'information
+- **Objectif** : « des détails et informations sur les endroits pointés » — le cœur de la demande.
+- **Travaux** : buffer d'identifiants entier (RGBA32UI), lecture d'un pixel au clic → O(1)
+  quel que soit le nombre de billes. Mapping inverse position 3D → coordonnée génomique.
+- **La fiche affiche** :
+  - Coordonnées : chr, position hg38 **et** T2T, cytobande
+  - Contexte structural : compartiment (A/B + sous-compartiment), TAD et distance à la
+    frontière la plus proche, ancres de boucles, position radiale normalisée (0 = centre,
+    1 = périphérie), statut LAD/NAD, distance aux speckles (TSA-seq), timing de réplication
+  - Gènes : GENCODE chevauchants ou voisins, brin, biotype, expression GTEx
+  - Régulation : cCREs, état ChromHMM, sites CTCF avec orientation
+  - Clinique : variants ClinVar, maladies (MONDO/HPO), hits GWAS, contrainte gnomAD (pLI, LOEUF)
+  - Séquence : au zoom maximal, les bases réelles de la référence
+- **Fait quand** : un clic sur n'importe quelle bille produit la fiche complète en moins de 100 ms.
+- **Fait.** Le clic lit un pixel d'une cible **RGBA32UI** (identifiant + type de rendu) et sa
+  profondeur, puis retrouve ce qu'il désigne, aussi finement que l'objet le permet : l'intervalle
+  d'une bille, les 2 kb d'un monomère, la base dont l'axe passe au plus près de la ligne de visée
+  pour l'ADN et les nucléosomes, la base exacte pour l'hélice (482/500 à la résolution du pixel).
+  La fiche vient d'un fichier à part, `gm12878.fiche` (6,5 Mo, au-dessus des 2,5 Mo visés), écrit
+  depuis **24 sources réelles résolues et verrouillées** — GENCODE v50, GTEx v10, gnomAD v4.1,
+  cCRE, ChromHMM et CTCF d'ENCODE en GM12878 (orientés par le motif), Rao 2014 et Repli-seq levés
+  de hg19, ClinVar du 2026-10-19, GWAS Catalog, MONDO/HPO — ; LAD, speckles et nucléole n'existent
+  pas en GM12878 et sont montrés depuis K562 et HFFc6, étiquetés. Chaque ligne porte son badge
+  d'évidence. **0 champ muet sur 14 114 fiches** ; 200/200 recomposées par un autre chemin (témoin
+  décalé : diverge) ; R273H pathogène à c.818. Mesurée par de vrais clics dans la page : **504/504
+  fiches complètes, peintes en 29 ms médian et 44 ms au 95e centile** sous SwiftShader ; sans
+  préchargement, le témoin attend 1,7 s. Deux défauts anciens trouvés en chemin : l'ADN de liaison
+  partageait les identifiants des nucléosomes, et le picking lisait le pixel voisin une fois sur
+  deux. Sous Slow 4G le préchargement complet prend 147 s, et un clic qui le précède attend son
+  bloc 1,3 à 5,4 s. Sur un iPhone 14, lecture du pixel et mapping inverse coûtent **0 à 1 ms**
+  sur 180 clics ([`VALIDATION.md` § S13](VALIDATION.md)).
+
+#### Semaine 14 — Vues liées
+- `igv.js` et HiGlass montés à côté de la 3D. Une sélection unique publiée par un store —
+  pas de synchronisation deux-à-deux, source connue des boucles infinies. Brossage :
+  sélection dans le navigateur linéaire → surbrillance en 3D, et réciproquement.
+- **Fait quand** : une sélection faite dans l'une des trois vues apparaît dans les deux
+  autres, sans rebond.
+- **Fait.** `vues.html` monte la plongée, igv.js 3.8 et HiGlass 2.3 côte à côte, sans réseau
+  extérieur : igv lit le `.2bit` verrouillé par plages et des pistes écrites depuis les sources
+  verrouillées (gènes, CTCF orientés, boucles Rao 2014, compartiments du modèle) ; HiGlass lit la
+  carte de contacts **du modèle** — 200 repliements du noyau, 750 kb, et les régions fines à 2 kb,
+  superposées —, un format à tuiles écrit pour lui (`gm12878.contacts`, 21 Mo, float16), vérifié
+  par conservation (≤ 1,5·10⁻⁵), par 200 + 200 pixels recomposés à partir des distances (témoin
+  décalé : diverge) et par lecture croisée au bit près. La sélection est un ou deux intervalles,
+  publiés par un store ; naviguer n'est pas sélectionner. Mesurée par de vrais gestes, 30 par vue :
+  **90/90 sélections vues dans les deux autres vues, une publication chacune, zéro rebond** ; 15
+  gestes de navigation, 0 publication ; le témoin synchronisé deux à deux envoie 190 messages en
+  une demi-seconde après un seul geste, et ne s'arrête pas. igv attend 500 ms avant un clic simple
+  (son délai de double-clic) ; la carte est simulée, pas du Hi-C mesuré
+  ([`VALIDATION.md` § S14](VALIDATION.md)).
+
+#### Semaine 15 — Couche clinique et fonctionnelle
+- Surimpression ClinVar / GWAS / contrainte gnomAD sur la structure.
+- **Mode variant structural** : supprimer une frontière de TAD et voir le détournement
+  d'enhancer prédit — la démonstration de Lupiáñez 2015 (EPHA4, malformations des membres)
+  et Franke 2016 (néo-TAD, SOX9), rejouable en direct.
+- **Fait quand** : la suppression d'une frontière rejoue en direct le cas EPHA4 des
+  malformations des membres.
+- **Non fait.** `variant.html` est construite : 4 préréglages 3D (OpenMM, fondu sauvage → mutant),
+  délétions tracées à la souris sur la piste, extrusion 1D en direct en TypeScript (identique à
+  Python : Welch |t| ≤ 1,05 sur 16 lots), deux 4C virtuels, et pour chaque délétion qui emporte la
+  frontière le même allèle « frontière épargnée » calculé à côté. Surimpression ClinVar / GWAS /
+  LOEUF dans la plongée et la page, exacte au bille près (2 032/2 032 et 8 082/8 082 contre Python).
+  Les points de cassure sont **reconstruits depuis le texte** de Lupiáñez 2015 (Table S1 illisible) :
+  une famille de 34 DEL-B et leurs témoins. Mais le **modèle n'isole pas le TAD d'EPHA4** : à 24
+  réplicats par allèle, l'enhancer touche PAX3 autant qu'EPHA4 (0,90, IC [0,36 ; 2,17]), et la
+  prédiction 1D ne voit pas la frontière (DEL-B / frontière épargnée : médiane 1,03 sur 34). Un
+  critère sur quatre au plan pré-enregistré — un tirage, révèle le rééchantillonnage des réplicats —,
+  un sur quatre au plan révisé (fenêtre constante, loi sans plancher, seuils inchangés) ; la page
+  répond en 2,8 s au p95 (critère : 1 s). SOX9 non commencé. Reprendre demande un choix de
+  conception — processivité locale avec ≥ 48 réplicats par allèle, ou un modèle contraint par le
+  Hi-C mesuré du locus ([`VALIDATION.md` § S15](VALIDATION.md)).
+
+#### Semaine 16 — Recherche et navigation
+- Recherche « BRCA1 », « chr17:43,044,295 », « rs334 » → vol de caméra vers la cible.
+- Signets, URL partageables encodant caméra + sélection.
+- **Fait quand** : les trois formes de requête amènent la caméra au bon endroit, et l'URL
+  rejoue la vue à l'identique.
+- **Fait.** Un champ de recherche dans la plongée : un gène (GENCODE v50, nom ou ENSG), une
+  position hg38 (`chr17:43,044,295`, intervalles), un rsID (ClinVar et catalogue GWAS — **pas**
+  dbSNP, décision de l'utilisateur). Index `gm12878.search` (21,9 Mo, 78 733 gènes, 3 062 314 rsID,
+  un bloc par requête Range), recompté depuis les fichiers bruts (501/501 rsID, 503/503 gènes) et
+  relu au bit près par TypeScript (645/645). Le vol se pose sur la bille de 750 kb de la copie `a`
+  (l'Xa pour le X), les deux homologues surlignés, la fiche ouverte ; dans la région fine chargée,
+  sur le monomère ou la paire de bases. La vue vit dans le fragment de l'URL (orbite au bit près,
+  sélection, surimpression, fiche) ; signets dans le navigateur. Mesuré par de vrais gestes :
+  **645/645** résolutions égales à Python, témoins compris ; **90/90** requêtes tapées amènent la
+  cible au centre de l'image, fiche juste ; **30/30** vues rejouées dans un onglet neuf **au pixel
+  près** (le lacet décalé de 10⁻³ rad change 37 000 à 67 000 pixels) ; 5/5 signets. Six défauts
+  trouvés et corrigés en route (chrX nommé Xa/Xi, la fibre effacée hors de la fenêtre, la pelote
+  qui cache le monomère visé, la surimpression 2D rastérisée autrement après sa première relecture,
+  des clés de gènes en double, la grammaire des rsID longs) ([`VALIDATION.md` § S16](VALIDATION.md)).
+
+---
+
+### Phase 4 — Les deux modes (S17–S20)
+
+#### Semaines 17–18 — Mode Recherche
+- Import `.mcool` / `.hic` de l'utilisateur, reconstruction déclenchable, panneau de paramètres,
+  explorateur d'ensemble, statistiques, exports (PNG/SVG publication, glTF, PDB, 3DG),
+  manifeste de session reproductible.
+- **Contrainte mémoire** : un ensemble complet (200 × 620 000 billes) pèse ~1,5 Go → on
+  streame le médoïde + un scalaire de variabilité par bille ; l'ensemble complet ne se charge
+  qu'à la demande et en résolution grossière.
+- **Fait quand** : un `.mcool` importé ressort en structure, et le manifeste de session la
+  reproduit à l'identique.
+
+#### Semaines 19–20 — Mode Découverte
+- Parcours guidé, comparaisons d'échelles, glossaire, haltes commentées, accessibilité
+  complète, i18n FR/EN.
+- **Fait quand** : un lecteur sans formation en génomique termine le parcours et sait
+  expliquer ce qu'est un TAD.
+
+---
+
+### Phase 5 — Validation, performance, publication (S21–S24)
+
+#### Semaine 21 — Validation scientifique
+- Confrontation aux données orthogonales : distances DNA-FISH publiées, chromatin tracing
+  (Bintu 2018, Su 2020), DamID lamin B1, contacts SPRITE et GAM.
+- **Livrable** : rapport de validation quantitatif. C'est ce qui sépare un outil d'une jolie image.
+- **Fait quand** : le rapport existe, avec ses corrélations **et ses échecs nommés**.
+
+#### Semaine 22 — Performance et compatibilité
+- Budget de frame, mémoire, mobile, chemin de repli WebGPU, particularités Safari.
+- **Point d'entrée, mesuré en semaine 13** : sur iPhone 14, la plongée ne tient pas 60 fps sous
+  la fibre — rAF p95 28–31 ms, rendu seul 22–27 ms entre les nucléosomes et l'hélice
+  ([`VALIDATION.md` § S13](VALIDATION.md)). Reporté ici par décision de l'utilisateur ; isoler
+  d'abord ce qui coûte (occlusion ambiante, taille de la fenêtre dessinée), puis corriger.
+- Tests de non-régression de performance automatisés.
+- **Fait quand** : les budgets tiennent sur les trois cibles, et un commit qui les dépasse
+  casse la CI.
+
+#### Semaine 23 — Documentation, reproductibilité, tests
+- Pipeline Snakemake conteneurisé ; toute figure regénérable depuis les accessions brutes.
+- Documentation d'API + document de méthodes énonçant **toutes** les limites sans les adoucir.
+- **Fait quand** : toute figure du projet se regénère depuis les accessions brutes, par une
+  seule commande.
+
+#### Semaine 24 — Publication et livraison
+- Déploiement, DOI Zenodo, section méthodes prête pour préprint, vidéo de démonstration,
+  feuille de route v2.
+- **Fait quand** : l'outil est en ligne, citable, et la v2 est écrite.
+
+---
+
+## 7. Jalons de démonstration
+
+| Fin de | On peut montrer |
+|--------|-----------------|
+| S4 | Les données sont là, vérifiées ; on sait ce que le GPU encaisse |
+| S8 | Un noyau diploïde qui tourne, calculé depuis du Hi-C réel |
+| S12 | **Le zoom continu du noyau à la paire de bases** |
+| S16 | Clic sur n'importe quel point → fiche complète, trois vues synchronisées |
+| S20 | Les deux applications, utilisables par leurs publics respectifs |
+| S24 | Déployé, validé, citable |
+
+---
+
+## 8. Risques et parades
+
+| # | Risque | Parade |
+|---|--------|--------|
+| R1 | Le Hi-C moyenne les cellules → structure trompeuse | Ensembles + variabilité visible. Décidé S7, jamais renégocié |
+| R2 | Plafond de résolution (le 1 kb exige des milliards de lectures) | Sous le TAD, c'est de la simulation contrainte, étiquetée comme telle |
+| R3 | Centromères, ADNr, bras acrocentriques absents de hg38 | Bascule T2T-CHM13v2.0, régions marquées « modélisées par contrainte » |
+| R4 | Mémoire et perf navigateur | Budget LOD figé en S4, tenu par des tests automatisés |
+| R5 | Dérive de périmètre entre les deux modes | Un seul noyau + feature flags, ADR en S4 |
+| R6 | Licences (OMIM non redistribuable) | MONDO / HPO / Orphanet ; d'OMIM, seulement les identifiants liés |
+| R7 | Le zoom continu est le point dur technique | Attaqué en S12, après le spike S4 — pas en fin de projet |
+
+---
+
+## 9. Ce dont j'ai besoin de toi
+
+- **S1** : valider GM12878 comme lignée de référence, ou en proposer une autre selon ton usage.
+- **S4** : arbitrer le budget de rendu si les cibles basses ne suivent pas.
+- **S8** : choisir la région de 2–4 Mb pour la simulation fine (une région qui t'intéresse
+  scientifiquement vaut mieux qu'une région choisie au hasard).
+- **S15** : la liste des loci cliniques prioritaires.
+- **S19** : le ton du mode Découverte — musée, cours, ou documentaire.

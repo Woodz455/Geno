@@ -1,0 +1,12 @@
+# FIXTURE — cCREs fabriqués, format ENCODE/SCREEN. Voir fixtures/README.md
+# chrom	start	end	classe	score	strand      (0-based, demi-ouvert)
+# ACTB est sur le brin moins : son TSS est à la coordonnée la PLUS HAUTE (5530601),
+# donc le cCRE promoteur (PLS) est en haut du gène, pas en bas.
+chr7	5530450	5530800	PLS	956	.
+chr7	5531900	5532250	pELS	742	.
+chr7	5535100	5535420	dELS	511	.
+chr7	5526300	5526640	dELS	488	.
+chr11	5229300	5229640	PLS	901	.
+chr11	5233100	5233450	dELS	655	.
+chr17	7687400	7687760	PLS	973	.
+chr17	43170100	43170460	PLS	944	.

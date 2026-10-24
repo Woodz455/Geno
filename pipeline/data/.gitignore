@@ -1,0 +1,14 @@
+# Les données brutes ne sont jamais versionnées — seul le manifeste l'est.
+raw/
+# Artefacts reconstructibles : `make build-store`, `make bench`, `make nucleus`.
+store/
+bench/
+synthetic/
+nucleus/
+ensemble/
+fine/
+# Semaine 15 : les allèles du locus EPHA4 (OpenMM), `geno sv run`.
+sv/
+g3d/
+# Semaine 13 : sources de la fiche décodées une fois (pickle), indexées par empreinte.
+cache/
