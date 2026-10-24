@@ -50,9 +50,9 @@ help:
 	@echo
 	@echo "Fiches (semaine 13)"
 	@echo "  make fiche           écrit data/g3d/gm12878.fiche — une fiche par bille, sources réelles"
+	@echo "                       du manifeste — puis la vérifie (complétude, exactitude, faits)"
 	@echo "  make linked          carte de contacts du modèle (gm12878.contacts) + pistes igv — semaine 14"
 	@echo "  make search          index de recherche : gènes GENCODE, rsID ClinVar et GWAS (gm12878.search) — semaine 16"
-	@echo "                       du manifeste — puis la vérifie (complétude, exactitude, faits)"
 
 data:           ; @TIERS="core annot" $(FETCH)
 data-core:      ; @TIERS="core" $(FETCH)

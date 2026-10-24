@@ -23,15 +23,22 @@
  *    fiche=…    fichier de fiches (défaut : celui du .g3d, en .fiche) — semaine 13
  *    pick       mode interactif instrumenté pour `tools/pick.mjs` : chaque clic est chronométré
  *               (pixel, fiche, DOM, image peinte) ; nofichepre : le témoin sans préchargement
+ *    search=…   index de recherche (défaut : celui du .g3d, en .search) — semaine 16
+ *    nav        mode interactif instrumenté pour `tools/search.mjs` (recherche, URL, signets)
+ *
+ *  Semaine 16 : le fragment (#v=1&o=…) porte la vue — orbite, sélection, surimpression, fiche —
+ *  et la page le rejoue au chargement (`url.ts`).
  */
 
-import { FicheReader, HttpSource } from "@geno/g3d";
+import { FicheReader, HttpSource, SearchIndex, type SearchHit as Hit } from "@geno/g3d";
 import { BASE_COLORS, baseOf, dive, type Orbit, rotate, zoom } from "@geno/viewer";
 import { divePath, runBench } from "./bench.js";
-import { type DiveScene, FOV, openDive, type Selection, type TargetName } from "./dive.js";
+import { type DiveScene, FOV, openDive, type Region, type Selection, type TargetName } from "./dive.js";
 import { compose, EVIDENCE_COLORS, FichePanel } from "./fiche.js";
 import { IDS } from "./fiber.js";
 import { measureJunction, measureLoop } from "./legibility.js";
+import { depthText, type Destination, destination } from "./navigate.js";
+import { type Bookmark, type CardState, decode, encode, loadBookmarks, saveBookmarks, type ViewState } from "./url.js";
 
 const q = new URLSearchParams(location.search);
 const FILE = q.get("f") ?? "data/gm12878.g3d";
@@ -43,6 +50,8 @@ const STREAM = Number(q.get("stream") ?? 0);
 const RECORD = Number(q.get("record") ?? 0);
 const FICHE = q.get("fiche") ?? FILE.replace(/\.g3d$/, ".fiche");
 const PICK = q.has("pick");
+const NAV = q.has("nav");
+const SEARCH = q.get("search") ?? FILE.replace(/\.g3d$/, ".search");
 
 declare global {
   interface Window {
@@ -64,6 +73,13 @@ style.textContent = `
   #evidence { margin-top: 6px; color: #c9d3df; }
   canvas { touch-action: none; }
   #overlay { position: fixed; left: 0; top: 0; pointer-events: none; }
+  #search { display: flex; gap: 6px; margin-top: 8px; }
+  #search input { flex: 1; min-width: 0; font: inherit; padding: 4px 8px; border-radius: 6px;
+                  border: 1px solid #3a4658; background: #0e131b; color: inherit; }
+  #search button { margin: 0; }
+  #found { margin-top: 4px; color: #c9d3df; white-space: pre-wrap; }
+  #found button, #marks button { margin: 4px 4px 0 0; padding: 2px 8px; }
+  #marks a { color: #9cc3ff; margin-right: 4px; }
 `;
 document.head.appendChild(style);
 
@@ -365,12 +381,16 @@ async function main(): Promise<void> {
   panel.onHide = () => {
     ficheOpen = false;
     marker = null;
+    cardState = null;
     drawLabels(scene);
   };
   let reader: FicheReader | null = null;
   const picks: Record<string, unknown>[] = [];
   const prefetch: Record<string, number> = { started: performance.now() };
   let marker: number[] | null = null;
+  /** Semaine 16 : la fiche ouverte (pour l'URL), et ce qui est surligné. */
+  let cardState: ViewState["card"] = null;
+  let selRegions: Region[] | null = null;
   const focusChrom = scene.region?.chrom ?? "chr17";
   // Deux promesses : le fichier ouvert (en-tête lu) — ce qu'un clic à froid attend —, et le
   // préchargement, qui dure, lui, jusqu'à deux minutes et demie sous Slow 4G.
@@ -401,12 +421,15 @@ async function main(): Promise<void> {
     if (!sel) {
       panel.hide();
       marker = null;
+      cardState = null;
       ficheOpen = false;
       drawLabels(scene);
       picks.push({ hit: false, pickMs: t1 - t0 });
       return;
     }
     marker = sel.world;
+    cardState = { level: sel.level, bead: sel.bead, pos: sel.pos, what: sel.what, strand: sel.strand,
+                  precision: sel.precision, detail: sel.detail ?? "" };
     const r = reader;
     const card = r ? r.card(sel.level, sel.bead) : null;
     const t2 = performance.now();
@@ -492,6 +515,194 @@ async function main(): Promise<void> {
   };
   let paintMs = 0;
 
+  // Semaine 16 : la recherche — un gène, une position, un rsID —, le vol vers la cible, la vue
+  // dans l'URL et les signets.
+  const form = document.createElement("form");
+  form.id = "search";
+  form.setAttribute("role", "search");
+  const input = document.createElement("input");
+  input.type = "search";
+  input.placeholder = "BRCA1, chr17:43,044,295, rs334";
+  input.setAttribute("aria-label", "Rechercher un gène, une position hg38 ou un rsID");
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Aller";
+  form.append(input, submit);
+  hud.appendChild(form);
+  const found = document.createElement("div");
+  found.id = "found";
+  found.setAttribute("aria-live", "polite");
+  hud.appendChild(found);
+  const marks = document.createElement("div");
+  marks.id = "marks";
+  hud.appendChild(marks);
+
+  const index = SearchIndex.open(new HttpSource(SEARCH)).catch((e) => {
+    found.textContent = `recherche indisponible : ${e}`;
+    return null;
+  });
+  let query = "";
+  const flights: Record<string, unknown>[] = [];
+  let flight: Record<string, unknown> | null = null;
+  const fmt = (n: number) => n.toLocaleString("en-US");
+  const ERRORS: Record<string, string> = {
+    "malformed": "requête illisible — un gène (BRCA1), une position hg38 (chr17:43,044,295) ou un rsID (rs334)",
+    "unknown-gene": "aucun gène de ce nom ni de cet identifiant dans GENCODE v50",
+    "unknown-rs": "rsID absent de ClinVar et du catalogue GWAS — l'index ne couvre que ces deux sources, pas tout dbSNP",
+    "unknown-chrom": "chromosome inconnu de hg38",
+    "out-of-range": "position au-delà de la fin du chromosome",
+  };
+
+  /** La fiche d'une bille ou d'un monomère, ouverte comme par un clic (sans repère de pixel). */
+  const showCard = async (st: CardState): Promise<void> => {
+    const b = await scene.g3d.identify(st.level, st.bead);
+    const sel: Selection = {
+      what: st.what, level: st.level, bead: st.bead, copy: b.copy, chrom: b.copy.split(":")[0], start: b.start, end: b.end,
+      pos: st.pos, strand: st.strand, precision: st.precision, detail: st.detail || undefined, world: null, pickMs: 0,
+    };
+    const r = await opened;
+    if (!r) return;
+    const card = r.card(st.level, st.bead) ?? (await r.cardAsync(st.level, st.bead));
+    panel.show(compose(sel, card, r.header, r, scene.sequence?.reader ?? null), r.header, false);
+    ficheOpen = true;
+    cardState = st;
+    dirty = true;
+  };
+  const precisionOf = (level: string): string => {
+    const bp = scene.g3d.level(level).bp_per_bead;
+    return level === "noyau" || level === scene.g3d.header.first ? `bille de ${(bp / 1e3).toFixed(0)} kb` : `monomère de ${(bp / 1e3).toFixed(0)} kb`;
+  };
+
+  const fly = async (hit: Hit, kind: string, t0: number): Promise<Destination | null> => {
+    const regions: Region[] = [{ chrom: hit.chrom, start: hit.start, end: hit.end }];
+    selRegions = regions;
+    scene.highlight(regions);
+    // Un gène : la bille de son TSS ; une position, un rsID : la leur.
+    const isGene = kind === "gene" || kind === "gene-id";
+    const pos = isGene ? (hit.strand === "-" ? hit.end - 1 : hit.start) : hit.start;
+    const dest = await destination(scene, { chrom: hit.chrom, start: hit.start, end: hit.end, pos }, orbit);
+    if (!dest) {
+      found.textContent = `${hit.label} : aucune bille du modèle ne porte cette position`;
+      return null;
+    }
+    const path = dive(orbit, dest.orbit, FOV);
+    anim = { path, t0: performance.now(), duration: 900 * Math.max(0.5, path.length) };
+    marker = null;
+    flight = { query, kind, hit, pos, depth: dest.depth, level: dest.level, bead: dest.bead, copy: dest.copy,
+               start: dest.start, end: dest.end,
+               centre: dest.centre, orbit: dest.orbit, resolveMs: performance.now() - t0, durationMs: anim.duration,
+               startedAt: performance.now() };
+    flights.push(flight);
+    found.textContent = `${hit.label} → ${hit.chrom}:${fmt(hit.start + 1)}${hit.end - hit.start > 1 ? `-${fmt(hit.end)}` : ""}` +
+      `${hit.sources ? ` (${hit.sources.join(" + ")})` : ""}${hit.type ? ` · ${hit.type}` : ""}\n${depthText(dest, scene)}`;
+    await showCard({ level: dest.level, bead: dest.bead, pos: isGene ? -1 : pos, strand: -1, detail: "",
+                     what: dest.depth === "base" ? "base" : dest.depth === "fibre" ? "fibre" : "bille du noyau",
+                     precision: dest.depth === "base" ? "la base recherchée" : precisionOf(dest.level) });
+    return dest;
+  };
+
+  const search = async (text: string): Promise<Record<string, unknown>> => {
+    const t0 = performance.now();
+    input.value = text.trim();
+    const ix = await index;
+    if (!ix) return { ok: false, error: "index" };
+    const res = await ix.resolve(text);
+    const inModel = res.hits.filter((h) => h.in_model);
+    const out: Record<string, unknown> = { resolution: res, resolveMs: performance.now() - t0 };
+    if (res.error) {
+      found.textContent = ERRORS[res.error] ?? res.error;
+      return { ...out, flew: false };
+    }
+    if (!inModel.length) {
+      found.textContent = `${res.hits[0].label} : ${res.hits[0].chrom} n'est pas dans le modèle (46,XX — ni chrY, ni l'ADN mitochondrial)`;
+      return { ...out, flew: false };
+    }
+    query = text.trim();
+    const dest = await fly(inModel[0], res.kind, t0);
+    if (inModel.length > 1) {
+      // Plusieurs loci (homonymes, rsID placé deux fois) : le premier, et les autres au choix.
+      const more = document.createElement("div");
+      more.textContent = `${inModel.length} cibles :`;
+      inModel.forEach((h, k) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = `${k + 1}. ${h.chrom}:${fmt(h.start + 1)}`;
+        b.onclick = () => void fly(h, res.kind, performance.now());
+        more.appendChild(b);
+      });
+      found.appendChild(more);
+    }
+    return { ...out, flew: !!dest, depth: dest?.depth ?? null };
+  };
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void search(input.value);
+  });
+
+  // — La vue dans l'URL —
+  const stateNow = (): ViewState => ({ orbit, sel: selRegions, query, layer: layer.value, card: cardState, marker });
+  let lastHash = "";
+  const writeUrl = () => {
+    const h = encode(stateNow());
+    if (h === lastHash) return;
+    lastHash = h;
+    history.replaceState(null, "", `${location.pathname}${location.search}#${h}`);
+  };
+  const applyState = async (st: ViewState): Promise<void> => {
+    anim = null;
+    orbit = st.orbit;
+    selRegions = st.sel;
+    scene.highlight(st.sel);
+    query = st.query;
+    input.value = st.query;
+    found.textContent = "";
+    if (layer.value !== st.layer || st.layer) {
+      layer.value = st.layer;
+      await layer.onchange!(new Event("change"));
+    }
+    if (st.card) await showCard(st.card);
+    else panel.hide();
+    marker = st.marker;
+    lastHash = encode(st);
+    dirty = true;
+  };
+  window.addEventListener("hashchange", () => {
+    const st = decode(location.hash);
+    if (st && encode(st) !== lastHash) void applyState(st);
+  });
+
+  // — Signets : dans ce navigateur seulement —
+  let bookmarks: Bookmark[] = loadBookmarks();
+  const drawMarks = () => {
+    marks.textContent = "";
+    const add = document.createElement("button");
+    add.type = "button";
+    add.textContent = "+ signet";
+    add.onclick = () => {
+      writeUrl();
+      bookmarks = [...bookmarks, { name: query || `vue ${bookmarks.length + 1}`, hash: lastHash, at: Date.now() }];
+      if (!saveBookmarks(bookmarks)) found.textContent = "signet non enregistré : le stockage de ce navigateur est indisponible";
+      drawMarks();
+    };
+    marks.appendChild(add);
+    bookmarks.forEach((b, k) => {
+      const a = document.createElement("a");
+      a.href = `#${b.hash}`;
+      a.textContent = b.name;
+      const x = document.createElement("button");
+      x.type = "button";
+      x.textContent = "×";
+      x.setAttribute("aria-label", `retirer le signet ${b.name}`);
+      x.onclick = () => {
+        bookmarks = bookmarks.filter((_, i) => i !== k);
+        saveBookmarks(bookmarks);
+        drawMarks();
+      };
+      marks.append(a, x);
+    });
+  };
+  drawMarks();
+
   const status = document.createElement("div");
   const evidence = document.createElement("div");
   evidence.id = "evidence";
@@ -572,8 +783,16 @@ async function main(): Promise<void> {
         `<span class="k">${scene.gpu}</span>`;
     }
     lastFrame = now;
+    if (flight && !anim && !flight.arrivedMs) flight.arrivedMs = now - (flight.startedAt as number);
+    // L'URL suit la vue au repos (replaceState : ni historique à chaque image, ni hashchange).
+    if (!anim && !dirty && !drag && urlReady) writeUrl();
     requestAnimationFrame(loop);
   };
+  // Une URL qui porte une vue la rejoue d'abord ; l'URL ne s'écrit qu'ensuite.
+  let urlReady = false;
+  const initial = decode(location.hash);
+  if (initial) await applyState(initial);
+  urlReady = true;
   requestAnimationFrame(loop);
 
   if (PICK) {
@@ -629,6 +848,102 @@ async function main(): Promise<void> {
         levels: Object.fromEntries(reader.header.levels.map((l) => [l.name, reader!.levelBytes(l.name)])) } : null),
     };
     publish({ ok: true, pick: true, stops: scene.stops.length, gpu: scene.gpu });
+  }
+
+  if (NAV) {
+    // Pour `tools/search.mjs` : ce que la page a résolu, où le vol s'est posé, ce que l'image
+    // montre à l'arrivée, et l'empreinte de l'image (WebGL et surimpression).
+    const digest = async (b: Uint8Array<ArrayBuffer> | Uint8ClampedArray<ArrayBuffer>) =>
+      Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", b)), (x) => x.toString(16).padStart(2, "0")).join("");
+    (window as unknown as { __nav: unknown }).__nav = {
+      search,
+      resolve: async (text: string) => (await index)?.resolve(text) ?? null,
+      /** Le texte de la fiche ouverte, ou null si elle est fermée. */
+      panel: () => {
+        const el = document.getElementById("fiche");
+        return el?.classList.contains("open") ? el.textContent : null;
+      },
+      message: () => found.textContent,
+      /** `n` pixels CSS au hasard (graine fixe) parmi ceux qui portent une bille du noyau et
+       *  que rien ne couvre (ni le HUD, ni la fiche). */
+      hits(n: number, seed: number) {
+        const ids = scene.ids();
+        const [W, H] = scene.size();
+        const dpr = canvas.width / canvas.clientWidth;
+        let st = seed >>> 0;
+        const rnd = () => ((st = (st * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+        const out: [number, number][] = [];
+        for (let tries = 0; out.length < n && tries < 400 * n; tries++) {
+          const x = Math.floor(rnd() * W), y = Math.floor(rnd() * H);
+          const id = ids[(H - 1 - y) * W + x];
+          const cx = (x + 0.5) / dpr, cy = (y + 0.5) / dpr;
+          if (id && id < 1_000_000 && document.elementFromPoint(cx, cy) === canvas) out.push([cx, cy]);
+        }
+        return out;
+      },
+      flight: () => flight,
+      flights: () => flights,
+      idle: () => !dirty && !anim && !scene.busy && !!(scene.arrival >= 1),
+      state: () => encode(stateNow()),
+      url: () => location.href,
+      card: () => cardState,
+      selection: () => selRegions,
+      bookmarks: () => loadBookmarks(),
+      /** À l'arrivée : pixels de la cible dans le tampon d'identifiants, son centre projeté, les
+       *  copies surlignées, et la fiche ouverte. */
+      arrived() {
+        const f = flight as (Record<string, unknown> & { depth: string; bead: number; level: string; centre: number[];
+                                                         pos: number }) | null;
+        if (!f) return null;
+        scene.render(orbit);
+        const ids = scene.ids();
+        const [W, H] = scene.size();
+        const rank = scene.sequence ? f.pos - scene.sequence.regionStart : -1;
+        let px = 0;
+        for (let i = 0; i < ids.length; i++) {
+          const id = ids[i];
+          if (f.depth === "bille" ? id === f.bead
+            : f.depth === "fibre" ? id === IDS.fiber + f.bead
+            : id >= IDS.base && id < IDS.linker && Math.floor((id - IDS.base - 1) / 2) === rank) px++;
+        }
+        const [x, y] = scene.project(f.centre);
+        const hl = scene.highlight(selRegions);
+        return { pixels: px, x, y, W, H, central: x >= W / 3 && x <= (2 * W) / 3 && y >= H / 3 && y <= (2 * H) / 3,
+                 copies: hl.copies, card: cardState, depth: f.depth, widthUm: scene.last.widthUm };
+      },
+      async snapshot() {
+        scene.render(orbit);
+        const gl = scene.gl;
+        const [W, H] = scene.size();
+        const rgb = new Uint8Array(W * H * 4);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, rgb);
+        drawLabels(scene);
+        if (marker) drawMarker(scene, marker);
+        const ov = overlay.getContext("2d")!.getImageData(0, 0, overlay.width, overlay.height).data;
+        return { gl: await digest(rgb), overlay: await digest(ov), W, H, state: encode(stateNow()) };
+      },
+      /** Le témoin : la même vue, le lacet décalé, comparée pixel à pixel à l'image courante. */
+      async perturbed(dyaw: number) {
+        const gl = scene.gl;
+        const [W, H] = scene.size();
+        const read = () => {
+          const b = new Uint8Array(W * H * 4);
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+          gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, b);
+          return b;
+        };
+        scene.render(orbit);
+        const a = read();
+        scene.render({ ...orbit, yaw: orbit.yaw + dyaw });
+        const b = read();
+        scene.render(orbit);
+        let diff = 0;
+        for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) diff++;
+        return { differing: diff, of: W * H };
+      },
+    };
+    publish({ ok: true, nav: true, gpu: scene.gpu, region: scene.region });
   }
 }
 

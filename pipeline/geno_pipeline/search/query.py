@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_RS = re.compile(r"^rs([0-9]{1,10})$", re.I)
+_RS = re.compile(r"^rs([0-9]{1,15})$", re.I)
 _POS = re.compile(r"^(?:chr)?([0-9]{1,2}|x|y|m|mt)\s*[:\s]\s*([0-9,_   ]+?)(?:\s*[-–]\s*([0-9,_   ]+))?$", re.I)
 _ENSG = re.compile(r"^(ENSG[0-9]{11})(?:\.[0-9]+)?$", re.I)
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,39}$")

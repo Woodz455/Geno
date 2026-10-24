@@ -231,6 +231,25 @@ export interface OpenOptions {
   noPrefetch?: boolean;
 }
 
+/** Une paire de bases vue **de côté** (semaine 12) : l'œil sur la dyade de la paire `rank`
+ *  (rang dans la région fine), son barreau couché dans le plan de l'image, `width` µm de champ.
+ *  Partagé par la plongée et, en semaine 16, par la recherche d'une position. */
+export function sideOrbit(F: Fiber, rank: number, width: number, dyaw = 0): Orbit {
+  const bp = F.path.basePair(rank);
+  const orient = (v: number[]): { yaw: number; pitch: number } => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return { yaw: Math.atan2(v[0], v[2]), pitch: Math.asin(Math.max(-1, Math.min(1, v[1] / l))) };
+  };
+  let side = orient(bp.d);
+  if (Math.abs(side.pitch) > 1.1) {
+    // Dyade presque verticale : on tourne autour de l'axe de l'ADN jusqu'à un œil plus bas.
+    const t = bp.t, d = bp.d;
+    const e = [t[1] * d[2] - t[2] * d[1], t[2] * d[0] - t[0] * d[2], t[0] * d[1] - t[1] * d[0]];
+    side = orient([0.6 * d[0] + 0.8 * e[0], 0.6 * d[1] + 0.8 * e[1], 0.6 * d[2] + 0.8 * e[2]]);
+  }
+  return { target: [bp.p[0], bp.p[1], bp.p[2]], yaw: side.yaw + dyaw, pitch: side.pitch, distance: distanceFor(width, FOV) };
+}
+
 export async function openDive(canvas: HTMLCanvasElement, file: string | Source, opts: OpenOptions = {}): Promise<DiveScene> {
   const t0 = performance.now();
   const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" });
@@ -633,25 +652,13 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   const F = scene.fiber;
   if (F && scene.sequence && !actb) {
     const rank = scene.sequence.targetRank;
-    const bp = F.path.basePair(rank);
-    const orient = (v: number[]): { yaw: number; pitch: number } => {
-      const l = Math.hypot(v[0], v[1], v[2]) || 1;
-      return { yaw: Math.atan2(v[0], v[2]), pitch: Math.asin(Math.max(-1, Math.min(1, v[1] / l))) };
-    };
-    let side = orient(bp.d);
-    if (Math.abs(side.pitch) > 1.1) {
-      // Dyade presque verticale : on tourne autour de l'axe de l'ADN jusqu'à un œil plus bas.
-      const t = bp.t, d = bp.d;
-      const e = [t[1] * d[2] - t[2] * d[1], t[2] * d[0] - t[0] * d[2], t[0] * d[1] - t[1] * d[0]];
-      side = orient([0.6 * d[0] + 0.8 * e[0], 0.6 * d[1] + 0.8 * e[1], 0.6 * d[2] + 0.8 * e[2]]);
-    }
     const P = F.points;
     const k = targetMonomer;
     const inLoop = focus && k >= focus.i && k <= focus.j;
     const fibreView: Orbit = inLoop && scene.loopView
       ? scene.loopView
       : { target: [P[3 * k], P[3 * k + 1], P[3 * k + 2]], yaw: scene.final.yaw + 0.3, pitch: scene.final.pitch, distance: distanceFor(0.6, FOV) };
-    const at = (w: number, dyaw = 0): Orbit => ({ target: [bp.p[0], bp.p[1], bp.p[2]], yaw: side.yaw + dyaw, pitch: side.pitch, distance: distanceFor(w, FOV) });
+    const at = (w: number, dyaw = 0): Orbit => sideOrbit(F, rank, w, dyaw);
     scene.stops = [scene.start, scene.final, fibreView, at(0.1, 0.5), at(0.02, 0.15), at(0.004)];
   }
   return scene;

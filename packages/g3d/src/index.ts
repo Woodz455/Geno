@@ -12,4 +12,4 @@ export type { Card, FicheField, FicheHeader, FicheLevel, Gene, Lifted } from "./
 export { ContactsReader, TILE } from "./contacts.js";
 export type { ContactLevel, ContactsHeader, Region, Tileset } from "./contacts.js";
 export { SearchIndex, parseQuery } from "./search.js";
-export type { Hit, Query, Resolution, SearchHeader } from "./search.js";
+export type { Hit as SearchHit, Query, Resolution, SearchHeader } from "./search.js";

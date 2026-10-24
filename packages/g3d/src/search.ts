@@ -61,7 +61,7 @@ export interface Resolution {
   error: string;
 }
 
-const RS = /^rs([0-9]{1,10})$/i;
+const RS = /^rs([0-9]{1,15})$/i;
 const POS = /^(?:chr)?([0-9]{1,2}|x|y|m|mt)\s*[:\s]\s*([0-9,_   ]+?)(?:\s*[-–]\s*([0-9,_   ]+))?$/i;
 const ENSG = /^(ENSG[0-9]{11})(?:\.[0-9]+)?$/i;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,39}$/;
