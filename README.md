@@ -9,7 +9,7 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–3, semaine 16** (la 15 non faite). Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–4, semaine 17** (la 15 non faite). Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
@@ -174,6 +174,13 @@ bases dans la région fine de TP53. L'URL porte la vue : relue dans un onglet ne
 même image au pixel près, 30 vues sur 30 ; 90 requêtes tapées sur 90 posent la caméra au bon
 endroit. Les rsID viennent de ClinVar et du GWAS, pas de tout dbSNP, et la page le dit
 ([`docs/VALIDATION.md` § S16](docs/VALIDATION.md)).
+
+Le **mode Recherche** commence : `make research` lance un service local, et la page
+`recherche.html` y importe **votre** `.mcool`, le reconstruit (ShRec3D + MDS, alpha et équilibrage
+au choix) et affiche la structure, avec un manifeste de session qui la refait à l'octet près — 12
+sur 12, service redémarré. Sur un fichier à structure connue, elle retrouve la structure plantée
+(nRMSD 0,14). C'est une structure consensus, à une isométrie près, et la page le dit
+([`docs/VALIDATION.md` § S17](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et

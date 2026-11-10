@@ -111,10 +111,17 @@ depuis les fichiers bruts (une minute). La page le lit par plages, à côté du 
 (`?search=` pour un autre fichier). `node tools/search.mjs` mesure la recherche et l'URL ; il
 ouvre une trentaine d'onglets successifs et prend une vingtaine de minutes sous SwiftShader.
 
+## Mode Recherche (semaine 17)
+
+Aucune dépendance nouvelle : cooler et h5py (déjà là pour la semaine 3), numpy, scipy, et le
+serveur HTTP de la bibliothèque standard. `make research` écoute sur `127.0.0.1:8017` et sert
+`dist/recherche.html` (à construire d'abord : `node tools/build.mjs`). Les sessions vont dans
+`pipeline/data/research/` (hors dépôt). Les tests du mode Recherche se sautent si cooler manque.
+
 ## Vérifier
 
 ```console
-$ make test            # 301 tests (… + 1 parseurs, + 7 vues liées, + 8 variant structural, + 10 recherche)
+$ make test            # 307 tests (… + 7 vues liées, + 8 variant structural, + 10 recherche, + 6 mode Recherche)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

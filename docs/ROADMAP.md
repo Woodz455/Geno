@@ -392,6 +392,18 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   qu'à la demande et en résolution grossière.
 - **Fait quand** : un `.mcool` importé ressort en structure, et le manifeste de session la
   reproduit à l'identique.
+- **Semaine 17 — fait** (import, reconstruction, manifeste ; le reste est la semaine 18).
+  `geno research serve` : un service local, boucle locale seulement, que la page `recherche.html`
+  pilote — importer un `.mcool` (déposé ou par son chemin), choisir résolution, région, équilibrage
+  et alpha, reconstruire par la chaîne de la semaine 5 (ShRec3D + MDS), voir la structure, et
+  télécharger le **manifeste de session** ; la page sait en rejouer un. Mesuré sur un `.mcool`
+  planté à structure connue et sur un vrai (Micro-C HFF, chr2 et chr17) : import égal à cooler ;
+  structures plantées retrouvées à **nRMSD 0,14 et 0,15** (vérité battue : 1,00) ; **12 manifestes
+  sur 12** rejoués à l'octet près après redémarrage du service ; trop grande région refusée avec sa
+  raison. Trouvé en route : sur le fichier planté, l'équilibrage ICE dégrade la structure (0,48
+  contre 0,14), parce que ses marginales vraies ne sont pas uniformes. Limites : 3 000 billes,
+  identité garantie à versions et machine égales, structure consensus sans ensemble
+  ([`VALIDATION.md` § S17](VALIDATION.md)).
 
 #### Semaines 19–20 — Mode Découverte
 - Parcours guidé, comparaisons d'échelles, glossaire, haltes commentées, accessibilité

@@ -208,6 +208,11 @@ def reconstruct(path: Path, p: Params, progress=lambda step, frac: None) -> Resu
     progress("distances", 0.35)
     target = to_distance(m, p.alpha)
     observed = np.isfinite(target) & ~np.eye(len(g), dtype=bool)
+    # Des morceaux sans aucun contact entre eux (deux chromosomes d'une carte sans trans) : la
+    # complétion les pose à une distance de convention, et leur position relative ne veut rien dire.
+    from scipy.sparse.csgraph import connected_components
+
+    pieces = int(connected_components(observed, directed=False)[0])
     geo = complete_shortest_path(target)
     progress("coordonnées", 0.7)
     x = orient(classical_mds(geo))
@@ -233,7 +238,7 @@ def reconstruct(path: Path, p: Params, progress=lambda step, frac: None) -> Resu
     fin = np.isfinite(lt) & np.isfinite(ld)
     stats = {
         "bins": int(len(idx)), "beads": int(len(g)), "masked": int(len(idx) - len(g)),
-        "contacts": float(raw.sum() / 2), "observed_pairs": float(ok.mean()),
+        "contacts": float(raw.sum() / 2), "observed_pairs": float(ok.mean()), "pieces": pieces,
         # Accord entre la structure et ce qu'on lui demandait : distances cibles (contacts observés
         # seulement) contre distances de la structure, en log. Ce n'est pas une preuve de justesse :
         # une structure peut reproduire sa carte et être fausse (une cellule n'est pas une moyenne).

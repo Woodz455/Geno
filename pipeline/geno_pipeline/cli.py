@@ -1221,6 +1221,22 @@ def cmd_research(args: argparse.Namespace) -> int:
             st = m["stats"]
             print(f"{args.out}/structure.g3d : {st['beads']} billes ({st['masked']} bins écartés), "
                   f"r(log distances) {st['r_log_distance']:.3f}, sha256 {m['output']['sha256'][:16]}…")
+        elif args.action == "judge":
+            # Pour la mesure : la structure d'un .g3d de session contre la vérité plantée.
+            import numpy as np
+
+            from .export.g3d import read as read_g3d
+            from .research import planted
+
+            g = read_g3d(Path(args.out) / "structure.g3d")
+            lv = g.levels["structure"]
+            hd = g.header["session"]
+            res = hd["params"]["resolution"]
+            base = _json.loads(Path(args.file).with_suffix(".truth.json").read_text())["resolution"]
+            t = planted.truth(Path(args.file), hd["region"], res // base)[np.asarray(lv["start"], np.int64) // res]
+            x = np.asarray(lv["positions_nm"], float)
+            print(_json.dumps({"beads": len(x), "nrmsd": S.compare(x, t),
+                               "nrmsd_shuffled": S.compare(x, t[np.random.default_rng(0).permutation(len(t))])}))
         elif args.action == "reproduce":
             r = S.reproduce(_json.loads(Path(args.manifest).read_text()), Path(args.file), Path(args.out))
             print("identique, à l'octet près" if r["identical"] else f"DIFFÉRENT : {r['note']}\n{r['versions_differ']}")
@@ -1600,7 +1616,7 @@ def main(argv: list[str] | None = None) -> int:
     lk.set_defaults(fn=cmd_linked)
 
     rs = sub.add_parser("research", help="mode Recherche : .mcool importé → structure + manifeste (semaine 17)")
-    rs.add_argument("action", choices=["serve", "plant", "inspect", "run", "reproduce"])
+    rs.add_argument("action", choices=["serve", "plant", "inspect", "run", "reproduce", "judge"])
     rs.add_argument("file", nargs="?", default=str(ROOT / "data" / "research" / "plante.mcool"))
     rs.add_argument("--resolution", type=int, default=50_000)
     rs.add_argument("--region", default="chrP1")

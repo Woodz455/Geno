@@ -69,6 +69,7 @@ const targets = [
   { entry: "apps/dive/main.ts", out: "dist/dive.html", title: "Geno — plongée", minify: true },
   // Semaine 15 : le mode variant structural (extrusion 1D en direct, allèles OpenMM).
   { entry: "apps/variant/main.ts", out: "dist/variant.html", title: "Geno — variant structural", minify: true },
+  { entry: "apps/research/main.ts", out: "dist/recherche.html", title: "Geno — mode Recherche", minify: true },
   // Semaine 14 : igv.js et HiGlass embarqués (React, pixi) — 4 Mo, pas une page de premier rendu.
   { entry: "apps/linked/main.ts", out: "dist/vues.html", title: "Geno — vues liées", minify: true,
     css: "apps/linked/node_modules/higlass/dist/hglib.css" },

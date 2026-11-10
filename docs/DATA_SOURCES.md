@@ -232,6 +232,21 @@ vient (`data/g3d/igv/index.json`, champ `provenance`) :
 `unverified` : plusieurs dizaines de Go, jamais téléchargé, donc jamais verrouillé ; le `.mcool` de
 4DN est `unresolved`. Les montrer est le rattrapage S1–S8, pas la semaine 14.
 
+## 8 sexies. Semaine 17 : aucune source nouvelle ; un fichier d'exemple, hors manifeste
+
+Le mode Recherche lit le fichier **de l'utilisateur**. Pour le mesurer, deux fichiers, dont aucun
+n'est une source du projet :
+
+- un `.mcool` **planté** (`geno research plant`), fabriqué par le générateur de la semaine 5 ;
+- la carte d'exemple de cooltools, **Micro-C HFF** (Krietenstein et al. 2021), chr2 et chr17 en
+  hg38, `https://osf.io/3h9js/download`, 152 457 504 octets, md5
+  `e4a0fc25c8dc3d38e9065fd74c565dd1` (celui que cooltools annonce). C'est un sous-ensemble
+  redistribué par les auteurs de l'outil : il sert d'exemple de fichier importé, il n'entre ni
+  dans le modèle ni dans `manifest.tsv`, et il n'est pas dans le dépôt.
+
+Le Hi-C mesuré de GM12878 reste où il était : `.hic` de Rao 2014 `unverified`, `.mcool` 4DN
+`unresolved` (`data.4dnucleome.org` a coupé la connexion à l'essai du 2026-11-10).
+
 ## 8 quinquies. Semaine 16 : aucune source nouvelle, un index dérivé
 
 `gm12878.search` est **écrit** par `make search` depuis ce qui est déjà verrouillé, et porte

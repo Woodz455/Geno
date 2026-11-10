@@ -9,6 +9,122 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S17 — Un .mcool importé ressort en structure ; 12 manifestes sur 12 la refont à l'octet près
+
+### Le critère, traduit
+
+**Fait quand : un `.mcool` importé ressort en structure, et le manifeste de session la reproduit
+à l'identique.** Trois décisions de l'utilisateur d'abord : la semaine 17 porte l'import, la
+reconstruction et le manifeste (l'explorateur d'ensemble, les statistiques, les exports et le
+`.hic` sont la semaine 18) ; le calcul tourne dans un **service local Python**, pas dans le
+navigateur ; on mesure sur un `.mcool` **planté** à structure connue, et sur un vrai s'il s'en
+télécharge un.
+
+Fixé avant de lancer la mesure (`node tools/research.mjs vrai.mcool`, page `recherche.html`
+servie par `geno research serve`, gestes CDP, 1 280 × 760, SwiftShader) — mais **après** avoir vu
+les premières reconstructions du fichier planté en ligne de commande, dont les nRMSD de 0,14 et
+0,15 : le seuil de 0,20 n'a donc pas été posé à l'aveugle, il vient du tableau de la semaine 5
+(0,08 à 0,20 à cette profondeur) et de ce coup d'œil.
+
+1. **Import** : ce que la page affiche du fichier — résolutions, bins, équilibrage, contacts,
+   chromosomes — est ce que cooler y lit.
+2. **Structure** : pour chaque chromosome planté, à 50 kb, la page affiche la structure (toutes les
+   billes du manifeste dans le `.g3d`, au moins la moitié lues dans le tampon d'identifiants sous
+   deux orientations, aucun identifiant étranger), et c'est la structure plantée : nRMSD ≤ 0,20
+   après alignement, réflexion permise. Témoin : la vérité battue, nRMSD ≥ 0,8.
+3. **Manifeste** : 12 sessions variées, manifestes gardés ; **service arrêté et relancé**, dossier
+   des sessions effacé, page rouverte, fichiers réimportés, chaque manifeste rejoué par la page :
+   mêmes octets. Témoins : alpha + 0,01 → différent ; manifeste rejoué sur un autre fichier →
+   refusé ; un fichier qui n'est pas du JSON → refusé.
+4. **Refus** : une région trop grande est refusée avec sa raison, sans produire de structure.
+
+### Ce qui est construit
+
+`pipeline/geno_pipeline/research/` : `session.py` lit le `.mcool` (cooler), prend la région et la
+résolution demandées, écarte les bins trop peu couverts, équilibre (poids du fichier, ICE recalculé,
+ou rien), puis applique **la chaîne de la semaine 5 et rien d'autre** — `d = f^(−alpha)`,
+géodésiques (ShRec3D), MDS classique. Deux conventions, dites dans le fichier et à l'écran :
+l'**orientation** (centrée, axes du MDS, signe fixé par la plus grande coordonnée de chaque axe —
+sans quoi le signe d'un vecteur propre est celui que LAPACK a rendu ce jour-là) et l'**échelle**
+(deux billes voisines se touchent, au rayon de la loi de la semaine 6 : les contacts ne portent
+pas d'échelle absolue). La **chiralité est arbitraire**. Le résultat est un `.g3d` d'un niveau,
+`evidence: "reconstructed"`, quantifié à 1 % du rayon d'une bille, et `session.json`.
+
+Le **manifeste** (`geno-session/1`) porte tout ce qui décide du résultat : nom, taille et sha256
+du fichier d'entrée, paramètres, région canonique, méthode et conventions, versions (geno, Python,
+numpy, scipy, cooler, h5py, machine), sha256 du `.g3d` et des positions, statistiques ; la date et
+la durée sont à part. `reproduce` refuse un fichier dont l'empreinte n'est pas celle du manifeste,
+refait la session, compare les octets, et liste les versions qui diffèrent si elles diffèrent.
+
+`serve.py` : le service n'écoute que 127.0.0.1, refuse tout `Host` qui n'est pas la boucle locale
+et toute origine étrangère (une page ouverte ailleurs ne peut pas lui faire lire un fichier de la
+machine), reçoit le fichier ou lit un chemin local, reconstruit une session à la fois, sert le
+`.g3d` par plages. `apps/research/` : importer, paramètres, lancer, structure en 3D (billes au
+survol : leur intervalle), ce qu'elle vaut, télécharger le manifeste, en rejouer un.
+
+### Mesuré
+
+| | Résultat | Critère |
+|---|---|---|
+| 1 · import, planté (déposé) et réel (chemin local) | égal à cooler, 2/2 | égal |
+| 2 · chrP1, 50 kb | 597 billes (manifeste 597, `.g3d` 597), 536 vues, **nRMSD 0,140** ; vérité battue 1,00 | ≤ 0,20 ; ≥ 0,8 |
+| 2 · chrP2, 50 kb | 400 billes, 385 vues, **nRMSD 0,154** ; vérité battue 1,00 | idem |
+| 3 · manifestes rejoués, service relancé | **12/12** à l'octet près (8 sur le planté, 4 sur le réel) | 12/12 |
+| témoins | alpha + 0,01 → « Différent » ; pas du JSON → refusé ; autre fichier → « pas celui du manifeste » | — |
+| 4 · chr2 à 10 kb (24 220 bins) | refusé, raison donnée (limite de 3 000 billes), aucune structure | refus |
+
+Les 12 sessions : chromosomes entiers, une sous-région, le génome ; 10 kb à 1 Mb ; alpha de 0,25 à
+0,5 ; les trois équilibrages. Du geste à la structure affichée : 0,5 à 2,6 s jusqu'à 750 billes ;
+**34 s pour chr2 à 100 kb** (2 330 billes) — les géodésiques et le MDS sont denses, en n³.
+
+Le **vrai fichier** : Micro-C HFF (Krietenstein 2021), chr2 et chr17 en hg38, 152 Mo, la carte
+d'exemple que distribue cooltools (md5 `e4a0fc25…`, celui que cooltools annonce). chr17 à 100 kb :
+743 billes, 90 bins écartés, r = 0,833 entre distances demandées et distances de la structure ;
+la région chr17:7–9 Mb à 10 kb : 200 billes, r = 0,922. C'est l'exemple d'un fichier
+d'utilisateur, **pas une source du projet** : rien n'en entre dans le modèle ni au manifeste des
+données.
+
+### Ce que la mesure a appris : sur le fichier planté, équilibrer abîme la structure
+
+Avec les poids du fichier ou un ICE recalculé, le nRMSD du chromosome planté passe de **0,14 à
+0,48**, biais de couverture planté ou non. La raison est dans le modèle direct, pas dans ICE :
+avec `f ∝ d⁻³`, les contacts d'une bille sont dominés par ses plus proches voisines, et la densité
+locale de la conformation plantée varie — les marginales **vraies** ont un coefficient de variation
+de 0,67 sans aucun biais. ICE suppose une visibilité égale et efface cette variation avec le biais.
+Le critère 2 est donc jugé à l'équilibrage « aucun », le bon choix **pour ce fichier-là** ; sur une
+carte réelle, où l'on tient la variation de couverture pour technique, le défaut reste « poids du
+fichier », et ce test ne dit pas lequel a raison. La semaine 5 n'avait jamais croisé équilibrage et
+reconstruction.
+
+### Ce que ça ne dit pas
+
+- **Reproduire sa carte n'est pas être juste.** Sur le fichier réel, rien ne juge la structure :
+  r = 0,83 dit qu'elle rend les distances qu'on lui demandait. Une carte moyenne des millions de
+  cellules ; une structure consensus n'est celle d'aucune (R1). L'ensemble est la semaine 18.
+- **« À l'identique » vaut à versions et machine égales.** Les 12 rejeux sont sur la même machine.
+  Ailleurs, LAPACK peut différer au dernier bit ; le manifeste garde les versions, et le rejeu dit
+  « différent » avec la liste de ce qui a changé plutôt que de prétendre.
+- **alpha = 0,35 par défaut n'est pas calibré** sur le fichier de l'utilisateur ; la semaine 5 a
+  mesuré qu'il dépend de la profondeur. La page le dit ; elle ne le règle pas.
+- **3 000 billes au plus** : le génome entier ne passe qu'à ~1 Mb. Une carte sans contacts trans
+  (le planté) donne des morceaux dont la position relative est arbitraire — la page le signale
+  (2 morceaux pour « génome » sur le planté).
+- **Pas de `.hic`** (semaine 18), pas d'export, pas d'ensemble.
+- Un fichier déposé dans la page est **copié** dans le dossier du service ; un chemin local ne
+  l'est pas.
+
+### Reproduire
+
+```console
+$ cd pipeline && make research            # le service ; puis http://127.0.0.1:8017/recherche.html
+$ geno research plant plante.mcool        # un .mcool à structure connue
+$ geno research run plante.mcool --region chrP1 --balance aucun --out session/
+$ geno research reproduce plante.mcool --manifest session/session.json --out rejeu/
+$ cd .. && node tools/build.mjs && node tools/research.mjs chemin/vers/test.mcool
+```
+
+---
+
 ## S16 — Trois formes de requête, 90/90 vols au bon endroit ; l'URL rejoue 30 vues sur 30 au pixel près
 
 ### Le critère, traduit

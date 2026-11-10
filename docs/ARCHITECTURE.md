@@ -508,6 +508,28 @@ reste dans la requête. L'orbite s'écrit par `String(x)`, qui se relit au bit p
 2D est créée rastérisée par le processeur (`willReadFrequently`) : sinon Chrome la bascule après
 la première relecture de ses pixels, et une vue relue différait de l'originale par ses lettres.
 
+## 7 quater. Mode Recherche — la carte de l'utilisateur
+
+Semaine 17 (`pipeline/geno_pipeline/research/`, `apps/research/`, page `dist/recherche.html`) :
+
+```
+  recherche.html ──HTTP, boucle locale──▶ geno research serve (serve.py)
+     import · paramètres · rejeu              │  une session à la fois
+     vue 3D (G3D + imposteurs) ◀── .g3d ──────┤
+                                              ▼
+                              session.py : cooler → région, masque, équilibrage
+                                           → d = f^−alpha → géodésiques → MDS
+                                           → orientation et échelle de convention
+                                           → structure.g3d + session.json
+```
+
+Le navigateur ne calcule rien et ne lit pas le HDF5 : le pipeline vérifié reste le seul moteur.
+Le service refuse tout `Host` hors boucle locale et toute `Origin` étrangère. Le `.g3d` produit est
+celui des autres pages (un niveau `structure`, `evidence: "reconstructed"`, `precision_nm` à 1 % du
+rayon — un niveau sans ensemble n'a pas d'incertitude dont déduire sa quantification). Le manifeste
+`geno-session/1` porte l'empreinte de l'entrée, les paramètres, les versions et l'empreinte de la
+sortie ; `reproduce` compare des octets. Limite : 3 000 billes (géodésiques et MDS denses).
+
 ---
 
 ## 8. Socle 1D — index d'intervalles et mesures
