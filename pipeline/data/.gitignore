@@ -12,3 +12,4 @@ sv/
 g3d/
 # Semaine 13 : sources de la fiche décodées une fois (pickle), indexées par empreinte.
 cache/
+research/

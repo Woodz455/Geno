@@ -260,6 +260,9 @@ class Level:
     attributes: dict[str, Attribute] = field(default_factory=dict)
     links: Links | None = None
     targets: list[dict] = field(default_factory=list)
+    # Semaine 17 : erreur de quantification admise, en nm, quand le niveau n'a pas d'ensemble
+    # dont la déduire (une structure consensus) ; sinon `None`, et l'incertitude décide.
+    precision_nm: float | None = None
 
     @property
     def n(self) -> int:
@@ -391,7 +394,7 @@ def _prepare(level: Level, max_beads: int, fraction: float):
     level.check()
     pos = np.asarray(level.positions_nm, dtype=np.float64)
     var = np.asarray(level.variability_nm, dtype=np.float64)
-    err = precision(var, fraction)
+    err = level.precision_nm if level.precision_nm is not None else precision(var, fraction)
 
     lo = pos.min(axis=0)
     hi = pos.max(axis=0)

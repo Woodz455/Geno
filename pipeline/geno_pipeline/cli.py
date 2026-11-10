@@ -1197,6 +1197,49 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_research(args: argparse.Namespace) -> int:
+    """Mode Recherche (semaine 17) : un .mcool importé → une structure et son manifeste."""
+    import json as _json
+    import logging as _logging
+    import warnings
+
+    _logging.disable(_logging.INFO)
+    warnings.simplefilter("ignore")
+    from .research import session as S
+
+    try:
+        if args.action == "plant":
+            from .research.planted import plant
+
+            meta = plant(Path(args.file), seed=args.seed)
+            print(f"{args.file} : {meta['chroms']}, résolutions {meta['resolutions']} — vérité à côté (.truth.npz)")
+        elif args.action == "inspect":
+            print(_json.dumps(S.inspect(Path(args.file)), ensure_ascii=False, indent=1))
+        elif args.action == "run":
+            m = S.run(Path(args.file), S.Params(args.resolution, args.region, args.alpha, args.balance), Path(args.out),
+                      lambda step, f: print(f"  {step} {f * 100:.0f} %"))
+            st = m["stats"]
+            print(f"{args.out}/structure.g3d : {st['beads']} billes ({st['masked']} bins écartés), "
+                  f"r(log distances) {st['r_log_distance']:.3f}, sha256 {m['output']['sha256'][:16]}…")
+        elif args.action == "reproduce":
+            r = S.reproduce(_json.loads(Path(args.manifest).read_text()), Path(args.file), Path(args.out))
+            print("identique, à l'octet près" if r["identical"] else f"DIFFÉRENT : {r['note']}\n{r['versions_differ']}")
+            return 0 if r["identical"] else 1
+        else:
+            from .research.serve import serve
+
+            srv = serve(Path(args.work), ROOT.parent / "dist", args.port)
+            print(f"mode Recherche : http://127.0.0.1:{srv.server_address[1]}/recherche.html  (Ctrl-C pour arrêter)", flush=True)
+            try:
+                srv.serve_forever()
+            except KeyboardInterrupt:
+                pass
+    except S.SessionError as e:
+        print(f"refusé : {e}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def cmd_linked(args: argparse.Namespace) -> int:
     """Les données des vues liées (semaine 14) : carte de contacts du modèle et pistes igv."""
     import json as _json
@@ -1555,6 +1598,20 @@ def main(argv: list[str] | None = None) -> int:
     lk.add_argument("--igv", default=str(ROOT / "data" / "g3d" / "igv"))
     lk.add_argument("--n", type=int, default=200, help="check : pixels recomposés")
     lk.set_defaults(fn=cmd_linked)
+
+    rs = sub.add_parser("research", help="mode Recherche : .mcool importé → structure + manifeste (semaine 17)")
+    rs.add_argument("action", choices=["serve", "plant", "inspect", "run", "reproduce"])
+    rs.add_argument("file", nargs="?", default=str(ROOT / "data" / "research" / "plante.mcool"))
+    rs.add_argument("--resolution", type=int, default=50_000)
+    rs.add_argument("--region", default="chrP1")
+    rs.add_argument("--alpha", type=float, default=0.35)
+    rs.add_argument("--balance", default="fichier", choices=["fichier", "ice", "aucun"])
+    rs.add_argument("--out", default=str(ROOT / "data" / "research" / "session"))
+    rs.add_argument("--manifest", default=str(ROOT / "data" / "research" / "session" / "session.json"))
+    rs.add_argument("--work", default=str(ROOT / "data" / "research" / "service"))
+    rs.add_argument("--port", type=int, default=8017)
+    rs.add_argument("--seed", type=int, default=0)
+    rs.set_defaults(fn=cmd_research)
 
     se = sub.add_parser("search", help="index de recherche : gènes, positions, rsID (semaine 16)")
     se.add_argument("action", choices=["build", "check", "dump"])
