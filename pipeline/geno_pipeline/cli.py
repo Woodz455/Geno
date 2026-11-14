@@ -1214,10 +1214,12 @@ def cmd_research(args: argparse.Namespace) -> int:
             meta = plant(Path(args.file), seed=args.seed)
             print(f"{args.file} : {meta['chroms']}, résolutions {meta['resolutions']} — vérité à côté (.truth.npz)")
         elif args.action == "inspect":
-            print(_json.dumps(S.inspect(Path(args.file)), ensure_ascii=False, indent=1))
+            print(_json.dumps(S.inspect(S.as_cooler(Path(args.file), Path(args.out).parent / "converted")), ensure_ascii=False, indent=1))
         elif args.action == "run":
-            m = S.run(Path(args.file), S.Params(args.resolution, args.region, args.alpha, args.balance), Path(args.out),
-                      lambda step, f: print(f"  {step} {f * 100:.0f} %"))
+            src = Path(args.file)
+            m = S.run(S.as_cooler(src, Path(args.out).parent / "converted"),
+                      S.Params(args.resolution, args.region, args.alpha, args.balance, ensemble=args.ensemble, seed=args.seed),
+                      Path(args.out), lambda step, f: print(f"  {step} {f * 100:.0f} %"), source=src)
             st = m["stats"]
             print(f"{args.out}/structure.g3d : {st['beads']} billes ({st['masked']} bins écartés), "
                   f"r(log distances) {st['r_log_distance']:.3f}, sha256 {m['output']['sha256'][:16]}…")
@@ -1627,6 +1629,7 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--work", default=str(ROOT / "data" / "research" / "service"))
     rs.add_argument("--port", type=int, default=8017)
     rs.add_argument("--seed", type=int, default=0)
+    rs.add_argument("--ensemble", type=int, default=0, help="run : réplicats par rééchantillonnage de la carte")
     rs.set_defaults(fn=cmd_research)
 
     se = sub.add_parser("search", help="index de recherche : gènes, positions, rsID (semaine 16)")

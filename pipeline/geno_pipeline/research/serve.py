@@ -10,7 +10,7 @@ chemin local, lance les reconstructions une à une dans un fil, et sert le `.g3d
     POST /api/run      {file, params}             → {job}
     POST /api/reproduce {file, manifest}          → {job}
     GET  /api/job/<id>             {state, step, progress, manifest | error | reproduce}
-    GET  /sessions/<id>/structure.g3d | session.json
+    GET  /sessions/<id>/structure.g3d | .pdb | .3dg | .gltf | session.json | statistics.json | ensemble.f32
 """
 
 from __future__ import annotations
@@ -40,9 +40,12 @@ class Service:
         self.lock = threading.Lock()            # une reconstruction à la fois : elles sont denses
 
     def register(self, path: Path) -> dict:
-        info = S.inspect(path)
+        cool = S.as_cooler(path, self.work / "converted")
+        info = S.inspect(cool)
+        info["name"], info["bytes"] = Path(path).name, Path(path).stat().st_size
+        info["converted_from_hic"] = cool != Path(path)
         token = uuid.uuid4().hex[:16]
-        self.files[token] = {"path": Path(path), "sha256": S.sha256_file(path), "inspect": info}
+        self.files[token] = {"path": Path(path), "cool": cool, "sha256": S.sha256_file(path), "inspect": info}
         return {"file": token, "sha256": self.files[token]["sha256"], "inspect": info}
 
     def start(self, kind: str, token: str, payload: dict) -> str:
@@ -69,9 +72,9 @@ class Service:
                         p = S.Params(**payload)
                     except TypeError as e:
                         raise S.SessionError(f"paramètres illisibles : {e}") from None
-                    st["manifest"] = S.run(f["path"], p, out, progress, input_sha256=f["sha256"])
+                    st["manifest"] = S.run(f["cool"], p, out, progress, input_sha256=f["sha256"], source=f["path"])
                 else:
-                    r = S.reproduce(payload, f["path"], out, progress)
+                    r = S.reproduce(payload, f["path"], out, progress, cache=self.work / "converted")
                     st["manifest"] = r.pop("manifest")
                     st["reproduce"] = r
                 st["session"] = job
@@ -149,7 +152,7 @@ def handler(svc: Service):
                 st = svc.jobs.get(m.group(1))
                 self._json(200 if st else 404, st or {"error": "tâche inconnue"})
                 return
-            m = re.fullmatch(r"/sessions/([0-9a-f]{16})/(structure\.g3d|session\.json)", u.path)
+            m = re.fullmatch(r"/sessions/([0-9a-f]{16})/(structure\.(?:g3d|pdb|3dg|gltf)|session\.json|statistics\.json|ensemble\.f32)", u.path)
             if m:
                 self._file(svc.work / "sessions" / m.group(1) / m.group(2),
                            "application/json" if m.group(2).endswith(".json") else "application/octet-stream")

@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 
 from ..export import g3d as G
+from . import extras as X
 from ..fine.region import monomer_radius
 from ..hic.reconstruct import balance_dense, classical_mds, complete_shortest_path, procrustes, to_distance
 
@@ -44,8 +45,21 @@ class Params:
     alpha: float = 0.35
     balance: str = "fichier"        # poids du fichier, ICE recalculé, ou comptages bruts
     min_coverage: float = 0.1       # un bin sous cette fraction de la couverture médiane est écarté
+    ensemble: int = 0               # semaine 18 : réplicats par rééchantillonnage de la carte (0 : aucun)
+    seed: int = 0
+
+    def as_dict(self) -> dict:
+        """Sans ensemble, le dictionnaire de la semaine 17 tel quel : ses manifestes se rejouent
+        encore à l'octet près."""
+        d = asdict(self)
+        if not self.ensemble:
+            d.pop("ensemble")
+            d.pop("seed")
+        return d
 
     def check(self) -> None:
+        if not (0 <= self.ensemble <= X.ENSEMBLE_MAX):
+            raise SessionError(f"ensemble : entre 0 et {X.ENSEMBLE_MAX} réplicats")
         if self.balance not in BALANCES:
             raise SessionError(f"équilibrage inconnu : {self.balance!r} (attendu : {', '.join(BALANCES)})")
         if not (0.05 <= self.alpha <= 2.0):
@@ -157,13 +171,14 @@ class Result:
     chroms: list[str]
     stats: dict
     region: str
+    ctx: dict | None = None     # les comptages lus, pour l'ensemble et les statistiques (semaine 18)
 
 
-def reconstruct(path: Path, p: Params, progress=lambda step, frac: None) -> Result:
+def _read(path: Path, p: Params):
+    """Les comptages bruts de la région, en dense, et de quoi les situer."""
     p.check()
     clr = _cooler(Path(path), p.resolution)
     name, extent = _extent(clr, p.region)
-    progress("lecture", 0.05)
     bins = clr.bins()[:]
     keep = np.zeros(len(bins), bool)
     for c, s, e in extent:
@@ -176,60 +191,64 @@ def reconstruct(path: Path, p: Params, progress=lambda step, frac: None) -> Resu
         raise SessionError(f"{len(idx)} bins seulement : trop peu pour une structure")
     if p.balance == "fichier" and "weight" not in bins.columns:
         raise SessionError("le fichier n'a pas de poids d'équilibrage à cette résolution : choisir « ice » ou « aucun »")
-
-    # Les pixels de l'étendue, en dense. `matrix` par blocs : un fetch par paire de chromosomes
-    # relirait le fichier ; l'étendue est contiguë en bins pour un chromosome, sinon on indexe.
     lo, hi = int(idx[0]), int(idx[-1]) + 1
     raw = clr.matrix(balance=False, sparse=True)[lo:hi, lo:hi].toarray().astype(np.float64)
     sel = idx - lo
     raw = raw[np.ix_(sel, sel)]
     np.fill_diagonal(raw, 0.0)
-    progress("équilibrage", 0.2)
-
+    w = bins["weight"].to_numpy()[idx] if "weight" in bins.columns else None
     cov = raw.sum(axis=1)
     med = float(np.median(cov[cov > 0])) if (cov > 0).any() else 0.0
     good = cov > p.min_coverage * med if med > 0 else np.zeros(len(cov), bool)
     if p.balance == "fichier":
-        w = bins["weight"].to_numpy()[idx]
         good &= np.isfinite(w)
-        m = raw * np.where(np.isfinite(w), w, 0.0)[:, None] * np.where(np.isfinite(w), w, 0.0)[None, :]
-    elif p.balance == "ice":
-        m = np.zeros_like(raw)
-        g = np.flatnonzero(good)
-        m[np.ix_(g, g)] = balance_dense(raw[np.ix_(g, g)])
-    else:
-        m = raw
     g = np.flatnonzero(good)
     if len(g) < 8:
         raise SessionError("presque aucun bin couvert dans cette région")
-    m = m[np.ix_(g, g)]
-    m = (m + m.T) / 2
+    b = bins.iloc[idx[g]]
+    chroms = [c for c, _, _ in extent]
+    ci = np.array([chroms.index(str(c)) for c in b["chrom"].astype(str)], np.int64)
+    return {"raw": raw, "w": w, "g": g, "name": name, "chroms": chroms, "ci": ci, "bins": int(len(idx)),
+            "start": b["start"].to_numpy().astype(np.int64), "end": b["end"].to_numpy().astype(np.int64)}
 
-    progress("distances", 0.35)
+
+def _solve(raw: np.ndarray, ctx: dict, p: Params):
+    """Comptages (toute la région) → coordonnées en nm des billes gardées, orientées et mises à l'échelle."""
+    g, w = ctx["g"], ctx["w"]
+    if p.balance == "fichier":
+        ww = np.where(np.isfinite(w), w, 0.0)
+        m = (raw * ww[:, None] * ww[None, :])[np.ix_(g, g)]
+    elif p.balance == "ice":
+        m = balance_dense(raw[np.ix_(g, g)])
+    else:
+        m = raw[np.ix_(g, g)]
+    m = (m + m.T) / 2
     target = to_distance(m, p.alpha)
     observed = np.isfinite(target) & ~np.eye(len(g), dtype=bool)
+    x = orient(classical_mds(complete_shortest_path(target)))
+    # Échelle : unités arbitraires → nm. Deux billes voisines sur la chaîne se touchent, au rayon
+    # que la loi de la semaine 6 donne à cette quantité de chromatine. C'est une convention
+    # d'affichage, dite comme telle : les contacts ne portent pas d'échelle absolue.
+    radius = monomer_radius(p.resolution)
+    ci = ctx["ci"]
+    adj = np.flatnonzero((ci[1:] == ci[:-1]) & (ctx["start"][1:] == ctx["end"][:-1]))
+    step = np.linalg.norm(x[adj + 1] - x[adj], axis=1)
+    scale = 2.0 * radius / float(np.median(step)) if len(step) and np.median(step) > 0 else 1.0
+    return x * scale, target, observed, radius, scale
+
+
+def reconstruct(path: Path, p: Params, progress=lambda step, frac: None) -> Result:
+    progress("lecture", 0.05)
+    ctx = _read(path, p)
+    raw, g = ctx["raw"], ctx["g"]
+    progress("distances", 0.3)
+    x, target, observed, radius, scale = _solve(raw, ctx, p)
     # Des morceaux sans aucun contact entre eux (deux chromosomes d'une carte sans trans) : la
     # complétion les pose à une distance de convention, et leur position relative ne veut rien dire.
     from scipy.sparse.csgraph import connected_components
 
     pieces = int(connected_components(observed, directed=False)[0])
-    geo = complete_shortest_path(target)
-    progress("coordonnées", 0.7)
-    x = orient(classical_mds(geo))
-
-    # Échelle : unités arbitraires → nm. Deux billes voisines sur la chaîne se touchent, au rayon
-    # que la loi de la semaine 6 donne à cette quantité de chromatine. C'est une convention
-    # d'affichage, dite comme telle : les contacts ne portent pas d'échelle absolue.
-    radius = monomer_radius(p.resolution)
-    b = bins.iloc[idx[g]]
-    chroms = [c for c, _, _ in extent]
-    ci = np.array([chroms.index(str(c)) for c in b["chrom"].astype(str)], np.int64)
-    adj = np.flatnonzero((ci[1:] == ci[:-1]) & (b["start"].to_numpy()[1:] == b["end"].to_numpy()[:-1]))
-    step = np.linalg.norm(x[adj + 1] - x[adj], axis=1)
-    scale = 2.0 * radius / float(np.median(step)) if len(step) and np.median(step) > 0 else 1.0
-    x = x * scale
-
-    progress("mesures", 0.9)
+    progress("mesures", 0.6)
     d = np.linalg.norm(x[:, None, :] - x[None, :, :], axis=2)
     iu = np.triu_indices(len(g), 1)
     ok = observed[iu]
@@ -237,7 +256,7 @@ def reconstruct(path: Path, p: Params, progress=lambda step, frac: None) -> Resu
         lt, ld = np.log(target[iu][ok]), np.log(d[iu][ok])
     fin = np.isfinite(lt) & np.isfinite(ld)
     stats = {
-        "bins": int(len(idx)), "beads": int(len(g)), "masked": int(len(idx) - len(g)),
+        "bins": ctx["bins"], "beads": int(len(g)), "masked": int(ctx["bins"] - len(g)),
         "contacts": float(raw.sum() / 2), "observed_pairs": float(ok.mean()), "pieces": pieces,
         # Accord entre la structure et ce qu'on lui demandait : distances cibles (contacts observés
         # seulement) contre distances de la structure, en log. Ce n'est pas une preuve de justesse :
@@ -246,18 +265,22 @@ def reconstruct(path: Path, p: Params, progress=lambda step, frac: None) -> Resu
         "radius_nm": float(radius), "scale_nm_per_unit": float(scale),
         "gyration_nm": float(np.sqrt((x**2).sum(axis=1).mean())),
     }
-    return Result(x, ci, b["start"].to_numpy().astype(np.int64), b["end"].to_numpy().astype(np.int64),
-                  chroms, stats, name)
+    res = Result(x, ctx["ci"], ctx["start"], ctx["end"], ctx["chroms"], stats, ctx["name"])
+    res.ctx = ctx
+    return res
 
 
-def write_g3d(res: Result, p: Params, source: dict, out: Path) -> dict:
+def write_g3d(res: Result, p: Params, source: dict, out: Path, variability: np.ndarray | None = None) -> dict:
     radius = res.stats["radius_nm"]
     level = G.Level(
         name="structure", bp_per_bead=p.resolution, positions_nm=res.positions_nm.astype(np.float64),
         copy=res.chrom, start=res.start, end=res.end,
-        variability_nm=np.zeros(len(res.start)), copies=res.chroms, radius_nm=[radius] * len(res.chroms),
+        variability_nm=np.zeros(len(res.start)) if variability is None else variability,
+        copies=res.chroms, radius_nm=[radius] * len(res.chroms),
         evidence="reconstructed", precision_nm=0.01 * radius,
-        variability={"kind": "none", "why": "une structure consensus, pas un ensemble"},
+        variability={"kind": "none", "why": "une structure consensus, pas un ensemble"} if variability is None else
+        {"kind": "bootstrap_rms", "replicates": p.ensemble, "seed": p.seed,
+         "what": "dispersion sous rééchantillonnage des comptes de la carte — bruit de comptage, pas variabilité entre cellules"},
         notes=["reconstruite depuis une carte de contacts importée : équilibrage, d = f^(−alpha), "
                "géodésiques (ShRec3D), MDS classique",
                "une structure consensus à une isométrie près : orientation de convention, chiralité arbitraire",
@@ -265,23 +288,79 @@ def write_g3d(res: Result, p: Params, source: dict, out: Path) -> dict:
     )
     return G.write(out, [level], header={"assembly": source.get("assembly"), "cell_type": None,
                                          "session": {"input": source["name"], "sha256": source["sha256"],
-                                                     "params": asdict(p), "region": res.region}})
+                                                     "params": p.as_dict(), "region": res.region}})
 
 
-def run(mcool: Path, p: Params, out_dir: Path, progress=lambda step, frac: None, input_sha256: str | None = None) -> dict:
-    """Reconstruit, écrit `structure.g3d` et `session.json` dans `out_dir`, rend le manifeste."""
+def is_hic(path: Path) -> bool:
+    with open(path, "rb") as f:
+        return f.read(3) == b"HIC"
+
+
+def as_cooler(path: Path, cache: Path) -> Path:
+    """Un `.hic` (Juicer) est converti une fois en `.mcool` par hic2cool, rangé sous son empreinte ;
+    un fichier cooler est rendu tel quel. L'empreinte d'une session reste celle du fichier **donné**."""
+    path = Path(path)
+    if not is_hic(path):
+        return path
+    try:
+        from hic2cool import hic2cool_convert
+    except ImportError:
+        raise SessionError("lire un .hic demande hic2cool (pip install hic2cool)") from None
+    out = Path(cache) / f"{sha256_file(path)[:24]}.mcool"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".part.mcool")
+        try:
+            hic2cool_convert(str(path), str(tmp), 0, silent=True)
+        except BaseException as e:                         # hic2cool appelle sys.exit sur un fichier qu'il ne lit pas
+            tmp.unlink(missing_ok=True)
+            raise SessionError(f"ce .hic n'a pas pu être converti : {e}") from None
+        tmp.replace(out)
+    return out
+
+
+def run(mcool: Path, p: Params, out_dir: Path, progress=lambda step, frac: None, input_sha256: str | None = None,
+        source: Path | None = None) -> dict:
+    """Reconstruit, écrit `structure.g3d`, ses exports, ses statistiques, son ensemble s'il est
+    demandé, et `session.json` dans `out_dir` ; rend le manifeste. `source` : le fichier donné par
+    l'utilisateur quand `mcool` en est la conversion (un `.hic`)."""
     mcool = Path(mcool)
+    source = Path(source) if source else mcool
     out_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     info = inspect(mcool)
-    sha = input_sha256 or sha256_file(mcool)
+    sha = input_sha256 or sha256_file(source)
     res = reconstruct(mcool, p, progress)
+    ctx = res.ctx
+    variability = None
+    files: dict[str, Path] = {}
+    if p.ensemble:
+        if res.stats["beads"] > X.ENSEMBLE_MAX_BEADS:
+            raise SessionError(f"ensemble : {res.stats['beads']:,} billes, au-delà de {X.ENSEMBLE_MAX_BEADS:,} — "
+                               "l'ensemble ne se calcule qu'en résolution grossière")
+        reps, variability = X.ensemble(res.positions_nm, ctx, p, _solve, progress)
+        files["ensemble"] = out_dir / "ensemble.f32"
+        files["ensemble"].write_bytes(np.ascontiguousarray(reps, "<f4").tobytes())
     g3d = out_dir / "structure.g3d"
-    write_g3d(res, p, {"name": mcool.name, "sha256": sha, "assembly": info["assembly"]}, g3d)
+    write_g3d(res, p, {"name": source.name, "sha256": sha, "assembly": info["assembly"]}, g3d, variability)
+
+    # Exports et statistiques depuis les positions **du fichier** : ce qu'on exporte est ce qu'on voit.
+    lv = G.read(g3d).levels["structure"]
+    x = np.asarray(lv["positions_nm"], np.float64)
+    var = np.asarray(lv["variability_nm"], np.float64)
+    title = f"{source.name} {res.region} {p.resolution} pb"
+    texts = {"pdb": ("structure.pdb", X.pdb(x, res.chrom, res.chroms, res.start, var, title)),
+             "3dg": ("structure.3dg", X.threedg(x, res.chrom, res.chroms, res.start)),
+             "gltf": ("structure.gltf", X.gltf(x, res.chrom, res.chroms, {"input": source.name, "region": res.region,
+                                                                             "resolution": p.resolution, "evidence": "reconstructed"})),
+             "statistics": ("statistics.json", json.dumps(X.statistics(x, ctx, p.resolution, variability), ensure_ascii=False, indent=1))}
+    for key, (name, text) in texts.items():
+        files[key] = out_dir / name
+        files[key].write_text(text)
     manifest = {
         "format": FORMAT,
-        "input": {"name": mcool.name, "bytes": info["bytes"], "sha256": sha, "assembly": info["assembly"]},
-        "params": asdict(p),
+        "input": {"name": source.name, "bytes": source.stat().st_size, "sha256": sha, "assembly": info["assembly"]},
+        "params": p.as_dict(),
         "region": res.region,
         "method": {"chain": ["équilibrage", "d = f^(−alpha)", "géodésiques (ShRec3D, Lesne 2014)", "MDS classique (Torgerson)"],
                    "orientation": "centrée, axes du MDS, signe : la plus grande |coordonnée| de chaque axe est positive",
@@ -290,30 +369,47 @@ def run(mcool: Path, p: Params, out_dir: Path, progress=lambda step, frac: None,
         "versions": versions(),
         "output": {"file": g3d.name, "bytes": g3d.stat().st_size, "sha256": sha256_file(g3d),
                    "positions_sha256": hashlib.sha256(np.ascontiguousarray(res.positions_nm, "<f8").tobytes()).hexdigest()},
+        # Semaine 18 : ce qui accompagne la structure, chaque fichier avec son empreinte.
+        "files": {k: {"file": f.name, "bytes": f.stat().st_size, "sha256": sha256_file(f)} for k, f in files.items()},
         "stats": res.stats,
         # Hors de ce qui se reproduit : la date et la durée de cette exécution-ci.
         "run": {"created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t0)), "seconds": round(time.time() - t0, 2)},
     }
+    if p.ensemble:
+        manifest["method"]["ensemble"] = ("rééchantillonnage de Poisson des comptes, graine dans params ; réplicats alignés sur le "
+                                          "consensus (rotation, réflexion) ; variabilité = écart quadratique moyen par bille")
+        manifest["ensemble"] = {"replicates": p.ensemble, "beads": res.stats["beads"], "dtype": "<f4", "unit": "nm",
+                                "layout": "réplicat, bille, xyz"}
+    if source != mcool:
+        import hic2cool
+
+        manifest["input"]["converted_by"] = f"hic2cool {hic2cool.__version__}"
+        manifest["versions"]["hic2cool"] = hic2cool.__version__
     (out_dir / "session.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
     progress("fait", 1.0)
     return manifest
 
 
-def reproduce(manifest: dict, mcool: Path, out_dir: Path, progress=lambda step, frac: None) -> dict:
+def reproduce(manifest: dict, mcool: Path, out_dir: Path, progress=lambda step, frac: None, cache: Path | None = None) -> dict:
     """Refait la session d'un manifeste sur `mcool`, et compare. Refuse un fichier qui n'est pas
     celui du manifeste : reproduire autre chose n'est pas reproduire."""
     if manifest.get("format") != FORMAT:
         raise SessionError(f"ce n'est pas un manifeste {FORMAT}")
-    sha = sha256_file(Path(mcool))
+    source = Path(mcool)
+    sha = sha256_file(source)
     if sha != manifest["input"]["sha256"]:
         raise SessionError("le fichier fourni n'est pas celui du manifeste (empreinte sha256 différente)")
     try:
         p = Params(**manifest["params"])
     except TypeError as e:
         raise SessionError(f"paramètres du manifeste illisibles : {e}") from None
-    new = run(mcool, p, out_dir, progress, input_sha256=sha)
-    identical = new["output"]["sha256"] == manifest["output"]["sha256"]
+    new = run(as_cooler(source, cache or out_dir.parent / "converted"), p, out_dir, progress, input_sha256=sha, source=source)
+    # Tout ce que le manifeste d'origine décrit doit revenir à l'octet près ; un manifeste de la
+    # semaine 17 ne décrit que la structure.
+    differ = [k for k, f in manifest.get("files", {}).items() if new["files"].get(k, {}).get("sha256") != f["sha256"]]
+    identical = new["output"]["sha256"] == manifest["output"]["sha256"] and not differ
     out = {"identical": identical, "expected_sha256": manifest["output"]["sha256"], "sha256": new["output"]["sha256"],
+           "files_compared": sorted(manifest.get("files", {})), "files_differ": differ,
            "versions_differ": {k: [manifest["versions"].get(k), v] for k, v in new["versions"].items()
                                if manifest["versions"].get(k) != v},
            "manifest": new}

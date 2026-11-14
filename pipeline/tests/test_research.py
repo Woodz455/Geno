@@ -117,3 +117,68 @@ def test_service_runs_a_session_and_refuses_foreign_origins(mcool, tmp_path):
         assert e.value.code == 400
     finally:
         srv.shutdown()
+
+
+# — Semaine 18 : ensemble, statistiques, exports —
+
+def test_without_ensemble_the_parameters_are_those_of_week_17():
+    assert list(S.Params(50_000, "chrP1").as_dict()) == ["resolution", "region", "alpha", "balance", "min_coverage"]
+    assert S.Params(50_000, "chrP1", ensemble=4, seed=2).as_dict()["seed"] == 2
+    with pytest.raises(S.SessionError, match="ensemble"):
+        S.Params(50_000, "chrP1", ensemble=1000).check()
+
+
+def test_ensemble_is_seeded_aligned_and_reproduced_with_its_files(mcool, tmp_path):
+    from geno_pipeline.export.g3d import read
+
+    p = S.Params(100_000, "chrP1", balance="aucun", ensemble=6, seed=3)
+    m = S.run(mcool, p, tmp_path / "a")
+    assert set(m["files"]) == {"ensemble", "pdb", "3dg", "gltf", "statistics"}
+    reps = np.frombuffer((tmp_path / "a" / "ensemble.f32").read_bytes(), "<f4").reshape(6, -1, 3)
+    lv = read(tmp_path / "a" / "structure.g3d").levels["structure"]
+    x, var = np.asarray(lv["positions_nm"], float), np.asarray(lv["variability_nm"], float)
+    assert reps.shape[1] == len(x) == m["stats"]["beads"]
+    # La variabilité écrite est la dispersion des réplicats autour du consensus, et les réplicats
+    # sont alignés : chacun est bien plus près du consensus que d'un consensus battu.
+    assert np.allclose(np.sqrt(((reps - x[None]) ** 2).sum(axis=2).mean(axis=0)), var, atol=0.02 * m["stats"]["radius_nm"] + 1)
+    assert S.compare(reps[0].astype(float), x) < 0.5 < S.compare(reps[0].astype(float), x[::-1])
+    r = S.reproduce(m, mcool, tmp_path / "b")
+    assert r["identical"] and r["files_compared"] == sorted(m["files"]) and not r["files_differ"]
+    other = S.run(mcool, S.Params(100_000, "chrP1", balance="aucun", ensemble=6, seed=4), tmp_path / "c")
+    assert other["files"]["ensemble"]["sha256"] != m["files"]["ensemble"]["sha256"]
+    assert other["output"]["positions_sha256"] == m["output"]["positions_sha256"]      # le consensus ne dépend pas de la graine
+
+
+def test_exports_carry_the_positions_of_the_g3d(mcool, tmp_path):
+    from geno_pipeline.export.g3d import read
+    from geno_pipeline.research import extras as X
+
+    S.run(mcool, S.Params(100_000, "génome", balance="aucun"), tmp_path / "s")
+    lv = read(tmp_path / "s" / "structure.g3d").levels["structure"]
+    x = np.asarray(lv["positions_nm"], float)
+    xyz, unit, chains = X.parse_pdb((tmp_path / "s" / "structure.pdb").read_text())
+    assert len(xyz) == len(x) and np.abs(xyz - x).max() <= 0.0005 * unit + 1e-9 and sorted(set(chains)) == ["A", "B"]
+    d = np.loadtxt(tmp_path / "s" / "structure.3dg", usecols=(2, 3, 4))
+    assert np.abs(d - x).max() <= 0.0005 + 1e-9
+    parts = X.parse_gltf((tmp_path / "s" / "structure.gltf").read_text())
+    assert [len(v) for v in parts] == [80, 60] and np.abs(np.vstack(parts) * 1000 - x).max() < 0.01
+    # Une structure trop grande pour les colonnes du PDB change d'unité et le dit.
+    big = X.pdb(x * 50, np.asarray(lv["copy"]), ["chrP1", "chrP2"], np.asarray(lv["start"]), np.zeros(len(x)), "t")
+    xyz2, unit2, _ = X.parse_pdb(big)
+    assert unit2 >= 10 and np.abs(xyz2 - x * 50).max() <= 0.0005 * unit2 + 1e-6
+
+
+def test_statistics_recount_the_map(mcool, tmp_path):
+    import cooler
+
+    S.run(mcool, S.Params(100_000, "chrP1", balance="aucun"), tmp_path / "s")
+    st = json.loads((tmp_path / "s" / "statistics.json").read_text())
+    m = cooler.Cooler(f"{mcool}::resolutions/100000").matrix(balance=False).fetch("chrP1")
+    keep = m.sum(axis=0) > 0.1 * np.median(m.sum(axis=0)[m.sum(axis=0) > 0])
+    m = m[np.ix_(keep, keep)]
+    pos = np.flatnonzero(keep)
+    curve = {round(s): v for s, v, _ in st["contacts_vs_separation"] if s < 4}
+    for sep in (1, 2, 3):
+        i, j = np.nonzero(pos[None, :] - pos[:, None] == sep)
+        assert abs(curve[sep] - m[i, j].mean()) < 1e-9
+    assert st["ps_slope"] < -0.5 and 0.2 < st["rs_nu"] < 0.8
