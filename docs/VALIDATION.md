@@ -9,6 +9,115 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S18 — Ensemble, statistiques, exports, .hic : 5 sessions sur 5 rejouées avec tous leurs fichiers
+
+### Le périmètre, et ce qui a été décidé sans vous
+
+Le reste du mode Recherche de la feuille de route : explorateur d'ensemble, statistiques, exports
+(PNG/SVG, glTF, PDB, 3DG), et le `.hic`. Trois choix faits en avançant, à défaire si vous en voulez
+d'autres : l'**ensemble** vient d'un rééchantillonnage de la carte (ci-dessous) ; le **`.hic`**
+est converti en `.mcool` par hic2cool, sur la machine (hicstraw ne se compile pas ici) ; PDB, 3DG
+et glTF sont écrits par le service, PNG et SVG par la page (la vue courante).
+
+### Ce qui est construit
+
+- **Ensemble** (`research/extras.py`). Une carte ne contient pas ses cellules : on ne peut pas en
+  tirer la variabilité d'une cellule à l'autre. Ce qu'on peut mesurer, c'est ce que son **bruit de
+  comptage** laisse indéterminé : `n` cartes retirées (Poisson autour des comptes lus, graine dans
+  le manifeste), chacune reconstruite, alignée sur le consensus (rotation, réflexion, pas
+  d'échelle) ; l'écart quadratique moyen de chaque bille est sa variabilité, écrite dans le `.g3d`
+  (`variability.kind: "bootstrap_rms"`). Les réplicats vont dans `ensemble.f32` ; la page n'en lit
+  un que lorsqu'on le regarde, par une requête Range. Limité à 1 500 billes et 64 réplicats.
+- **Statistiques** (`statistics.json`) : contacts lus selon la séparation, P(s), et distance dans
+  la structure, R(s), par paires du même chromosome ; leurs pentes sur une plage dite ; rayon de
+  giration par chromosome ; variabilité. La page les trace.
+- **Exports**, depuis les positions du `.g3d` (ce qu'on exporte est ce qu'on voit) : PDB (un CA
+  par bille, une chaîne par chromosome, facteur B = variabilité ; l'unité — 1 ou 10 nm selon la
+  taille — est écrite dans `REMARK 2`), 3DG (chrom, position, x, y, z en nm), glTF 2.0 autonome
+  (points et lignes, µm). SVG et PNG de la vue courante.
+- **`.hic`** : reconnu à sa signature, converti une fois (rangé sous son empreinte) ; l'empreinte
+  du manifeste reste celle du fichier donné, et la version de hic2cool y est notée.
+- **Manifeste** : chaque fichier d'accompagnement y a son empreinte, et le rejeu les compare tous.
+  Sans ensemble, les paramètres sont ceux de la semaine 17, mot pour mot : ses manifestes se
+  rejouent encore. La reconstruction a été scindée (lecture, résolution) ; comparée à la version
+  de la semaine 17 sur trois sessions, elle rend les mêmes positions au bit près.
+
+### Mesuré (`node tools/research18.mjs vrai.mcool test.hic`)
+
+Critères fixés avant cette mesure, mais après les premiers essais en ligne de commande.
+
+| | Résultat | Critère |
+|---|---|---|
+| 1 · ensemble de 20, chromosome planté : réplicat affiché = réplicat du fichier | 4 lectures sur 4, au bit près | égal |
+| lu à la demande | 21 492 octets lus sur 143 280 (3 réplicats regardés, le 4ᵉ affichage vient du cache) | billes × 12 par réplicat |
+| une carte dix fois moins profonde est plus incertaine | variabilité médiane **52 nm** à 40 M de contacts, **128 nm** à 4 M : × 2,46 | ≥ 1,5 |
+| 2 · statistiques | 2 courbes tracées, valeurs = `statistics.json` ; P(s) −1,07, R(s) 0,42 ; P(s) recompté sur cooler aux séparations 1, 2, 3 (test Python) | égal |
+| 3 · PDB, 3DG, glTF relus en JavaScript contre les positions dessinées | 997 billes chacun ; écarts max 5,2·10⁻³ nm (PDB, unité 10 nm), 9,1·10⁻⁴ nm, 4,8·10⁻⁴ nm | précision du format |
+| SVG | 997 cercles pour 997 billes ; **80/80** centres portent leur bille ou une bille qui les couvre | 80/80 (révisé, voir ci-dessous) |
+| PNG | 53,5 ko, `image/png`, aux dimensions du canevas | — |
+| 4 · `.hic` public importé par son chemin | converti en 6 s ; à 2,5 Mb, 92 billes, 90 vues | une structure |
+| 5 · manifestes rejoués, service relancé, sessions **et conversions** effacées | **5/5** à l'octet près, structure et 4 ou 5 fichiers chacun (dont l'ensemble et le `.hic`) | 5/5 |
+| témoin : graine + 1 dans le manifeste | « Différent », l'ensemble nommé | différent |
+
+Un ensemble de 20 sur 597 billes prend **81 à 86 s** ici (4 vCPU, d'autres mesures en cours) :
+chaque réplicat est une reconstruction entière. Sur le vrai fichier (chr17:7–9 Mb à 10 kb, 12
+réplicats) : variabilité médiane 100 nm pour des billes de 40 nm de rayon.
+
+### Ce qui n'a pas tenu, ou seulement à moitié
+
+- **L'ordre de dessin du SVG : 77/80.** Le critère d'abord écrit — au centre de chaque cercle, le
+  tampon d'identifiants rend cette bille ou une bille **dessinée après** — échoue sur 3 centres
+  (5 avec un tri par profondeur, 3 avec un tri par distance à l'œil). La cause exacte n'est pas
+  établie. Critère révisé, géométrie seule : la bille, ou une bille dont le disque couvre ce point
+  — 80/80. Le SVG est une figure faite de disques peints, pas le rendu : là où des billes se
+  touchent, l'ordre peut différer de celui de l'écran.
+- **La variabilité ne dit que faiblement où la structure est fausse.** Sur le chromosome planté,
+  la corrélation de rang entre variabilité et erreur réelle par bille est de **0,27**, pour une
+  erreur médiane (93 nm) presque double de la variabilité médiane (51 nm). Le rééchantillonnage
+  voit le bruit, pas le biais de la méthode. Vu en ligne de commande, non compté comme critère.
+- **Le `.hic` d'exemple** (jeu de test de hic2cool, 34 Mo) est un sous-échantillon : à 250 kb aucune
+  paire de billes n'a de contact, et la première structure n'affichait rien. La page prévient
+  désormais sous 5 % de paires observées ; la mesure se fait à 2,5 Mb (20 % de paires, r = 0,49).
+  Cela prouve le chemin d'import, pas la qualité d'une structure tirée d'un `.hic`. Les vecteurs de
+  normalisation du `.hic` (KR, VC) ne sont pas repris comme « poids du fichier ».
+- **PDB** : une première version débordait de ses colonnes pour une grande structure négative
+  (−9998,123 fait neuf caractères) ; l'unité passe à 10 nm dès 999 nm.
+
+### Ce que ça ne dit pas
+
+- L'ensemble n'est **pas** un ensemble de cellules, et il ne répond pas à R1 pour une carte
+  importée : la page l'écrit sous la réglette.
+- Aucun validateur glTF externe n'a tourné : le fichier est relu par un lecteur écrit pour la mesure.
+- R(s) décrit la structure reconstruite, pas le génome.
+
+### Les semaines précédentes, revérifiées
+
+Demandé avec la semaine 18 : toute la non-régression relancée, sur le code d'aujourd'hui.
+
+| Semaines | Mesure relancée | Résultat |
+|---|---|---|
+| toutes | `make test` | 311 passés (307 avant les 4 tests de la semaine 18) |
+| 4, 10–13 | `pnpm verify` | 82 vérifications, 0 échec |
+| 9, 13, 14, 15, 16 | lectures croisées Python → TypeScript | g3d 46, fiche 6, contacts 5, store 7, variant 6, recherche 9, surimpression 6/6 |
+| 10–12 | plongée, boucle, fidélité, chargement Slow 4G | 0 saut (témoin : 3) ; boucle lisible ; chaque base dessinée est celle du génome ; aucun chargement visible |
+| 13 | clic → fiche | complète en moins de 100 ms au p95 |
+| 14 | vues liées | 90/90, une publication, zéro rebond |
+| 9 | temps de premier rendu | le fichier par défaut passe sous 1,5 s en Slow 4G |
+| 16 | recherche et URL | verdict « fait » (645/645, 90/90, 30/30) |
+| 17 | mode Recherche, sur le code de la semaine 18 | verdict « fait » : nRMSD 0,140 et 0,154, 12/12 manifestes rejoués |
+
+La semaine 15 n'a pas de critère atteint à revérifier ; sa lecture croisée et sa surimpression passent.
+
+### Reproduire
+
+```console
+$ pip install hic2cool                    # pour le .hic seulement
+$ cd pipeline && geno research run carte.mcool --region chr17 --resolution 100000 --ensemble 20 --seed 1 --out s/
+$ cd .. && node tools/build.mjs && node tools/research18.mjs chemin/vers/test.mcool chemin/vers/test.hic
+```
+
+---
+
 ## S17 — Un .mcool importé ressort en structure ; 12 manifestes sur 12 la refont à l'octet près
 
 ### Le critère, traduit
