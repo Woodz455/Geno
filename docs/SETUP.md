@@ -118,10 +118,13 @@ serveur HTTP de la bibliothèque standard. `make research` écoute sur `127.0.0.
 `dist/recherche.html` (à construire d'abord : `node tools/build.mjs`). Les sessions vont dans
 `pipeline/data/research/` (hors dépôt). Les tests du mode Recherche se sautent si cooler manque.
 
+Semaine 18 : lire un `.hic` demande `pip install hic2cool` (pur Python ; `hic-straw` ne se compile
+pas dans cet environnement). Sans lui, la page refuse le `.hic` en le disant ; tout le reste marche.
+
 ## Vérifier
 
 ```console
-$ make test            # 307 tests (… + 7 vues liées, + 8 variant structural, + 10 recherche, + 6 mode Recherche)
+$ make test            # 311 tests (… + 8 variant structural, + 10 recherche, + 10 mode Recherche)
 $ make selftest        # 13 assertions sur la vérification d'empreintes, sans réseau
 $ make hic-validate    # plante une structure Hi-C connue, valide les callers dessus
 ```

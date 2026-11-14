@@ -530,6 +530,13 @@ rayon — un niveau sans ensemble n'a pas d'incertitude dont déduire sa quantif
 `geno-session/1` porte l'empreinte de l'entrée, les paramètres, les versions et l'empreinte de la
 sortie ; `reproduce` compare des octets. Limite : 3 000 billes (géodésiques et MDS denses).
 
+Semaine 18 (`research/extras.py`) : `session.py` est scindé en `_read` (comptages de la région) et
+`_solve` (comptages → coordonnées), que l'ensemble rappelle sur chaque carte rééchantillonnée.
+Une session écrit, à côté de `structure.g3d` : `ensemble.f32` (réplicat, bille, xyz en nm, float32
+— la page en lit un réplicat par requête Range), `statistics.json`, `structure.pdb`, `.3dg`,
+`.gltf`. Le manifeste liste chaque fichier avec son empreinte (`files`). Un `.hic` passe par
+`as_cooler` (hic2cool, conversion rangée sous l'empreinte du fichier).
+
 ---
 
 ## 8. Socle 1D — index d'intervalles et mesures

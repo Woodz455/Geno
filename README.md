@@ -9,7 +9,7 @@ descendre jusqu'à la base.
 
 ## État
 
-**Phase 0–4, semaine 17** (la 15 non faite). Lignée de référence figée (GM12878), machinerie de vérification des
+**Phase 0–4, semaine 18** (la 15 non faite). Lignée de référence figée (GM12878), machinerie de vérification des
 données en place, socle 1D interrogeable, callers de conformation validés contre une structure
 plantée, reconstruction 3D calibrée contre une géométrie connue, moteur de rendu par
 imposteurs dont la correction est prouvée dans un vrai navigateur, **un noyau diploïde
@@ -181,6 +181,12 @@ au choix) et affiche la structure, avec un manifeste de session qui la refait à
 sur 12, service redémarré. Sur un fichier à structure connue, elle retrouve la structure plantée
 (nRMSD 0,14). C'est une structure consensus, à une isométrie près, et la page le dit
 ([`docs/VALIDATION.md` § S17](docs/VALIDATION.md)).
+
+Depuis la semaine 18, le mode Recherche lit aussi un `.hic`, calcule un **ensemble** par
+rééchantillonnage de la carte — ce que son bruit de comptage laisse indéterminé, pas la différence
+d'une cellule à l'autre —, trace P(s) et R(s), et exporte en PDB, 3DG, glTF, SVG et PNG ; le
+manifeste refait le tout, fichiers compris, à l'octet près
+([`docs/VALIDATION.md` § S18](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et

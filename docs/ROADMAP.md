@@ -404,6 +404,16 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   contre 0,14), parce que ses marginales vraies ne sont pas uniformes. Limites : 3 000 billes,
   identité garantie à versions et machine égales, structure consensus sans ensemble
   ([`VALIDATION.md` § S17](VALIDATION.md)).
+- **Semaine 18 — fait.** Ensemble par **rééchantillonnage de la carte** (bruit de comptage, pas
+  variabilité entre cellules — dit dans la page), variabilité par bille dans le `.g3d`, réplicats
+  lus à la demande par plages ; statistiques P(s) et R(s) tracées ; exports PDB, 3DG, glTF (service)
+  et SVG, PNG (vue courante) ; `.hic` converti par hic2cool. Mesuré : réplicat affiché = réplicat
+  du fichier, 21 ko lus sur 143 ; une carte dix fois moins profonde est 2,46 fois plus incertaine ;
+  PDB, 3DG et glTF relus en JavaScript, écarts ≤ 5·10⁻³ nm ; un `.hic` public ressort en structure ;
+  **5 sessions sur 5 rejouées à l'octet près, tous fichiers compris**. À moitié : l'ordre de dessin
+  du SVG ne suit celui de l'écran que sur 77 centres sur 80 (critère révisé à la géométrie) ; la
+  variabilité ne prédit que faiblement l'erreur réelle (rang 0,27) ; le `.hic` d'exemple est trop
+  creux pour juger une structure ([`VALIDATION.md` § S18](VALIDATION.md)).
 
 #### Semaines 19–20 — Mode Découverte
 - Parcours guidé, comparaisons d'échelles, glossaire, haltes commentées, accessibilité

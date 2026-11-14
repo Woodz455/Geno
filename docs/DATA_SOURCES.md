@@ -232,6 +232,12 @@ vient (`data/g3d/igv/index.json`, champ `provenance`) :
 `unverified` : plusieurs dizaines de Go, jamais téléchargé, donc jamais verrouillé ; le `.mcool` de
 4DN est `unresolved`. Les montrer est le rattrapage S1–S8, pas la semaine 14.
 
+## 8 septies. Semaine 18 : un second fichier d'exemple, hors manifeste
+
+Le `.hic` de test de hic2cool (`test_data/test_hic.hic` du dépôt 4dn-dcic/hic2cool, 33 926 529
+octets) : un sous-échantillon, qui ne sert qu'à prouver le chemin d'import d'un `.hic`. Ni source
+du projet, ni dans le dépôt, ni dans `manifest.tsv`.
+
 ## 8 sexies. Semaine 17 : aucune source nouvelle ; un fichier d'exemple, hors manifeste
 
 Le mode Recherche lit le fichier **de l'utilisateur**. Pour le mesurer, deux fichiers, dont aucun

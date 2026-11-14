@@ -291,8 +291,10 @@ async function extras(session: string, m: Manifest): Promise<void> {
 }
 let stats18: Record<string, unknown> | null = null;
 
-/** La vue courante en SVG : un cercle par bille, du fond vers l'avant, et la chaîne de chaque
- *  chromosome ; la légende dit d'où vient la structure. Rend aussi les centres, pour la mesure. */
+/** La vue courante en SVG : un cercle par bille, de la plus lointaine de l'œil à la plus proche ;
+ *  la légende dit d'où vient la structure. Des disques peints dans l'ordre ne rendent pas
+ *  l'interpénétration de deux sphères : c'est une figure, pas le rendu. Rend aussi les centres,
+ *  pour la mesure. */
 function svgExport(): { svg: string; circles: { id: number; x: number; y: number; r: number }[] } {
   const view = viewMatrix(orbit);
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -304,7 +306,7 @@ function svgExport(): { svg: string; circles: { id: number; x: number; y: number
     if (e[2] >= 0) continue;
     const cw = -e[2];
     const cx = (lastProj[0] * e[0] + lastProj[8] * e[2]) / cw, cy = (lastProj[5] * e[1] + lastProj[9] * e[2]) / cw;
-    items.push({ id: i + 1, x: (cx * 0.5 + 0.5) * w, y: (1 - (cy * 0.5 + 0.5)) * h, r: (cur.radii[i] * f / cw) * (h / 2), z: cw, c: Number(cur.copy[i]) });
+    items.push({ id: i + 1, x: (cx * 0.5 + 0.5) * w, y: (1 - (cy * 0.5 + 0.5)) * h, r: (cur.radii[i] * f / cw) * (h / 2), z: Math.hypot(e[0], e[1], e[2]), c: Number(cur.copy[i]) });
   }
   const colors = cur ? ($<HTMLSelectElement>("colour").value === "var" ? varColors() : cur.chain) : new Float32Array();
   const rgb = (i: number) => `rgb(${[0, 1, 2].map((k) => Math.round(255 * Math.min(1, colors[3 * (i - 1) + k]))).join(",")})`;
@@ -373,6 +375,7 @@ function describe(m: Manifest): void {
     <tr><td class="k">taille</td><td>rayon de giration ${fmt(Math.round(s.gyration_nm))} nm <span class="k">(échelle de convention : deux billes voisines se touchent)</span></td></tr>
     <tr><td class="k">calcul</td><td>${m.run.seconds.toFixed(1)} s · alpha ${m.params.alpha} · équilibrage « ${esc(m.params.balance)} »</td></tr>
     <tr><td class="k">.g3d</td><td>${fmt(m.output.bytes)} octets · sha256 ${m.output.sha256.slice(0, 16)}…</td></tr></table>
+    ${s.observed_pairs < 0.05 ? `<div class="err">Carte trop creuse à cette résolution : ${(s.observed_pairs * 100).toFixed(1)} % des paires de billes ont un contact. La structure tient presque toute à la complétion par les plus courts chemins — choisir une résolution plus grossière.</div>` : ""}
     ${s.pieces > 1 ? `<div class="err">${s.pieces} morceaux sans aucun contact entre eux : leur position relative est arbitraire, seule la forme de chacun se lit.</div>` : ""}
     <div class="k">Reconstruite (ShRec3D + MDS) : une structure consensus, à une isométrie près — orientation de convention, chiralité arbitraire.</div>`;
   dl.hidden = false;
