@@ -6,7 +6,7 @@
     "build": "node tools/build.mjs",
     "spike:verify": "node tools/verify.mjs",
     "typecheck": "tsc --noEmit",
-    "verify": "node tools/build.mjs && node tools/verify.mjs"
+    "verify": "node tools/build.mjs && node tools/verify.mjs && node tools/test-discover.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

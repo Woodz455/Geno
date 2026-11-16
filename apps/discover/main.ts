@@ -214,7 +214,7 @@ async function main(): Promise<void> {
   const idOf = (s: Stop) => (s.kind === "step" ? s.step.id : s.halt.id);
   let cur = -1;          // −1 : l'introduction ; content.steps.length : la fin
   let orbit: Orbit = scene.start;
-  let anim: { path: { length: number; at(s: number): Orbit }; t0: number; duration: number } | null = null;
+  let anim: { path: { length: number; at(s: number): Orbit }; to: Orbit; t0: number; duration: number } | null = null;
   let dirty = true;
   const arrivals: { id: string; orbit: Orbit; arrivedAt: number; dest?: unknown }[] = [];
   let arrived = true;
@@ -228,7 +228,7 @@ async function main(): Promise<void> {
       return;
     }
     const path = dive(orbit, to, FOV);
-    anim = { path, t0: performance.now(), duration: 900 * Math.max(0.6, path.length) };
+    anim = { path, to, t0: performance.now(), duration: 900 * Math.max(0.6, path.length) };
     dirty = true;
   };
 
@@ -471,7 +471,8 @@ async function main(): Promise<void> {
   const loop = (now: number): void => {
     if (anim) {
       const k = Math.min(1, (now - anim.t0) / anim.duration);
-      orbit = anim.path.at(k * anim.path.length);
+      // L'arrivée est l'orbite visée, exactement : la reprise par l'URL rejoue la même image.
+      orbit = k >= 1 ? anim.to : anim.path.at(k * anim.path.length);
       if (k >= 1) anim = null;
       dirty = true;
     }
@@ -522,6 +523,12 @@ async function main(): Promise<void> {
     haltDest: () => haltDest,
     contacts: () => contactsDrawn,
     ids: () => Array.from(scene.ids()).length,
+    /** Le TSS d'un gène, par l'index de la page : chrom et position 0-based. */
+    resolve: async (gene: string) => {
+      const ix = await index;
+      const h = ix && (await ix.resolve(gene)).hits.find((x) => x.in_model);
+      return h ? { chrom: h.chrom, pos: h.strand === "-" ? h.end - 1 : h.start } : null;
+    },
   };
 }
 
