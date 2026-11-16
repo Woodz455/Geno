@@ -417,9 +417,10 @@ function svgExport(): { svg: string; circles: SvgBead[] } {
     }
     A.hide.push(poly.map(proj));
   }
-  /** Points d'échantillonnage : environ un pour 2 px du contour projeté, de 12 à 64. */
+  /** Points d'échantillonnage : environ un par pixel du contour projeté, de 16 à 128 ; la corde
+   *  s'écarte alors de l'arc vrai de moins de 0,05 px dès 2,5 px de rayon. */
   function samples(A: Item, rad: number): number {
-    return Math.max(12, Math.min(64, Math.ceil((Math.PI * s * rad) / -A.c[2])));
+    return Math.max(16, Math.min(128, Math.ceil((2 * Math.PI * s * rad) / -A.c[2])));
   }
   function rimPts(A: Item, _: Item): number[][] {
     const d2 = dot(A.c, A.c), nn = A.c.map((x) => x / Math.sqrt(d2)), f = 1 - (A.r * A.r) / d2;
@@ -643,6 +644,21 @@ window.__research = {
   svg: () => svgExport(),
   exported: () => exported,
   /** Pour la mesure : l'identifiant lu au pixel CSS (x, y) du dernier rendu. */
+  /** Les billes que traverse le rayon du pixel (x, y), de la plus proche à la plus lointaine, avec la
+   *  distance d'entrée en µm — le même test que le rendu et que l'export SVG. */
+  rayAt: (x: number, y: number) => {
+    if (!cur) return [];
+    const view = viewMatrix(orbit), w = canvas.clientWidth, h = canvas.clientHeight;
+    const u = ((2 * x) / w - 1 + lastProj[8]) / lastProj[0], v = (1 - (2 * y) / h + lastProj[9]) / lastProj[5], a = u * u + v * v + 1;
+    const out: { id: number; t: number; power: number }[] = [];
+    for (let i = 0; i < cur.ids.length; i++) {
+      const p = [cur.shown[3 * i], cur.shown[3 * i + 1], cur.shown[3 * i + 2]];
+      const e = [0, 1, 2].map((k) => view[k] * p[0] + view[4 + k] * p[1] + view[8 + k] * p[2] + view[12 + k]);
+      const cc = e[0] * e[0] + e[1] * e[1] + e[2] * e[2] - cur.radii[i] * cur.radii[i], b = u * e[0] + v * e[1] - e[2], disc = b * b - a * cc;
+      if (disc >= 0) out.push({ id: i + 1, t: ((b - Math.sqrt(disc)) / a) * Math.sqrt(a), power: cc });
+    }
+    return out.sort((p, q) => p.t - q.t);
+  },
   idAt: (x: number, y: number) => { render(); const dpr = W / canvas.clientWidth; return picker.pick(x * dpr, y * dpr); },
   message: () => [info.textContent, progress.textContent, verdict.textContent],
   /** Billes distinctes et pixels couverts dans le tampon d'identifiants, sous deux orientations. */

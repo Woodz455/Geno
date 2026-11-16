@@ -13,7 +13,7 @@
  *                    SVG : une silhouette par bille devant la caméra ; au centre de 80 billes et
  *                    sur une grille de 20 × 15 points, la bille que montre le fichier SVG (ellipses
  *                    et masques relus dans son texte) est celle du tampon d'identifiants, jugée au
- *                    centre du pixel lu ; un point à moins de 0,25 px d'un bord qui décide est compté
+ *                    centre du pixel lu ; un point à moins de 0,1 px d'un bord qui décide est compté
  *                    à part ; au moins 40 centres et 100 points jugés. Révisé à la reprise : le
  *                    critère d'origine (« cette bille ou une bille peinte après », 77/80, puis
  *                    révisé à la géométrie seule) supposait des disques peints sans masque —
@@ -218,8 +218,8 @@ try {
   }));
   const polygons = [...masksOf.values()].reduce((a, l) => a + l.length, 0);
   /** La bille que le SVG montre en (x, y) : la dernière peinte dont la silhouette contient le point et
-   *  dont aucun masque ne l'ôte ; `edge` si le point est à moins de 0,25 px d'un bord qui décide. */
-  const TOL = 0.25;
+   *  dont aucun masque ne l'ôte ; `edge` si le point est à moins de 0,1 px d'un bord qui décide. */
+  const TOL = 0.1;
   const svgTop = (x, y) => {
     for (let k = order.length - 1; k >= 0; k--) {
       const o = byId.get(order[k]);
@@ -244,7 +244,7 @@ try {
     const got = rank.has(id) ? id : 0;
     acc.tested++;
     if (got === t.id) acc.agree++;
-    else acc.misses.push({ x, y, svg: t.id, screen: got, ...extra });
+    else acc.misses.push({ x, y, svg: t.id, screen: got, ...extra, ray: (await P.ev(`window.__research.rayAt(${x}, ${y})`)).slice(0, 4) });
   };
   // Au centre de 80 billes réparties dans l'ordre, puis sur une grille de 20 × 15 points du canevas :
   // la bille visible du SVG est-elle celle de l'écran ?
@@ -267,7 +267,7 @@ try {
   const exported = await P.ev("window.__research.exported()");
   const png = await P.ev(`(async () => { const c = document.querySelector("canvas"); const b = await new Promise((r) => c.toBlob(r, "image/png")); return [c.width, c.height]; })()`);
   // Au centre de chaque bille testée et sur la grille, la bille que le SVG montre est celle de l'écran
-  // (points à moins de 0,25 px d'un bord qui décide : comptés, non jugés).
+  // (points à moins de 0,1 px d'un bord qui décide : comptés, non jugés).
   exportsRes.svg = { circles: circlesInSvg, masked, polygons, bytes: svg.svg.length, ms: svgMs, centres, grid, ok: circlesInSvg === svg.circles.length && circlesInSvg === nb && centres.tested >= 40 && centres.agree === centres.tested && grid.tested >= 100 && grid.agree === grid.tested };
   exportsRes.png = { exported, canvas: png, ok: exported.some((e) => e.name === "structure.png" && e.type === "image/png" && e.bytes > 1000) && exported.some((e) => e.name === "structure.svg" && e.bytes > 1000) };
 
