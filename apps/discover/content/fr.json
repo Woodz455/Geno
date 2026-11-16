@@ -44,8 +44,8 @@
       "title": "La boucle et ses bornes",
       "stop": "boucle",
       "evidence": "simulé",
-      "text": "Voici le pied d'une boucle. Les flèches marquent les bornes [[CTCF]] : elles regardent vers l'intérieur de la boucle, face à face. L'anneau turquoise, c'est la [[cohésine]], arrêtée contre elles. Ces boucles rapprochent des points éloignés du fil : un [[enhancer]], un interrupteur de l'[[ADN]], peut ainsi venir toucher le [[promoteur]] d'un [[gène]] situé des dizaines de milliers de lettres plus loin.",
-      "show": "Boucle [[simulé|simulée]] par [[extrusion de boucle|extrusion]], sur des CTCF [[planté|plantés]]."
+      "text": "Voici une extrémité du [[TAD]]. Les flèches marquent des sites [[CTCF]] : celle de ce TAD regarde vers son intérieur, vers une autre borne qui, à l'autre bout, la regarde en retour. Dans cette image figée, aucune [[cohésine]] ne tient la boucle fermée : parmi toutes les formes [[simulé|simulées]], elle ne l'est qu'une fois sur six. Les boucles se font et se défont sans cesse. Quand elles tiennent, elles rapprochent des points éloignés du fil : un [[enhancer]], un interrupteur de l'[[ADN]], peut ainsi venir toucher le [[promoteur]] d'un [[gène]] situé des dizaines de milliers de lettres plus loin.",
+      "show": "Bornes CTCF [[planté|plantées]] ; boucle formée par [[extrusion de boucle|extrusion]], et tenue dans une minorité des formes calculées."
     },
     {
       "id": "fibre",

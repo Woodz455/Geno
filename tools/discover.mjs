@@ -71,7 +71,8 @@ async function open(href) {
     while (!(await ev("window.__discover.arrived()"))) await sleep(50);
   };
   const key = async (k, code = k, vk = 0) => {
-    await s("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk });
+    // Entrée porte son caractère : sans lui, Chromium n'active pas le bouton qui a le focus.
+    await s("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, ...(k === "Enter" ? { text: "\r" } : {}) });
     await s("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk });
   };
   const mouse = (x, y) => s("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "none", buttons: 0 });
@@ -122,10 +123,13 @@ try {
 
   /** Chaque terme balisé de l'écran courant : survol, puis focus clavier (Tab). */
   const checkTerms = async (screen) => {
-    const terms = await P.ev(`[...document.querySelectorAll("#story .term")].map((e) => { const r = e.getBoundingClientRect(); return { term: e.dataset.term, x: r.left + Math.min(6, r.width / 2), y: r.top + r.height / 2 }; })`);
-    for (const t of terms) {
+    const terms = await P.ev(`[...document.querySelectorAll("#story .term")].map((e) => ({ term: e.dataset.term }))`);
+    for (const [n, t] of terms.entries()) {
       glossary.terms++;
-      await P.mouse(t.x, t.y);
+      // Le terme d'abord ramené dans le panneau, comme le ferait un lecteur qui fait défiler.
+      const at = await P.ev(`(() => { const e = document.querySelectorAll("#story .term")[${n}]; e.scrollIntoView({ block: "center" }); const r = e.getBoundingClientRect(); return { x: r.left + Math.min(6, r.width / 2), y: r.top + r.height / 2 }; })()`);
+      await sleep(30);
+      await P.mouse(at.x, at.y);
       await sleep(30);
       const hov = await P.ev(`(() => { const tip = document.getElementById("tip"); return tip.style.display === "block" ? tip.textContent : ""; })()`);
       if (hov.startsWith(t.term) && hov.length > t.term.length + 10) glossary.hover++;

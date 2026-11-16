@@ -191,18 +191,56 @@ async function main(): Promise<void> {
   // calendrier des fondus (`SCHEDULE`, scene.ts) pour que chaque étape montre sa couche.
   const S = scene.stops;
   const at = (o: Orbit, widthUm: number): Orbit => ({ ...o, distance: distanceFor(widthUm, FOV) });
-  const focus = scene.fiber?.focus ?? null;
+  const chr17 = scene.region?.chrom ?? "chr17";
+  const level = scene.region ? scene.g3d.level(scene.region.level) : null;
+  // Le TAD de l'étape : le domaine CTCF de la **population** qui contient la base visée — la
+  // paire d'ancres convergentes la plus étroite autour d'elle, au-dessus du seuil des arcs
+  // (fiber.arcs). Dans la conformation affichée, aucune cohésine ne tient de boucle autour de
+  // la base de TP53 (scene.fiber.focus est nul, comme à la semaine 12) : le domaine vient donc
+  // de l'ensemble des conformations, pas de l'instant montré.
+  const F = scene.fiber;
+  const tm = scene.target && scene.region && level ? Math.floor((scene.target.position - 1 - scene.region.start) / level.bp_per_bead) : -1;
+  const focus: { i: number; j: number } | null = F?.focus
+    ?? (F && tm >= 0 ? F.arcs.filter((a) => a.i <= tm && tm <= a.j).sort((a, b) => (a.j - a.i) - (b.j - b.i))[0] ?? null : null);
+  const pt = (k: number): [number, number, number] => [F!.points[3 * k], F!.points[3 * k + 1], F!.points[3 * k + 2]];
+  let domainView: Orbit | null = null, anchorView: Orbit | null = null;
+  if (F && focus) {
+    const c: [number, number, number] = [0, 0, 0];
+    for (let k = focus.i; k <= focus.j; k++) for (let q = 0; q < 3; q++) c[q] += F.points[3 * k + q] / (focus.j - focus.i + 1);
+    let extent = 0;
+    for (let k = focus.i; k <= focus.j; k++) extent = Math.max(extent, Math.hypot(...pt(k).map((v, q) => v - c[q])));
+    // Même cadrage que la vue de boucle de la plongée (dive.ts) : 2,4 × l'étendue, entre 0,3 et 0,58 µm.
+    domainView = { ...scene.final, target: c, distance: distanceFor(Math.max(0.3, Math.min(0.58, 2.4 * extent)), FOV) };
+    anchorView = { ...scene.final, target: pt(focus.i), distance: distanceFor(0.3, FOV) };
+  }
   const orbits: Record<string, Orbit> = {
     noyau: scene.overview,
     territoires: at(scene.final, 16),             // les autres chromosomes encore là (20 → 8 µm), assombris
     compartiments: at(scene.final, 3.2),          // compartiments pleins (< 3,5 µm), pas encore de fibre (> 3 µm)
-    tad: scene.loopView ?? S[2],
-    boucle: scene.anchorView ? at(scene.anchorView, 0.3) : S[2],   // l'ancre, avant les nucléosomes (< 0,25 µm)
+    tad: scene.loopView ?? domainView ?? S[2],
+    boucle: scene.anchorView ? at(scene.anchorView, 0.3) : anchorView ?? S[2],   // l'ancre, avant les nucléosomes (< 0,25 µm)
     fibre: S[3],
     helice: S[S.length - 1],
   };
-  const chr17 = scene.region?.chrom ?? "chr17";
-  const level = scene.region ? scene.g3d.level(scene.region.level) : null;
+  // Une vue dont le centre montre bien l'objet de l'étape. À 16 et 3,2 µm, la bille de TP53 est
+  // dans le noyau, derrière d'autres : vue de la plongée (scene.final), le centre de l'image
+  // tombait sur chrX ou sur une autre région de chr17. On tourne autour de la même cible — même
+  // champ — jusqu'à ce que le picking du centre désigne ce qu'il faut : l'orbite d'origine
+  // d'abord, puis 12 azimuts × 5 hauteurs, dans un ordre fixe (la reprise par l'URL refait le
+  // même calcul et trouve la même vue).
+  const clearView = (o: Orbit, ok: (s: NonNullable<ReturnType<DiveScene["select"]>>) => boolean): Orbit => {
+    const tries = [o];
+    for (const dp of [0, -0.5, 0.5, -1, 1]) for (let k = dp ? 0 : 1; k < 12; k++) tries.push({ ...o, yaw: o.yaw + (k * Math.PI) / 6, pitch: Math.max(-1.2, Math.min(1.2, o.pitch + dp)) });
+    for (const q of tries) {
+      scene.render(q);
+      const s = scene.select(canvas.width / 2, canvas.height / 2);
+      if (s && ok(s)) return q;
+    }
+    return o;
+  };
+  const tpos = scene.target ? scene.target.position - 1 : -1;
+  orbits.territoires = clearView(orbits.territoires, (s) => s.chrom === chr17);
+  orbits.compartiments = clearView(orbits.compartiments, (s) => s.chrom === chr17 && s.start <= tpos && tpos < s.end);
   const domain = focus && scene.region && level
     ? { chrom: scene.region.chrom, start: scene.region.start + focus.i * level.bp_per_bead, end: scene.region.start + (focus.j + 1) * level.bp_per_bead }
     : null;
@@ -371,9 +409,14 @@ async function main(): Promise<void> {
     if (!out || !d || !f) return;
     const card = f.card(d.level, d.bead) ?? (await f.cardAsync(d.level, d.bead));
     const genes: string[] = ((card?.genes?.v?.genes ?? []) as { name: string }[]).map((g) => g.name).filter(Boolean);
+    // Les gènes nommés d'abord ceux dont parle la halte, s'ils sont dans la bille ; puis les
+    // autres symboles, sans les identifiants Ensembl sans nom.
+    const named = [...new Set(genes.filter((g) => !/^ENSG\d/.test(g)))];
+    const told = named.filter((g) => new RegExp(`(?<![\\w-])${g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(`${h.gene} ${h.text}`));
+    const shown = [...told, ...named.filter((g) => !told.includes(g))].slice(0, 6);
     const fmt = (x: number) => x.toLocaleString("fr-FR");
-    out.innerHTML = `Dans le modèle : bille de ${fmt((d.end - d.start) / 1000)} kb, ${esc(d.copy)}, ${fmt(d.start + 1)}–${fmt(d.end)} (hg38)` +
-      (genes.length ? ` · ${genes.length} gène${genes.length > 1 ? "s" : ""} dont ${esc(genes.slice(0, 6).join(", "))}${genes.length > 6 ? "…" : ""}` : "");
+    out.innerHTML = `Dans le modèle : bille de ${fmt(Math.round((d.end - d.start) / 1000))} kb, ${esc(d.copy)}, ${fmt(d.start + 1)}–${fmt(d.end)} (hg38)` +
+      (genes.length ? ` · ${genes.length} gène${genes.length > 1 ? "s" : ""}, dont ${esc(shown.join(", "))}${named.length > shown.length ? "…" : ""}` : "");
   };
 
   // — Navigation —
@@ -413,7 +456,11 @@ async function main(): Promise<void> {
     haltRegions[h.id] = regions;
     scene.highlight(regions);
     const pos = hit.strand === "-" ? hit.end - 1 : hit.start;
-    const d = await destination(scene, { chrom: hit.chrom, start: hit.start, end: hit.end, pos }, orbit);
+    // L'orientation part de la vue d'ensemble, pas de la vue courante : une halte arrive à la même
+    // vue d'où qu'on vienne, et la reprise par l'URL la retrouve.
+    const d = await destination(scene, { chrom: hit.chrom, start: hit.start, end: hit.end, pos }, scene.overview);
+    // Même règle que les étapes : le centre de l'image sur la bille qui porte le gène.
+    if (d) d.orbit = clearView(d.orbit, (s) => s.chrom === hit.chrom && s.start <= pos && pos < s.end);
     if (d) haltDest[h.id] = d;
     return d;
   };
