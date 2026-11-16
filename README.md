@@ -194,6 +194,16 @@ chaque mot technique au survol et au clavier, et calcule ses comparaisons d'éch
 vrais nombres. S'il réussit — un lecteur sans formation sait ensuite dire ce qu'est un TAD — se
 juge sur de vrais lecteurs, selon un protocole fixé d'avance ([`docs/LECTEURS.md`](docs/LECTEURS.md),
 [`docs/VALIDATION.md` § S19](docs/VALIDATION.md)).
+Depuis la semaine 20, il existe aussi en anglais (`decouverte.html?lang=en`), et il est
+accessible au sens de WCAG 2.2 AA, mesuré :
+- axe-core sans violation ;
+- contrastes recalculés ;
+- lisible à 320 px ;
+- utilisable au clavier seul ;
+- chaque vue 3D décrite en mots pour un lecteur d'écran.
+
+Aucun lecteur d'écran réel ne l'a encore essayé
+([`docs/VALIDATION.md` § S20](docs/VALIDATION.md)).
 
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et

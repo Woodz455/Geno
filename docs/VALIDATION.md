@@ -9,6 +9,156 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S20 — Mode Découverte, accessibilité et anglais : WCAG 2.2 AA mesuré dans les deux langues, critère lecteurs reporté
+
+### Le périmètre, et ce qui a été décidé avec vous
+
+La semaine 20 termine le mode Découverte de la feuille de route : accessibilité complète, anglais, et
+test avec des lecteurs. Vos trois décisions :
+- **pas de lecteurs pour l'instant** : le critère « un lecteur sans formation sait expliquer un TAD »
+  est **reporté, sans date**. La grille de `LECTEURS.md` est inchangée, et le report y est daté ;
+- **WCAG 2.2 AA, mesuré** ;
+- **l'anglais traduit par Claude**, vérifié par des tests de parité.
+
+### Ce qui est construit
+
+- **Deux langues, un seul parcours.** Contenu, glossaire et interface sont en fichiers
+  (`content/{fr,en}.json`, `glossary.{fr,en}.json`, `ui.{fr,en}.json`). La langue se choisit par
+  `?lang=`, sinon par le choix gardé, sinon par celle du navigateur. Un lien dans l'en-tête bascule
+  en gardant l'étape. Les nombres d'échelle viennent d'un seul calcul (`scale.ts`), mis en forme par
+  langue. Le détail d'évidence que rend la scène (quatre phrases françaises fixes, `dive.ts`) est
+  reconnu en entier et traduit ; une phrase inconnue passerait telle quelle et serait comptée.
+- **Accessibilité** :
+  - un lien d'évitement ;
+  - le focus va au titre de chaque nouvel écran ;
+  - les étapes forment une liste, la courante marquée `aria-current` ;
+  - les termes du glossaire sont des boutons qui portent leur définition (`aria-describedby`) ; la
+    bulle reste sous le pointeur et Échap la ferme sans déplacer le focus (WCAG 1.4.13) ;
+  - **la vue 3D a une description en mots** : à chaque arrivée, une région annoncée dit l'objet au
+    centre de l'image, son chromosome, sa position, le champ et la catégorie d'évidence. Tout est lu
+    par le picking de la scène, rien n'est écrit à la main. Exemple : « Au centre de l'image : une
+    base, chromosome 17, 7 673 802. Champ de vue : 4,0 nm. Ce que vous voyez : mesuré. » ;
+  - la carte de contacts a sa description chiffrée (ci-dessous) ;
+  - un bouton coupe les animations (choix gardé, en plus de `prefers-reduced-motion`) ;
+  - des jetons de couleur choisis pour les seuils AA.
+- **Mesure** : `tools/a11y.mjs` (axe-core 4.10.3, devDependency de mesure seulement), et
+  `tools/test-discover.mjs` et `tools/discover.mjs`, maintenant bilingues.
+
+### Mesures (seuils fixés avant la première exécution)
+
+`node tools/test-discover.mjs`, hors navigateur (dans `pnpm verify`) :
+
+| Critère | FR | EN |
+|---|---|---|
+| jargon : 1ʳᵉ occurrence balisée, par écran | 64 contrôlées, **0** sans définition | 64 contrôlées, **0** |
+| glossaire | 28 définitions, 28 appelées | 28, 28 |
+| échelles recalculées à 1 % | **15/15** | **15/15**, égales au français |
+| parité de structure FR/EN | — | **50 comparaisons**, 0 écart |
+| interface : mêmes clés, mêmes marques ; phrases d'évidence de la scène reconnues | 63 chaînes | 63 chaînes · **4/4** |
+| lisibilité (rapportée, sans seuil) | Kandel-Moles 79–95 | Flesch 73–89 |
+
+`node tools/a11y.mjs`, dans Chromium. 13 écrans par langue (introduction, 7 étapes, 4 haltes,
+fin) :
+
+| Critère | Seuil | FR | EN |
+|---|---|---|---|
+| 1 axe-core, règles WCAG 2.0/2.1/2.2 A et AA, 1 280 × 720 | 0 violation | **0** sur 13 écrans | **0** sur 13 |
+| 2 contraste du texte (recalculé) ; bordures des composants | 4,5:1 (3:1 grand texte) ; 3:1 | 360 textes, minimum **7,64:1** ; 103 bordures, 0 sous 3:1 | idem |
+| 3 reflow à 320 px et au zoom de 200 % | 0 débordement | **0** sur 26 | **0** sur 26 |
+| 4 clavier : focus au titre, Échap, contours de focus | tout | titre 12/12 ; Échap juste ; 130 arrêts de Tab, 0 sans contour | idem |
+| 5 vue 3D décrite comme la scène la montre | 11/11 | **11/11** | **11/11** |
+
+**Témoin.** La même page, dégradée exprès (texte gris foncé, panneau de 500 px, contours retirés),
+doit échouer partout. Elle échoue bien :
+- axe signale `color-contrast` ;
+- 3 textes sous le seuil ;
+- 19 débordements ;
+- un contour absent vu.
+
+Chaque contrôle voit donc ce qu'il cherche.
+
+**La carte de contacts, en mots.** À distance égale le long du fil, deux morceaux du TAD se
+touchent en moyenne **1,26 fois** plus souvent qu'un morceau du TAD et un morceau voisin hors du TAD
+(89 × 89 cases de 2 kb). C'est peu. Le domaine montré n'est fermé que dans 15,8 % des conformations
+(§ S19), et la description le dit avec son chiffre, sans l'arrondir vers le haut.
+
+### Non-régression
+
+| Mesure | Résultat |
+|---|---|
+| `pnpm verify` | 82/82, et le contenu bilingue **fait** |
+| recherche S16 (`tools/search.mjs`) | 645/645 · 90/90 · 30/30 · 5/5, **fait** |
+| plongée (`tools/dive.mjs 240`) | **0 saut** ; le témoin en a 3 |
+| parcours S19 (`tools/discover.mjs fr` et `en`), critères 1 à 4 | **11/11, 64/64, 11/11, 4/4** dans les deux langues |
+| parcours S19, critère 5 : chaque arrêt rejoué par l'URL au pixel près | **10/11 dans la plupart des passages : échec** (ci-dessous) |
+
+### Un échec : l'hélice ne se rejoue pas toujours au pixel près
+
+Le critère 5 de la S19 (11/11 arrêts identiques au pixel près entre le parcours et la reprise par
+l'URL) échoue désormais le plus souvent, toujours à l'hélice. Sur onze passages de la mesure, dans
+cette session :
+
+| Passages | Français | Anglais |
+|---|---|---|
+| avant les corrections ci-dessous | 3 échecs sur 3 | 2 réussites sur 2 |
+| après | 1 réussite sur 3 | 3 échecs sur 3 |
+
+L'écart est toujours le même : **5 pixels**, chacun d'**un seul niveau** (sur 255) dans un seul
+canal, sur des barreaux de l'hélice voisins de la base visée (le picking les désigne : bases
+7 673 797 et 7 673 800). La reprise par l'URL, elle, donne toujours la même image : d'un onglet à
+l'autre, et dans les deux langues.
+
+L'enquête a trouvé **deux états qui dépendaient du chemin**, et les a corrigés :
+1. **les monomères de la fibre déjà générés.** La fenêtre de séquence de l'hélice ne retient
+   qu'eux, et un vol en génère d'autres qu'un saut direct. Toute la fenêtre est désormais générée à
+   l'ouverture ;
+2. **une fenêtre de séquence calculée avant l'arrivée.** Elle n'est recalculée que si la caméra
+   bouge de plus de 10 % du champ. Elle l'est désormais à l'arrêt, par une nouvelle méthode
+   `SequenceLayer.settle()`, sans effet sur la plongée.
+
+Après ces corrections, un vol depuis l'étape fibre donne la même image que la reprise directe.
+Pourtant l'écart de 5 pixels revient d'un passage complet à l'autre, et un **saut** sans
+animation depuis l'étape fibre le reproduit encore. Sa cause n'est **pas trouvée**. Deux pistes
+sont écartées :
+- l'ordre de génération des nucléosomes : chaque monomère a sa propre graine ;
+- le bruit de l'occlusion ambiante : son noyau d'échantillonnage est déterministe.
+
+Le 11/11 de la S19 en français était donc une chance, pas une propriété. **Le seuil n'est pas
+changé** : le critère est en échec, et le défaut est dit.
+
+### Ce que ça ne dit pas
+
+- **Le critère de la feuille de route n'est pas jugé.** Personne n'a fait le parcours : ni lecteur
+  sans formation, ni utilisateur d'un lecteur d'écran. Les mesures disent que la page est
+  utilisable au clavier, contrastée, lisible à 320 px, décrite en mots, et que chaque mot technique
+  est défini ; elles ne disent pas qu'on en sort en sachant ce qu'est un TAD.
+- **axe-core ne couvre qu'une partie de WCAG**, à peu près la moitié des critères vérifiables par
+  une machine. Ne sont mesurés ni par axe ni ici :
+  - la pertinence des textes alternatifs ;
+  - l'ordre de lecture ressenti ;
+  - la compréhension ;
+  - le fonctionnement avec NVDA, JAWS ou VoiceOver, qu'on ne peut pas lancer dans ce conteneur.
+
+  « 0 violation » veut dire 0 violation **détectable**.
+- **L'anglais est une traduction de Claude**, vérifiée par la structure (mêmes étapes, mêmes
+  termes balisés, mêmes nombres), pas relue par un anglophone natif. La lisibilité de Flesch dit
+  des phrases courtes, pas un bon anglais.
+- **La description de la vue 3D dit ce qui est au centre**, pas la composition de toute l'image :
+  une personne aveugle sait où est la caméra, pas à quoi ressemble la pelote.
+- **Les mouvements de caméra restent la seule façon de voir la 3D.** Il n'y a pas d'alternative
+  tactile ni sonore à la forme elle-même.
+
+### Reproduire
+
+```bash
+node tools/build.mjs
+node tools/test-discover.mjs                                  # contenu, FR et EN
+node tools/a11y.mjs                                           # accessibilité, FR et EN, avec témoin
+node tools/discover.mjs fr && node tools/discover.mjs en     # non-régression S19 par langue
+```
+
+---
+
 ## S19 — Mode Découverte, le contenu : parcours mesuré 5 sur 5, critère lecteurs en attente
 
 ### Le périmètre, et ce qui a été décidé avec vous

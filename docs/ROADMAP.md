@@ -433,6 +433,23 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   conformations) : la conformation affichée n'y tient aucune boucle. Le critère se juge sur des
   lecteurs, selon le protocole commité d'avance (`docs/LECTEURS.md`) : en attente de leurs
   réponses ([`VALIDATION.md` § S19](VALIDATION.md)).
+- **Semaine 20 — accessibilité et anglais faits, un critère S19 en échec, critère lecteurs reporté.**
+  Le parcours existe en français et en anglais (`?lang=`), contenu et interface en fichiers.
+  WCAG 2.2 AA mesuré dans les deux langues :
+  - axe-core : 0 violation sur 26 écrans ;
+  - contraste minimum 7,64:1 ;
+  - aucun débordement à 320 px ni au zoom de 200 % ;
+  - focus au titre de chaque écran, et 130 arrêts de Tab avec contour ;
+  - chaque vue 3D décrite en mots depuis le picking (11/11 par langue) ;
+  - un témoin dégradé vu par chaque contrôle.
+
+  **En échec :** la reprise par l'URL de la S19 tombe à 10/11 dans la plupart des passages. À
+  l'hélice, 5 pixels diffèrent d'un niveau. Deux causes trouvées et corrigées, une restante non
+  trouvée.
+
+  Le critère lecteurs est reporté, sans date, par votre décision : la grille est inchangée. Ni
+  lecteur d'écran réel ni anglophone natif n'ont essayé la page
+  ([`VALIDATION.md` § S20](VALIDATION.md)).
 
 ---
 
