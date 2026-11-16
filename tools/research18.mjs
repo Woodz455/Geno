@@ -10,12 +10,14 @@
  *    2  statistiques deux courbes dessinées ; les valeurs affichées sont celles de statistics.json ;
  *    3  exports      PDB, 3DG et glTF téléchargés du service et relus **ici, en JavaScript** :
  *                    les positions sont celles que la page dessine, à la précision du format ;
- *                    SVG : une silhouette par bille devant la caméra, et au centre de chaque bille
- *                    testée le tampon d'identifiants rend cette bille ou une bille peinte après
- *                    (critère d'origine ; la révision « géométrie seule » de la première mesure,
- *                    77/80, est retirée après correction — VALIDATION § S18, reprise) ;
- *                    ajouté à la reprise : sur une grille de points du canevas, la bille du dessus
- *                    dans le SVG est celle de l'écran, hors bords (à 1 px d'une silhouette) ;
+ *                    SVG : une silhouette par bille devant la caméra ; au centre de 80 billes et
+ *                    sur une grille de 20 × 15 points, la bille que montre le fichier SVG (ellipses
+ *                    et masques relus dans son texte) est celle du tampon d'identifiants, jugée au
+ *                    centre du pixel lu ; un point à moins de 0,25 px d'un bord qui décide est compté
+ *                    à part ; au moins 40 centres et 100 points jugés. Révisé à la reprise : le
+ *                    critère d'origine (« cette bille ou une bille peinte après », 77/80, puis
+ *                    révisé à la géométrie seule) supposait des disques peints sans masque —
+ *                    VALIDATION § S18, reprise ;
  *                    PNG : aux dimensions du canevas, signature PNG ;
  *    4  .hic         un .hic public importé par son chemin ressort en structure ;
  *    5  manifeste    chaque session (ensemble, .hic compris), service relancé et conversions
@@ -216,19 +218,25 @@ try {
   }));
   const polygons = [...masksOf.values()].reduce((a, l) => a + l.length, 0);
   /** La bille que le SVG montre en (x, y) : la dernière peinte dont la silhouette contient le point et
-   *  dont aucun masque ne l'ôte ; `edge` si le point est à moins d'1 px d'un bord qui décide. */
+   *  dont aucun masque ne l'ôte ; `edge` si le point est à moins de 0,25 px d'un bord qui décide. */
+  const TOL = 0.25;
   const svgTop = (x, y) => {
     for (let k = order.length - 1; k >= 0; k--) {
       const o = byId.get(order[k]);
-      if (!inEllipse(o, x, y, 1)) continue;
-      if (!inEllipse(o, x, y, -1)) return { edge: true };
-      if (o.hide.some((pl) => edgeDist(pl, x, y) < 1)) return { edge: true };
+      if (!inEllipse(o, x, y, TOL)) continue;
+      if (!inEllipse(o, x, y, -TOL)) return { edge: true };
+      if (o.hide.some((pl) => edgeDist(pl, x, y) < TOL)) return { edge: true };
       if (o.hide.some((pl) => inPoly(pl, x, y))) continue;
       return { id: o.id };
     }
     return { id: 0 };
   };
-  const judge = async (x, y, acc, extra) => {
+  // L'écran lit le pixel qui contient le point (picking.ts : floor) : on juge au centre exact de ce
+  // pixel, là où passe le rayon du rendu. Reste l'écart des polygones de masque à l'arc vrai.
+  const dpr = await P.ev(`(() => { const c = document.querySelector("canvas"); return c.width / c.clientWidth; })()`);
+  const snap = (v) => (Math.floor(v * dpr) + 0.5) / dpr;
+  const judge = async (x0, y0, acc, extra) => {
+    const x = snap(x0), y = snap(y0);
     const t = svgTop(x, y);
     if (t.edge) { acc.edge++; return; }
     const id = await P.ev(`window.__research.idAt(${x}, ${y})`);
@@ -258,7 +266,7 @@ try {
   const exported = await P.ev("window.__research.exported()");
   const png = await P.ev(`(async () => { const c = document.querySelector("canvas"); const b = await new Promise((r) => c.toBlob(r, "image/png")); return [c.width, c.height]; })()`);
   // Au centre de chaque bille testée et sur la grille, la bille que le SVG montre est celle de l'écran
-  // (points à moins d'1 px d'un bord qui décide : comptés, non jugés).
+  // (points à moins de 0,25 px d'un bord qui décide : comptés, non jugés).
   exportsRes.svg = { circles: circlesInSvg, masked, polygons, bytes: svg.svg.length, ms: svgMs, centres, grid, ok: circlesInSvg === svg.circles.length && circlesInSvg === nb && centres.tested >= 40 && centres.agree === centres.tested && grid.tested >= 100 && grid.agree === grid.tested };
   exportsRes.png = { exported, canvas: png, ok: exported.some((e) => e.name === "structure.png" && e.type === "image/png" && e.bytes > 1000) && exported.some((e) => e.name === "structure.svg" && e.bytes > 1000) };
 
