@@ -197,14 +197,24 @@ try {
     return best;
   };
   step("svg");
+  const svgT0 = Date.now();
   const svg = await P.ev("window.__research.svg()");
-  step(`svg rendu, ${svg.svg.length} caractères`);
+  const svgMs = Date.now() - svgT0;
+  step(`svg rendu, ${svg.svg.length} caractères, ${svgMs} ms`);
   const circlesInSvg = (svg.svg.match(/<ellipse /g) ?? []).length;
   const masked = (svg.svg.match(/ mask="url/g) ?? []).length;
   // L'ordre de dessin : du fond vers l'avant.
   const order = [...svg.svg.matchAll(/data-bead="(\d+)"/g)].map((m) => Number(m[1]));
   const rank = new Map(order.map((id, k) => [id, k]));
-  const byId = new Map(svg.circles.map((o) => [o.id, o]));
+  // Ce qui est jugé est le fichier : silhouettes et masques relus dans le texte du SVG.
+  const num = (t, k) => Number(new RegExp(`${k}="([-0-9.]+)"`).exec(t)[1]);
+  const masksOf = new Map([...svg.svg.matchAll(/<mask id="m(\d+)"[^>]*>(.*?)<\/mask>/g)].map((m) =>
+    [Number(m[1]), [...m[2].matchAll(/<path d="M([^"]+)Z"/g)].map((q) => q[1].split("L").map((xy) => xy.split(" ").map(Number)))]));
+  const byId = new Map([...svg.svg.matchAll(/<ellipse ([^>]*)\/>/g)].map((m) => {
+    const t = m[1], id = Number(/data-bead="(\d+)"/.exec(t)[1]);
+    return [id, { id, ex: num(t, "cx"), ey: num(t, "cy"), rx: num(t, "rx"), ry: num(t, "ry"), rot: Number(/rotate\(([-0-9.]+)/.exec(t)[1]), hide: masksOf.get(id) ?? [] }];
+  }));
+  const polygons = [...masksOf.values()].reduce((a, l) => a + l.length, 0);
   /** La bille que le SVG montre en (x, y) : la dernière peinte dont la silhouette contient le point et
    *  dont aucun masque ne l'ôte ; `edge` si le point est à moins d'1 px d'un bord qui décide. */
   const svgTop = (x, y) => {
@@ -240,7 +250,8 @@ try {
   step(`centres ${centres.agree}/${centres.tested}`);
   const grid = { tested: 0, agree: 0, edge: 0, misses: [] };
   for (let gy = 0; gy < 15; gy++) for (let gx = 0; gx < 20; gx++) await judge(405 + (gx + 0.5) * (860 / 20), 10 + (gy + 0.5) * (740 / 15), grid, {});
-  writeFileSync(resolve(OUT, "svg18.json"), JSON.stringify({ masked, centres, grid }, null, 1));
+  writeFileSync(resolve(OUT, "svg18.json"), JSON.stringify({ masked, polygons, bytes: svg.svg.length, ms: svgMs, centres, grid }, null, 1));
+  writeFileSync(resolve(OUT, "structure18.svg"), svg.svg);
   await P.click("#ex-svg");
   await P.click("#ex-png");
   await sleep(600);
@@ -248,7 +259,7 @@ try {
   const png = await P.ev(`(async () => { const c = document.querySelector("canvas"); const b = await new Promise((r) => c.toBlob(r, "image/png")); return [c.width, c.height]; })()`);
   // Au centre de chaque bille testée et sur la grille, la bille que le SVG montre est celle de l'écran
   // (points à moins d'1 px d'un bord qui décide : comptés, non jugés).
-  exportsRes.svg = { circles: circlesInSvg, masked, centres, grid, ok: circlesInSvg === svg.circles.length && circlesInSvg === nb && centres.tested >= 40 && centres.agree === centres.tested && grid.tested >= 100 && grid.agree === grid.tested };
+  exportsRes.svg = { circles: circlesInSvg, masked, polygons, bytes: svg.svg.length, ms: svgMs, centres, grid, ok: circlesInSvg === svg.circles.length && circlesInSvg === nb && centres.tested >= 40 && centres.agree === centres.tested && grid.tested >= 100 && grid.agree === grid.tested };
   exportsRes.png = { exported, canvas: png, ok: exported.some((e) => e.name === "structure.png" && e.type === "image/png" && e.bytes > 1000) && exported.some((e) => e.name === "structure.svg" && e.bytes > 1000) };
 
   step("hic");
@@ -311,7 +322,7 @@ try {
   console.log(`                  variabilité médiane ${varDeep.toFixed(0)} nm (40 M de contacts) · ${varShallow.toFixed(0)} nm (4 M) · rapport ${(varShallow / varDeep).toFixed(2)} · ensemble de 20 : ${deep.ms} ms`);
   console.log(`  2  statistiques ${okStats ? "2 courbes, valeurs = statistics.json" : "ÉCART"} · P(s) pente ${stFile.ps_slope.toFixed(2)} · R(s) exposant ${stFile.rs_nu.toFixed(2)}`);
   console.log(`  3  exports      PDB ${exportsRes.pdb.atoms} atomes, ${exportsRes.pdb.chains} chaînes, unité ${unit} nm, écart max ${exportsRes.pdb.worst.toExponential(1)} nm ${exportsRes.pdb.ok ? "✓" : "✗"} · 3DG ${exportsRes.tdg.rows} lignes, ${exportsRes.tdg.worst.toExponential(1)} nm ${exportsRes.tdg.ok ? "✓" : "✗"} · glTF ${exportsRes.gltf.points} points, ${exportsRes.gltf.worst.toExponential(1)} nm ${exportsRes.gltf.ok ? "✓" : "✗"}`);
-  console.log(`                  SVG ${exportsRes.svg.circles} silhouettes pour ${nb} billes, ${masked} masquées (sécantes) · bille visible = écran : centres ${centres.agree}/${centres.tested} (${centres.edge} sur un bord), grille ${grid.agree}/${grid.tested} (${grid.edge} sur un bord) ${exportsRes.svg.ok ? "✓" : "✗"} · PNG ${JSON.stringify(exported.find((e) => e.name.endsWith("png")) ?? null)} ${exportsRes.png.ok ? "✓" : "✗"}`);
+  console.log(`                  SVG ${exportsRes.svg.circles} silhouettes pour ${nb} billes, ${exportsRes.svg.masked} masquées (${exportsRes.svg.polygons} polygones, sécantes vues), ${(exportsRes.svg.bytes / 1e6).toFixed(2)} Mo, ${exportsRes.svg.ms} ms · bille visible = écran : centres ${exportsRes.svg.centres.agree}/${exportsRes.svg.centres.tested} (${exportsRes.svg.centres.edge} sur un bord), grille ${exportsRes.svg.grid.agree}/${exportsRes.svg.grid.tested} (${exportsRes.svg.grid.edge} sur un bord) ${exportsRes.svg.ok ? "✓" : "✗"} · PNG ${JSON.stringify(exported.find((e) => e.name.endsWith("png")) ?? null)} ${exportsRes.png.ok ? "✓" : "✗"}`);
   if (hic) console.log(`  4  .hic         converti (${hic.by}) en ${hic.importMs} ms, à 2,5 Mb : ${hic.beads} billes (${hic.masked} bins écartés), r ${hic.r.toFixed(3)}, ${hic.distinct} vues, ${hic.runMs} ms ${hic.ok ? "✓" : "✗"}`);
   else console.log("  4  .hic         non mesuré (pas de fichier fourni)");
   if (real) console.log(`     réel         chr17:7–9 Mb à 10 kb, ensemble 12 : ${real.beads} billes, variabilité médiane ${real.variability.median.toFixed(0)} nm (rayon ${real.radius.toFixed(0)}), P(s) ${real.ps.toFixed(2)}, nu ${real.nu.toFixed(2)}, ${real.ms} ms`);

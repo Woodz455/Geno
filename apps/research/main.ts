@@ -291,16 +291,13 @@ async function extras(session: string, m: Manifest): Promise<void> {
 }
 let stats18: Record<string, unknown> | null = null;
 
-/** La vue courante en SVG : un cercle par bille, de la plus lointaine de l'œil à la plus proche ;
- *  la légende dit d'où vient la structure. Des disques peints dans l'ordre ne rendent pas
- *  l'interpénétration de deux sphères : c'est une figure, pas le rendu. Rend aussi les centres,
- *  pour la mesure. */
+/** La vue courante en SVG : la silhouette exacte de chaque bille, peinte du fond vers l'avant, et un
+ *  masque là où une bille sécante peinte avant elle est devant — la bille visible en chaque point
+ *  est celle de l'écran. La légende dit d'où vient la structure. Rend aussi les centres, pour la
+ *  mesure. */
 /** Une bille projetée : centre projeté (x, y) ; silhouette exacte de la sphère — une ellipse de centre
- *  (ex, ey), demi-axes rx (radial) et ry, tournée de rot degrés ; et `hide`, les polygones (pixels) où
- *  une bille sécante peinte avant elle est devant — le masque qui rend la peinture exacte. */
-type SvgBead = { id: number; x: number; y: number; ex: number; ey: number; rx: number; ry: number; rot: number; hide: number[][][] };
-
-const SVG_SAMPLES = 96;
+ *  (ex, ey), demi-axes rx (radial) et ry, tournée de rot degrés. Les masques sont dans le SVG. */
+type SvgBead = { id: number; x: number; y: number; ex: number; ey: number; rx: number; ry: number; rot: number };
 
 function svgExport(): { svg: string; circles: SvgBead[] } {
   const view = viewMatrix(orbit);
@@ -309,7 +306,7 @@ function svgExport(): { svg: string; circles: SvgBead[] } {
   const s = lastProj[5] * h / 2;
   const toPx = (u: number, v: number) => [((lastProj[0] * u - lastProj[8]) * 0.5 + 0.5) * w, (1 - ((lastProj[5] * v - lastProj[9]) * 0.5 + 0.5)) * h];
   const proj = (x: number[]) => toPx(x[0] / -x[2], x[1] / -x[2]);
-  type Item = SvgBead & { power: number; c: number[]; r: number };
+  type Item = SvgBead & { power: number; c: number[]; r: number; hide: number[][][] };
   const items: Item[] = [];
   if (cur) for (let i = 0; i < cur.ids.length; i++) {
     const p = [cur.shown[3 * i], cur.shown[3 * i + 1], cur.shown[3 * i + 2]];
@@ -328,47 +325,85 @@ function svgExport(): { svg: string; circles: SvgBead[] } {
   // Ordre du peintre par puissance de l'œil (d² − r²), pas par distance du centre : pour des sphères
   // disjointes, c'est un ordre de visibilité exact (théorème d'acyclicité d'Edelsbrunner, 1989).
   const back = items.slice().sort((a, b) => b.power - a.power);
-  // Sphères sécantes : aucun ordre de disques n'est exact. Pour A peinte après B, B est devant
-  // exactement là où le point d'entrée du rayon dans A est à l'intérieur de B (du côté de l'œil du plan
-  // radical, B ⊂ A ; de l'autre, A ⊂ B). Ce morceau de la face avant de A est borné par l'arc avant du
-  // cercle d'intersection et par l'arc de son contour apparent intérieur à B : on le projette, et on
-  // le masque sur A.
+  // Sphères sécantes (ici jusqu'à une centaine de voisines par bille) : aucun ordre de disques n'est
+  // exact. Pour X peinte après V, V est devant exactement là où le point d'entrée du rayon dans X est à
+  // l'intérieur de V (du côté de l'œil du plan radical, V ⊂ X ; de l'autre, X ⊂ V). Ce morceau de la
+  // face avant de X est borné par l'arc avant du cercle d'intersection et par l'arc de son contour
+  // apparent intérieur à V : projeté, il devient un masque sur X.
+  // Masquer toutes les paires sécantes coûterait des centaines de Mo ; seules comptent celles qui se
+  // voient. On lance donc, pour chaque pixel, le même rayon que le rendu (impostors.ts) : V est la
+  // bille d'entrée la plus proche, et toute bille X touchée par ce rayon et peinte après V doit être
+  // masquée par V (elle la coupe forcément : disjointe, l'ordre par puissance la mettrait derrière).
   const sub = (u: number[], v: number[]) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
   const dot = (u: number[], v: number[]) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
-  const basis = (n: number[]) => {
-    const t = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-    const u = [n[1] * t[2] - n[2] * t[1], n[2] * t[0] - n[0] * t[2], n[0] * t[1] - n[1] * t[0]];
+  const basis = (nv: number[]) => {
+    const t = Math.abs(nv[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const u = [nv[1] * t[2] - nv[2] * t[1], nv[2] * t[0] - nv[0] * t[2], nv[0] * t[1] - nv[1] * t[0]];
     const lu = Math.hypot(u[0], u[1], u[2]);
     const uu = u.map((x) => x / lu);
-    return [uu, [n[1] * uu[2] - n[2] * uu[1], n[2] * uu[0] - n[0] * uu[2], n[0] * uu[1] - n[1] * uu[0]]];
+    return [uu, [nv[1] * uu[2] - nv[2] * uu[1], nv[2] * uu[0] - nv[0] * uu[2], nv[0] * uu[1] - nv[1] * uu[0]]];
   };
-  const circle = (m: number[], n: number[], rad: number) => {
-    const [u, v] = basis(n);
-    return Array.from({ length: SVG_SAMPLES }, (_, j) => {
-      const t = (2 * Math.PI * j) / SVG_SAMPLES, ct = Math.cos(t) * rad, st = Math.sin(t) * rad;
+  const circle = (m: number[], nv: number[], rad: number, count: number) => {
+    const [u, v] = basis(nv);
+    return Array.from({ length: count }, (_, j) => {
+      const t = (2 * Math.PI * j) / count, ct = Math.cos(t) * rad, st = Math.sin(t) * rad;
       return [m[0] + ct * u[0] + st * v[0], m[1] + ct * u[1] + st * v[1], m[2] + ct * u[2] + st * v[2]];
     });
   };
-  /** La plus longue suite circulaire de points qui vérifient `keep`, dans l'ordre. */
+  /** La suite circulaire de points qui vérifient `keep`, dans l'ordre (un seul arc attendu). */
   const run = (pts: number[][], keep: boolean[]) => {
-    const n = pts.length;
+    const len = pts.length;
     if (keep.every(Boolean)) return { pts, closed: true };
-    if (!keep.some(Boolean)) return { pts: [], closed: false };
-    let start = keep.findIndex((k, j) => k && !keep[(j + n - 1) % n]);
+    if (!keep.some(Boolean)) return { pts: [] as number[][], closed: false };
+    const start = keep.findIndex((k, j) => k && !keep[(j + len - 1) % len]);
     const out: number[][] = [];
-    for (let j = 0; j < n && keep[(start + j) % n]; j++) out.push(pts[(start + j) % n]);
+    for (let j = 0; j < len && keep[(start + j) % len]; j++) out.push(pts[(start + j) % len]);
     return { pts: out, closed: false };
   };
-  const rank = new Map(back.map((it, j) => [it, j]));
-  for (const A of items) for (const B of items) {
-    if (A === B || rank.get(B)! > rank.get(A)!) continue;    // B peinte avant A seulement
+  const n = back.length;
+  const CX = new Float64Array(n), CY = new Float64Array(n), CZ = new Float64Array(n), CC = new Float64Array(n);
+  back.forEach((it, j) => { CX[j] = it.c[0]; CY[j] = it.c[1]; CZ[j] = it.c[2]; CC[j] = it.power; });
+  const CELL = 8, gw = Math.ceil(w / CELL), gh = Math.ceil(h / CELL);
+  const cells: number[][] = Array.from({ length: gw * gh }, () => []);
+  back.forEach((it, j) => {
+    const t = (it.rot * Math.PI) / 180, c = Math.cos(t), sn = Math.sin(t);
+    const hx = Math.hypot(it.rx * c, it.ry * sn) + 1, hy = Math.hypot(it.rx * sn, it.ry * c) + 1;
+    const x0 = Math.max(0, Math.floor((it.ex - hx) / CELL)), x1 = Math.min(gw - 1, Math.floor((it.ex + hx) / CELL));
+    const y0 = Math.max(0, Math.floor((it.ey - hy) / CELL)), y1 = Math.min(gh - 1, Math.floor((it.ey + hy) / CELL));
+    for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) cells[gy * gw + gx].push(j);
+  });
+  const pairs = new Set<number>();
+  const P0 = lastProj[0], P5 = lastProj[5], P8 = lastProj[8], P9 = lastProj[9];
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    const list = cells[gy * gw + gx];
+    if (list.length < 2) continue;
+    for (let py = gy * CELL; py < Math.min(h, (gy + 1) * CELL); py++) for (let px = gx * CELL; px < Math.min(w, (gx + 1) * CELL); px++) {
+      const u = ((2 * (px + 0.5)) / w - 1 + P8) / P0, v = (1 - (2 * (py + 0.5)) / h + P9) / P5, a = u * u + v * v + 1;
+      let best = Infinity, vis = -1;
+      for (const j of list) {
+        const bb = u * CX[j] + v * CY[j] - CZ[j], disc = bb * bb - a * CC[j];
+        if (disc < 0) continue;
+        const t = (bb - Math.sqrt(disc)) / a;
+        if (t < best) { best = t; vis = j; }
+      }
+      if (vis < 0) continue;
+      for (const j of list) {
+        if (j <= vis) continue;
+        const bb = u * CX[j] + v * CY[j] - CZ[j];
+        if (bb * bb - a * CC[j] >= 0) pairs.add(j * n + vis);
+      }
+    }
+  }
+  for (const key of pairs) {
+    const A = back[Math.floor(key / n)], B = back[key % n];
     const ab = sub(B.c, A.c), L = Math.hypot(ab[0], ab[1], ab[2]);
-    if (L >= A.r + B.r || L + A.r <= B.r) { if (L + A.r <= B.r) A.hide.push(rimPoly(A)); continue; }
-    if (L + B.r <= A.r) continue;                             // B dans A : jamais vue
-    const n = ab.map((x) => x / L), t = (L * L + A.r * A.r - B.r * B.r) / (2 * L);
-    const C = circle([A.c[0] + t * n[0], A.c[1] + t * n[1], A.c[2] + t * n[2]], n, Math.sqrt(Math.max(0, A.r * A.r - t * t)));
+    if (L >= A.r + B.r) continue;                             // disjointes à l'arrondi près
+    if (L + A.r <= B.r) { A.hide.push(rimPts(A, A).map(proj)); continue; }   // X dans V : jamais vue
+    if (L + B.r <= A.r) continue;
+    const nn = ab.map((x) => x / L), t = (L * L + A.r * A.r - B.r * B.r) / (2 * L), rad = Math.sqrt(Math.max(0, A.r * A.r - t * t));
+    const C = circle([A.c[0] + t * nn[0], A.c[1] + t * nn[1], A.c[2] + t * nn[2]], nn, rad, samples(A, Math.max(rad, A.r)));
     const front = C.map((x) => dot(sub(x, A.c), x) < 0);
-    const rim = rimPts(A);
+    const rim = rimPts(A, A);
     const inB = rim.map((x) => dot(sub(x, B.c), sub(x, B.c)) < B.r * B.r);
     const arc = run(C, front), rarc = run(rim, inB);
     let poly: number[][];
@@ -377,16 +412,19 @@ function svgExport(): { svg: string; circles: SvgBead[] } {
     else if (!arc.pts.length) continue;
     else {
       const end = arc.pts[arc.pts.length - 1], r0 = rarc.pts[0], r1 = rarc.pts[rarc.pts.length - 1];
-      const d2 = (u: number[], v: number[]) => dot(sub(u, v), sub(u, v));
+      const d2 = (p: number[], q: number[]) => dot(sub(p, q), sub(p, q));
       poly = arc.pts.concat(rarc.pts.length && d2(end, r1) < d2(end, r0) ? rarc.pts.slice().reverse() : rarc.pts);
     }
     A.hide.push(poly.map(proj));
   }
-  function rimPts(A: Item): number[][] {
-    const d2 = dot(A.c, A.c), n = A.c.map((x) => x / Math.sqrt(d2)), f = 1 - (A.r * A.r) / d2;
-    return circle([A.c[0] * f, A.c[1] * f, A.c[2] * f], n, A.r * Math.sqrt(d2 - A.r * A.r) / Math.sqrt(d2));
+  /** Points d'échantillonnage : environ un pour 2 px du contour projeté, de 12 à 64. */
+  function samples(A: Item, rad: number): number {
+    return Math.max(12, Math.min(64, Math.ceil((Math.PI * s * rad) / -A.c[2])));
   }
-  function rimPoly(A: Item): number[][] { return rimPts(A).map(proj); }
+  function rimPts(A: Item, _: Item): number[][] {
+    const d2 = dot(A.c, A.c), nn = A.c.map((x) => x / Math.sqrt(d2)), f = 1 - (A.r * A.r) / d2;
+    return circle([A.c[0] * f, A.c[1] * f, A.c[2] * f], nn, A.r * Math.sqrt(d2 - A.r * A.r) / Math.sqrt(d2), samples(A, A.r));
+  }
 
   const colors = cur ? ($<HTMLSelectElement>("colour").value === "var" ? varColors() : cur.chain) : new Float32Array();
   const rgb = (i: number) => `rgb(${[0, 1, 2].map((k) => Math.round(255 * Math.min(1, colors[3 * (i - 1) + k]))).join(",")})`;
@@ -399,7 +437,7 @@ function svgExport(): { svg: string; circles: SvgBead[] } {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` + (masks ? `<defs>${masks}</defs>` : "") + `<rect width="100%" height="100%" fill="#ffffff"/>` +
     back.map((b) => `<ellipse cx="${f2(b.ex)}" cy="${f2(b.ey)}" rx="${f2(b.rx)}" ry="${f2(b.ry)}" transform="rotate(${f2(b.rot)} ${f2(b.ex)} ${f2(b.ey)})" fill="${rgb(b.id)}" stroke="#222" stroke-width="0.4"${b.hide.length ? ` mask="url(#m${b.id})"` : ""} data-bead="${b.id}"/>`).join("") +
     `<text x="${w - 8}" y="${h - 10}" text-anchor="end" font-family="sans-serif" font-size="11" fill="#333">${esc(caption)}</text></svg>`;
-  return { svg, circles: items.map(({ power: _p, c: _c, r: _r, ...b }) => b) };
+  return { svg, circles: items.map(({ power: _p, c: _c, r: _r, hide: _h, ...b }) => b) };
 }
 
 function save(name: string, blob: Blob): void {
