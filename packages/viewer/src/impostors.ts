@@ -119,8 +119,8 @@ void main() {
   // profondeur et départageait mal deux billes sécantes (mesuré en S18, reprise).
   vec3 dir = normalize(vRay);
   float b = dot(vCenter, dir);              // projection du centre sur le rayon
-  vec3 h = vCenter - b * dir;               // du rayon au centre, perpendiculaire
-  float disc = vRadius * vRadius - dot(h, h);
+  vec3 perp = vCenter - b * dir;            // du rayon au centre, perpendiculaire
+  float disc = vRadius * vRadius - dot(perp, perp);
   if (disc < 0.0) discard;                  // le pixel est hors du disque
 
   float t = b - sqrt(disc);                 // racine la plus proche
