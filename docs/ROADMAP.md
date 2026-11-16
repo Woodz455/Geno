@@ -423,6 +423,16 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   complète, i18n FR/EN.
 - **Fait quand** : un lecteur sans formation en génomique termine le parcours et sait
   expliquer ce qu'est un TAD.
+- **Semaine 19 — contenu fait, critère lecteurs en attente.** Ton documentaire (votre choix) ;
+  `decouverte.html` : 7 étapes du noyau à une base de TP53, 4 haltes (HBB, FTO → IRX3, HOXD, X
+  inactif) qui disent ce que le modèle ne montre pas, glossaire de 28 termes au survol et au
+  clavier, analogies calculées, carte de contacts du TAD, question ouverte et quiz. Mesuré : 63
+  premières occurrences de jargon, 0 sans définition ; 15 nombres recalculés à 1 % ; parcours au
+  clavier seul, cible au centre 11/11, évidence 11/11, reprise par l'URL au pixel près 11/11. Le
+  TAD montré est le domaine CTCF de la population autour de TP53 (88 kb, tenu dans 15,8 % des
+  conformations) : la conformation affichée n'y tient aucune boucle. Le critère se juge sur des
+  lecteurs, selon le protocole commité d'avance (`docs/LECTEURS.md`) : en attente de leurs
+  réponses ([`VALIDATION.md` § S19](VALIDATION.md)).
 
 ---
 
@@ -491,4 +501,5 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
 - **S8** : choisir la région de 2–4 Mb pour la simulation fine (une région qui t'intéresse
   scientifiquement vaut mieux qu'une région choisie au hasard).
 - **S15** : la liste des loci cliniques prioritaires.
-- **S19** : le ton du mode Découverte — musée, cours, ou documentaire.
+- **S19** : le ton du mode Découverte — **documentaire**, choisi. Reste : trouver 3 à 5 lecteurs
+  sans formation en biologie et rapporter leurs réponses (`docs/LECTEURS.md`).

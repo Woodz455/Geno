@@ -188,6 +188,13 @@ d'une cellule à l'autre —, trace P(s) et R(s), et exporte en PDB, 3DG, glTF, 
 manifeste refait le tout, fichiers compris, à l'octet près
 ([`docs/VALIDATION.md` § S18](docs/VALIDATION.md)).
 
+Le **mode Découverte** (semaine 19) ouvre la même plongée avec une voix : `decouverte.html`
+descend en sept étapes du noyau à une lettre de TP53, s'arrête sur quatre loci célèbres, définit
+chaque mot technique au survol et au clavier, et calcule ses comparaisons d'échelle depuis les
+vrais nombres. S'il réussit — un lecteur sans formation sait ensuite dire ce qu'est un TAD — se
+juge sur de vrais lecteurs, selon un protocole fixé d'avance ([`docs/LECTEURS.md`](docs/LECTEURS.md),
+[`docs/VALIDATION.md` § S19](docs/VALIDATION.md)).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.
