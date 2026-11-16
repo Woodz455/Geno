@@ -295,28 +295,111 @@ let stats18: Record<string, unknown> | null = null;
  *  la légende dit d'où vient la structure. Des disques peints dans l'ordre ne rendent pas
  *  l'interpénétration de deux sphères : c'est une figure, pas le rendu. Rend aussi les centres,
  *  pour la mesure. */
-function svgExport(): { svg: string; circles: { id: number; x: number; y: number; r: number }[] } {
+/** Une bille projetée : centre projeté (x, y) ; silhouette exacte de la sphère — une ellipse de centre
+ *  (ex, ey), demi-axes rx (radial) et ry, tournée de rot degrés ; et `hide`, les polygones (pixels) où
+ *  une bille sécante peinte avant elle est devant — le masque qui rend la peinture exacte. */
+type SvgBead = { id: number; x: number; y: number; ex: number; ey: number; rx: number; ry: number; rot: number; hide: number[][][] };
+
+const SVG_SAMPLES = 96;
+
+function svgExport(): { svg: string; circles: SvgBead[] } {
   const view = viewMatrix(orbit);
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  const f = 1 / Math.tan(FOV / 2);
-  const items: { id: number; x: number; y: number; r: number; z: number; c: number }[] = [];
+  // Pixel = s·(u, −v) + décalage, où (u, v) = (x, y)/(−z) en espace vue ; s isotrope pour une perspective.
+  const s = lastProj[5] * h / 2;
+  const toPx = (u: number, v: number) => [((lastProj[0] * u - lastProj[8]) * 0.5 + 0.5) * w, (1 - ((lastProj[5] * v - lastProj[9]) * 0.5 + 0.5)) * h];
+  const proj = (x: number[]) => toPx(x[0] / -x[2], x[1] / -x[2]);
+  type Item = SvgBead & { power: number; c: number[]; r: number };
+  const items: Item[] = [];
   if (cur) for (let i = 0; i < cur.ids.length; i++) {
     const p = [cur.shown[3 * i], cur.shown[3 * i + 1], cur.shown[3 * i + 2]];
     const e = [0, 1, 2].map((k) => view[k] * p[0] + view[4 + k] * p[1] + view[8 + k] * p[2] + view[12 + k]);
-    if (e[2] >= 0) continue;
-    const cw = -e[2];
-    const cx = (lastProj[0] * e[0] + lastProj[8] * e[2]) / cw, cy = (lastProj[5] * e[1] + lastProj[9] * e[2]) / cw;
-    items.push({ id: i + 1, x: (cx * 0.5 + 0.5) * w, y: (1 - (cy * 0.5 + 0.5)) * h, r: (cur.radii[i] * f / cw) * (h / 2), z: Math.hypot(e[0], e[1], e[2]), c: Number(cur.copy[i]) });
+    const r = cur.radii[i], D = -e[2], rho = Math.hypot(e[0], e[1]);
+    if (D <= r) continue;                                     // sphère coupée par le plan de l'œil
+    // Silhouette exacte : le cône tangent depuis l'œil coupe le plan image selon une ellipse.
+    // Avec k = d² − r² (puissance de l'œil) : demi-axe transverse r/√(D²−r²), radial r√k/(D²−r²),
+    // centre décalé vers l'extérieur à D·ρ/(D²−r²). Le rendu (impostors.ts) lance le même rayon.
+    const k = rho * rho + D * D - r * r, q = D * D - r * r;
+    const [x, y] = toPx(e[0] / D, e[1] / D);
+    const off = rho > 0 ? D * rho / q : 0;
+    const [ex, ey] = rho > 0 ? toPx(off * e[0] / rho, off * e[1] / rho) : [x, y];
+    items.push({ id: i + 1, x, y, ex, ey, rx: s * r * Math.sqrt(k) / q, ry: s * r / Math.sqrt(q), rot: Math.atan2(-e[1], e[0]) * 180 / Math.PI, hide: [], power: k, c: e, r });
   }
+  // Ordre du peintre par puissance de l'œil (d² − r²), pas par distance du centre : pour des sphères
+  // disjointes, c'est un ordre de visibilité exact (théorème d'acyclicité d'Edelsbrunner, 1989).
+  const back = items.slice().sort((a, b) => b.power - a.power);
+  // Sphères sécantes : aucun ordre de disques n'est exact. Pour A peinte après B, B est devant
+  // exactement là où le point d'entrée du rayon dans A est à l'intérieur de B (du côté de l'œil du plan
+  // radical, B ⊂ A ; de l'autre, A ⊂ B). Ce morceau de la face avant de A est borné par l'arc avant du
+  // cercle d'intersection et par l'arc de son contour apparent intérieur à B : on le projette, et on
+  // le masque sur A.
+  const sub = (u: number[], v: number[]) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
+  const dot = (u: number[], v: number[]) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const basis = (n: number[]) => {
+    const t = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const u = [n[1] * t[2] - n[2] * t[1], n[2] * t[0] - n[0] * t[2], n[0] * t[1] - n[1] * t[0]];
+    const lu = Math.hypot(u[0], u[1], u[2]);
+    const uu = u.map((x) => x / lu);
+    return [uu, [n[1] * uu[2] - n[2] * uu[1], n[2] * uu[0] - n[0] * uu[2], n[0] * uu[1] - n[1] * uu[0]]];
+  };
+  const circle = (m: number[], n: number[], rad: number) => {
+    const [u, v] = basis(n);
+    return Array.from({ length: SVG_SAMPLES }, (_, j) => {
+      const t = (2 * Math.PI * j) / SVG_SAMPLES, ct = Math.cos(t) * rad, st = Math.sin(t) * rad;
+      return [m[0] + ct * u[0] + st * v[0], m[1] + ct * u[1] + st * v[1], m[2] + ct * u[2] + st * v[2]];
+    });
+  };
+  /** La plus longue suite circulaire de points qui vérifient `keep`, dans l'ordre. */
+  const run = (pts: number[][], keep: boolean[]) => {
+    const n = pts.length;
+    if (keep.every(Boolean)) return { pts, closed: true };
+    if (!keep.some(Boolean)) return { pts: [], closed: false };
+    let start = keep.findIndex((k, j) => k && !keep[(j + n - 1) % n]);
+    const out: number[][] = [];
+    for (let j = 0; j < n && keep[(start + j) % n]; j++) out.push(pts[(start + j) % n]);
+    return { pts: out, closed: false };
+  };
+  const rank = new Map(back.map((it, j) => [it, j]));
+  for (const A of items) for (const B of items) {
+    if (A === B || rank.get(B)! > rank.get(A)!) continue;    // B peinte avant A seulement
+    const ab = sub(B.c, A.c), L = Math.hypot(ab[0], ab[1], ab[2]);
+    if (L >= A.r + B.r || L + A.r <= B.r) { if (L + A.r <= B.r) A.hide.push(rimPoly(A)); continue; }
+    if (L + B.r <= A.r) continue;                             // B dans A : jamais vue
+    const n = ab.map((x) => x / L), t = (L * L + A.r * A.r - B.r * B.r) / (2 * L);
+    const C = circle([A.c[0] + t * n[0], A.c[1] + t * n[1], A.c[2] + t * n[2]], n, Math.sqrt(Math.max(0, A.r * A.r - t * t)));
+    const front = C.map((x) => dot(sub(x, A.c), x) < 0);
+    const rim = rimPts(A);
+    const inB = rim.map((x) => dot(sub(x, B.c), sub(x, B.c)) < B.r * B.r);
+    const arc = run(C, front), rarc = run(rim, inB);
+    let poly: number[][];
+    if (arc.closed) poly = arc.pts;
+    else if (rarc.closed) poly = rim;
+    else if (!arc.pts.length) continue;
+    else {
+      const end = arc.pts[arc.pts.length - 1], r0 = rarc.pts[0], r1 = rarc.pts[rarc.pts.length - 1];
+      const d2 = (u: number[], v: number[]) => dot(sub(u, v), sub(u, v));
+      poly = arc.pts.concat(rarc.pts.length && d2(end, r1) < d2(end, r0) ? rarc.pts.slice().reverse() : rarc.pts);
+    }
+    A.hide.push(poly.map(proj));
+  }
+  function rimPts(A: Item): number[][] {
+    const d2 = dot(A.c, A.c), n = A.c.map((x) => x / Math.sqrt(d2)), f = 1 - (A.r * A.r) / d2;
+    return circle([A.c[0] * f, A.c[1] * f, A.c[2] * f], n, A.r * Math.sqrt(d2 - A.r * A.r) / Math.sqrt(d2));
+  }
+  function rimPoly(A: Item): number[][] { return rimPts(A).map(proj); }
+
   const colors = cur ? ($<HTMLSelectElement>("colour").value === "var" ? varColors() : cur.chain) : new Float32Array();
   const rgb = (i: number) => `rgb(${[0, 1, 2].map((k) => Math.round(255 * Math.min(1, colors[3 * (i - 1) + k]))).join(",")})`;
-  const back = items.slice().sort((a, b) => b.z - a.z);
   const m = last?.manifest;
   const caption = m ? `${m.input.name} · ${m.region} à ${m.params.resolution} pb · alpha ${m.params.alpha} · reconstruite (ShRec3D + MDS), chiralité arbitraire${cur && cur.replica ? ` · réplicat ${cur.replica}` : ""}` : "";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="100%" height="100%" fill="#ffffff"/>` +
-    back.map((b) => `<circle cx="${b.x.toFixed(2)}" cy="${b.y.toFixed(2)}" r="${b.r.toFixed(2)}" fill="${rgb(b.id)}" stroke="#222" stroke-width="0.4" data-bead="${b.id}"/>`).join("") +
+  const f2 = (v: number) => v.toFixed(2);
+  const masks = back.filter((b) => b.hide.length).map((b) =>
+    `<mask id="m${b.id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#fff"/>` +
+    b.hide.map((pl) => `<path d="M${pl.map((q) => `${f2(q[0])} ${f2(q[1])}`).join("L")}Z" fill="#000"/>`).join("") + `</mask>`).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` + (masks ? `<defs>${masks}</defs>` : "") + `<rect width="100%" height="100%" fill="#ffffff"/>` +
+    back.map((b) => `<ellipse cx="${f2(b.ex)}" cy="${f2(b.ey)}" rx="${f2(b.rx)}" ry="${f2(b.ry)}" transform="rotate(${f2(b.rot)} ${f2(b.ex)} ${f2(b.ey)})" fill="${rgb(b.id)}" stroke="#222" stroke-width="0.4"${b.hide.length ? ` mask="url(#m${b.id})"` : ""} data-bead="${b.id}"/>`).join("") +
     `<text x="${w - 8}" y="${h - 10}" text-anchor="end" font-family="sans-serif" font-size="11" fill="#333">${esc(caption)}</text></svg>`;
-  return { svg, circles: items.map(({ id, x, y, r }) => ({ id, x, y, r })) };
+  return { svg, circles: items.map(({ power: _p, c: _c, r: _r, ...b }) => b) };
 }
 
 function save(name: string, blob: Blob): void {

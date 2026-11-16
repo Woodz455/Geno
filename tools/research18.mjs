@@ -10,10 +10,12 @@
  *    2  statistiques deux courbes dessinées ; les valeurs affichées sont celles de statistics.json ;
  *    3  exports      PDB, 3DG et glTF téléchargés du service et relus **ici, en JavaScript** :
  *                    les positions sont celles que la page dessine, à la précision du format ;
- *                    SVG : un cercle par bille devant la caméra, et au centre de chaque cercle
- *                    testé le tampon d'identifiants rend cette bille ou une bille plus proche
- *                    (révisé après la première mesure, 77/80 : ou une bille dont le disque couvre
- *                    ce point — l'ordre de dessin est compté à part) ;
+ *                    SVG : une silhouette par bille devant la caméra, et au centre de chaque bille
+ *                    testée le tampon d'identifiants rend cette bille ou une bille peinte après
+ *                    (critère d'origine ; la révision « géométrie seule » de la première mesure,
+ *                    77/80, est retirée après correction — VALIDATION § S18, reprise) ;
+ *                    ajouté à la reprise : sur une grille de points du canevas, la bille du dessus
+ *                    dans le SVG est celle de l'écran, hors bords (à 1 px d'une silhouette) ;
  *                    PNG : aux dimensions du canevas, signature PNG ;
  *    4  .hic         un .hic public importé par son chemin ressort en structure ;
  *    5  manifeste    chaque session (ensemble, .hic compris), service relancé et conversions
@@ -166,36 +168,80 @@ try {
     tdg: { rows: tdg.length, worst: worstOf(tdgXyz), ok: tdg.length === nb && worstOf(tdgXyz) <= 0.0005 + 1e-3 && tdg.every((c, i) => c[0] === beads[i].chrom && Number(c[1]) === beads[i].start) },
     gltf: { points: gltfXyz.length / 3, worst: worstOf(gltfXyz), ok: !!gltfOk && gltfXyz.length === nb * 3 && worstOf(gltfXyz) <= 1e-3 },
   };
+  // Silhouette d'une bille dans le SVG : ellipse (ex, ey, rx, ry) tournée de rot degrés ; tolérance en pixels.
+  const inEllipse = (o, x, y, tol) => {
+    const t = (o.rot * Math.PI) / 180, dx = x - o.ex, dy = y - o.ey;
+    const a = dx * Math.cos(t) + dy * Math.sin(t), b = -dx * Math.sin(t) + dy * Math.cos(t);
+    return (a / (o.rx + tol)) ** 2 + (b / (o.ry + tol)) ** 2 <= 1;
+  };
+  // Polygone (masque) : contient le point, et distance du point à ses arêtes.
+  const inPoly = (pl, x, y) => {
+    let inside = false;
+    for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) {
+      const [xi, yi] = pl[i], [xj, yj] = pl[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const edgeDist = (pl, x, y) => {
+    let best = Infinity;
+    for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) {
+      const [ax, ay] = pl[j], [bx, by] = pl[i], dx = bx - ax, dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+      best = Math.min(best, Math.hypot(x - ax - t * dx, y - ay - t * dy));
+    }
+    return best;
+  };
   const svg = await P.ev("window.__research.svg()");
-  const circlesInSvg = (svg.svg.match(/<circle /g) ?? []).length;
-  // L'ordre de dessin : du fond vers l'avant ; le rang d'une bille dans le SVG dit sa profondeur.
+  const circlesInSvg = (svg.svg.match(/<ellipse /g) ?? []).length;
+  const masked = (svg.svg.match(/ mask="url/g) ?? []).length;
+  // L'ordre de dessin : du fond vers l'avant.
   const order = [...svg.svg.matchAll(/data-bead="(\d+)"/g)].map((m) => Number(m[1]));
   const rank = new Map(order.map((id, k) => [id, k]));
-  let tested = 0, agree = 0;
-  const misses = [];
-  let coveredOnly = 0;
-  for (let k = 0; k < svg.circles.length && tested < 80; k += Math.max(1, Math.floor(svg.circles.length / 80))) {
+  const byId = new Map(svg.circles.map((o) => [o.id, o]));
+  /** La bille que le SVG montre en (x, y) : la dernière peinte dont la silhouette contient le point et
+   *  dont aucun masque ne l'ôte ; `edge` si le point est à moins d'1 px d'un bord qui décide. */
+  const svgTop = (x, y) => {
+    for (let k = order.length - 1; k >= 0; k--) {
+      const o = byId.get(order[k]);
+      if (!inEllipse(o, x, y, 1)) continue;
+      if (!inEllipse(o, x, y, -1)) return { edge: true };
+      if (o.hide.some((pl) => edgeDist(pl, x, y) < 1)) return { edge: true };
+      if (o.hide.some((pl) => inPoly(pl, x, y))) continue;
+      return { id: o.id };
+    }
+    return { id: 0 };
+  };
+  const judge = async (x, y, acc, extra) => {
+    const t = svgTop(x, y);
+    if (t.edge) { acc.edge++; return; }
+    const id = await P.ev(`window.__research.idAt(${x}, ${y})`);
+    const got = rank.has(id) ? id : 0;
+    acc.tested++;
+    if (got === t.id) acc.agree++;
+    else acc.misses.push({ x, y, svg: t.id, screen: got, ...extra });
+  };
+  // Au centre de 80 billes réparties dans l'ordre, puis sur une grille de 20 × 15 points du canevas :
+  // la bille visible du SVG est-elle celle de l'écran ?
+  const centres = { tested: 0, agree: 0, edge: 0, misses: [] };
+  let seen = 0;
+  for (let k = 0; k < svg.circles.length && seen < 80; k += Math.max(1, Math.floor(svg.circles.length / 80))) {
     const c = svg.circles[k];
     if (c.x < 400 || c.x > 1270 || c.y < 5 || c.y > 755) continue;        // sous le panneau ou hors champ
-    const id = await P.ev(`window.__research.idAt(${c.x}, ${c.y})`);
-    tested++;
-    if (id === c.id || (rank.has(id) && rank.get(id) > rank.get(c.id))) agree++;
-    else {
-      // Un disque d'une autre bille couvre-t-il ce point ? (la géométrie est juste, l'ordre non)
-      const o = svg.circles.find((q) => q.id === id);
-      const covers = !!o && Math.hypot(o.x - c.x, o.y - c.y) <= o.r + 1;
-      if (covers) coveredOnly++;
-      misses.push({ bead: c.id, got: id, rank: rank.get(c.id), gotRank: rank.get(id) ?? null, covers });
-    }
+    seen++;
+    await judge(c.x, c.y, centres, { bead: c.id });
   }
+  const grid = { tested: 0, agree: 0, edge: 0, misses: [] };
+  for (let gy = 0; gy < 15; gy++) for (let gx = 0; gx < 20; gx++) await judge(405 + (gx + 0.5) * (860 / 20), 10 + (gy + 0.5) * (740 / 15), grid, {});
+  writeFileSync(resolve(OUT, "svg18.json"), JSON.stringify({ masked, centres, grid }, null, 1));
   await P.click("#ex-svg");
   await P.click("#ex-png");
   await sleep(600);
   const exported = await P.ev("window.__research.exported()");
   const png = await P.ev(`(async () => { const c = document.querySelector("canvas"); const b = await new Promise((r) => c.toBlob(r, "image/png")); return [c.width, c.height]; })()`);
-  // Jugé sur la géométrie (chaque centre testé porte sa bille ou une bille dont le disque le couvre) ; l'ordre de
-  // dessin est rapporté à part : des disques peints ne rendent pas exactement l'ordre de sphères qui se touchent.
-  exportsRes.svg = { circles: circlesInSvg, tested, agree, coveredOnly, misses, ok: circlesInSvg === svg.circles.length && circlesInSvg === nb && tested >= 40 && agree + coveredOnly === tested };
+  // Au centre de chaque bille testée et sur la grille, la bille que le SVG montre est celle de l'écran
+  // (points à moins d'1 px d'un bord qui décide : comptés, non jugés).
+  exportsRes.svg = { circles: circlesInSvg, masked, centres, grid, ok: circlesInSvg === svg.circles.length && circlesInSvg === nb && centres.tested >= 40 && centres.agree === centres.tested && grid.tested >= 100 && grid.agree === grid.tested };
   exportsRes.png = { exported, canvas: png, ok: exported.some((e) => e.name === "structure.png" && e.type === "image/png" && e.bytes > 1000) && exported.some((e) => e.name === "structure.svg" && e.bytes > 1000) };
 
   // — 4. .hic, et une session réelle avec ensemble —
@@ -256,7 +302,7 @@ try {
   console.log(`                  variabilité médiane ${varDeep.toFixed(0)} nm (40 M de contacts) · ${varShallow.toFixed(0)} nm (4 M) · rapport ${(varShallow / varDeep).toFixed(2)} · ensemble de 20 : ${deep.ms} ms`);
   console.log(`  2  statistiques ${okStats ? "2 courbes, valeurs = statistics.json" : "ÉCART"} · P(s) pente ${stFile.ps_slope.toFixed(2)} · R(s) exposant ${stFile.rs_nu.toFixed(2)}`);
   console.log(`  3  exports      PDB ${exportsRes.pdb.atoms} atomes, ${exportsRes.pdb.chains} chaînes, unité ${unit} nm, écart max ${exportsRes.pdb.worst.toExponential(1)} nm ${exportsRes.pdb.ok ? "✓" : "✗"} · 3DG ${exportsRes.tdg.rows} lignes, ${exportsRes.tdg.worst.toExponential(1)} nm ${exportsRes.tdg.ok ? "✓" : "✗"} · glTF ${exportsRes.gltf.points} points, ${exportsRes.gltf.worst.toExponential(1)} nm ${exportsRes.gltf.ok ? "✓" : "✗"}`);
-  console.log(`                  SVG ${exportsRes.svg.circles} cercles pour ${nb} billes, ${agree + coveredOnly}/${tested} centres portent leur bille ou une bille qui les couvre (ordre de dessin exact : ${agree}/${tested}) ${exportsRes.svg.ok ? "✓" : "✗"} · PNG ${JSON.stringify(exported.find((e) => e.name.endsWith("png")) ?? null)} ${exportsRes.png.ok ? "✓" : "✗"}`);
+  console.log(`                  SVG ${exportsRes.svg.circles} silhouettes pour ${nb} billes, ${masked} masquées (sécantes) · bille visible = écran : centres ${centres.agree}/${centres.tested} (${centres.edge} sur un bord), grille ${grid.agree}/${grid.tested} (${grid.edge} sur un bord) ${exportsRes.svg.ok ? "✓" : "✗"} · PNG ${JSON.stringify(exported.find((e) => e.name.endsWith("png")) ?? null)} ${exportsRes.png.ok ? "✓" : "✗"}`);
   if (hic) console.log(`  4  .hic         converti (${hic.by}) en ${hic.importMs} ms, à 2,5 Mb : ${hic.beads} billes (${hic.masked} bins écartés), r ${hic.r.toFixed(3)}, ${hic.distinct} vues, ${hic.runMs} ms ${hic.ok ? "✓" : "✗"}`);
   else console.log("  4  .hic         non mesuré (pas de fichier fourni)");
   if (real) console.log(`     réel         chr17:7–9 Mb à 10 kb, ensemble 12 : ${real.beads} billes, variabilité médiane ${real.variability.median.toFixed(0)} nm (rayon ${real.radius.toFixed(0)}), P(s) ${real.ps.toFixed(2)}, nu ${real.nu.toFixed(2)}, ${real.ms} ms`);

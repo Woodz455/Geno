@@ -18,7 +18,7 @@ dev = ["pytest>=7.4"]
 # cinq termes du champ de force sont donc écrits directement, ce qui a
 # l'avantage de les rendre lisibles et testables un par un.
 hic = [
-    "cooler>=0.10",
+    "cooler>=0.10,<0.11",
     "cooltools>=0.7",
     "openmm>=8.1",
     "pandas>=2,<3",

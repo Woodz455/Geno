@@ -31,7 +31,7 @@ $ python3 -m venv .venv
 $ .venv/bin/pip install --upgrade pip wheel
 $ .venv/bin/pip install "setuptools==59.8.0"
 $ .venv/bin/pip install --no-build-isolation asciitree
-$ .venv/bin/pip install cooler cooltools "pandas<3" "zarr<3" openmm pytest
+$ .venv/bin/pip install "cooler<0.11" cooltools "pandas<3" "zarr<3" openmm pytest
 ```
 
 ### Pourquoi ces épinglages
@@ -41,6 +41,10 @@ dépendance transitive de `cooler` qui utilise des API `setuptools` retirées de
 setuptools moderne, sa construction échoue sur `AttributeError: install_layout`, et
 l'installation de cooler s'arrête là. On lui fournit donc un setuptools d'époque, une seule
 fois, dans le venv.
+
+**`cooler<0.11`.** Trouvé à la reprise de la semaine 18 (venv refait de zéro) : sans borne,
+pip installe cooler 0.12, dont l'objet `Cooler` n'a plus `_load_attrs`, que cooltools 0.7.1
+appelle ; 8 tests sur 311 tombent (compartiments, insulation). Avec cooler 0.10.4 : 311/311.
 
 **`zarr<3`.** zarr 3 a remplacé `create_dataset` par `create_array` et changé la sémantique
 de `open_group`. Le magasin d'ensembles (`make ensemble`) écrit en API 2 ; l'épinglage évite
