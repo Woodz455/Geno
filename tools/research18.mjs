@@ -224,8 +224,9 @@ try {
     for (let k = order.length - 1; k >= 0; k--) {
       const o = byId.get(order[k]);
       if (!inEllipse(o, x, y, TOL)) continue;
-      if (!inEllipse(o, x, y, -TOL)) return { edge: true };
-      if (o.hide.some((pl) => edgeDist(pl, x, y) < TOL)) return { edge: true };
+      if (!inEllipse(o, x, y, -TOL)) return { edge: { by: "silhouette", bead: o.id, rx: o.rx, ry: o.ry } };
+      const near = o.hide.findIndex((pl) => edgeDist(pl, x, y) < TOL);
+      if (near >= 0) return { edge: { by: "masque", bead: o.id, inside: inPoly(o.hide[near], x, y), n: o.hide[near].length } };
       if (o.hide.some((pl) => inPoly(pl, x, y))) continue;
       return { id: o.id };
     }
@@ -238,7 +239,7 @@ try {
   const judge = async (x0, y0, acc, extra) => {
     const x = snap(x0), y = snap(y0);
     const t = svgTop(x, y);
-    if (t.edge) { acc.edge++; return; }
+    if (t.edge) { acc.edge++; (acc.edges ??= []).push({ x, y, ...extra, ...t.edge }); return; }
     const id = await P.ev(`window.__research.idAt(${x}, ${y})`);
     const got = rank.has(id) ? id : 0;
     acc.tested++;
