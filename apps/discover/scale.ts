@@ -31,33 +31,37 @@ export const FACTS = {
   pagesPerNovel: 300,
 } as const;
 
-const fmt = (x: number, digits = 0): string =>
-  x.toLocaleString("fr-FR", { maximumFractionDigits: digits, minimumFractionDigits: digits });
+/** Les langues du parcours (semaine 20). Les nombres sont calculés une fois, mis en forme par langue. */
+export type Locale = "fr-FR" | "en-GB";
+
+const fmt = (x: number, digits = 0, locale: Locale = "fr-FR"): string =>
+  x.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
 /** La longueur de l'ADN diploïde déplié, en mètres. */
 export const dnaLength = (): number => FACTS.diploidBp * FACTS.risePerBp;
 
 /** Toutes les valeurs que les textes peuvent citer, déjà mises en forme. */
-export function values(): Record<string, string> {
+export function values(locale: Locale = "fr-FR"): Record<string, string> {
+  const f = (x: number, d = 0) => fmt(x, d, locale);
   const L = dnaLength();
   const ball = FACTS.tennisBall / FACTS.nucleus;           // grossissement noyau → balle
   const novels = (bp: number) => bp / (FACTS.charsPerPage * FACTS.pagesPerNovel);
   return {
-    dna_m: fmt(L, 1),
-    nucleus_um: fmt(FACTS.nucleus * 1e6),
-    fold: fmt(L / FACTS.nucleus),                          // fois plus long que le noyau est large
-    ball_dna_km: fmt((L * ball) / 1000, 0),                // l'ADN, si le noyau était une balle de tennis
-    ball_helix_um: fmt(FACTS.helix * ball * 1e6, 1),       // l'épaisseur du fil, à cette échelle
-    bead_kb: fmt(FACTS.beadBp / 1000),
-    bead_novels: fmt(novels(FACTS.beadBp), 1),
-    genome_novels: fmt(novels(FACTS.diploidBp / 2)),
-    tad_kb: fmt(FACTS.tadBp / 1000),
-    tad_um: fmt(FACTS.tadBp * FACTS.risePerBp * 1e6, 0),   // un TAD, déplié
-    monomer_kb: fmt(FACTS.monomerBp / 1000),
-    nuc_bp: fmt(FACTS.nucleosomeBp),
-    nuc_turns: fmt(FACTS.nucleosomeTurns, 2),
-    rise_nm: fmt(FACTS.risePerBp * 1e9, 2),
-    helix_nm: fmt(FACTS.helix * 1e9),
+    dna_m: f(L, 1),
+    nucleus_um: f(FACTS.nucleus * 1e6),
+    fold: f(L / FACTS.nucleus),                          // fois plus long que le noyau est large
+    ball_dna_km: f((L * ball) / 1000, 0),                // l'ADN, si le noyau était une balle de tennis
+    ball_helix_um: f(FACTS.helix * ball * 1e6, 1),       // l'épaisseur du fil, à cette échelle
+    bead_kb: f(FACTS.beadBp / 1000),
+    bead_novels: f(novels(FACTS.beadBp), 1),
+    genome_novels: f(novels(FACTS.diploidBp / 2)),
+    tad_kb: f(FACTS.tadBp / 1000),
+    tad_um: f(FACTS.tadBp * FACTS.risePerBp * 1e6, 0),   // un TAD, déplié
+    monomer_kb: f(FACTS.monomerBp / 1000),
+    nuc_bp: f(FACTS.nucleosomeBp),
+    nuc_turns: f(FACTS.nucleosomeTurns, 2),
+    rise_nm: f(FACTS.risePerBp * 1e9, 2),
+    helix_nm: f(FACTS.helix * 1e9),
   };
 }
 
@@ -70,16 +74,22 @@ export function fill(text: string, v: Record<string, string> = values()): string
 }
 
 /** Le champ de la caméra, lisible : « 2,6 µm », « 120 nm », « 4,0 nm ». */
-export function fieldText(widthUm: number): string {
-  if (widthUm >= 1) return `${fmt(widthUm, widthUm < 10 ? 1 : 0)} µm`;
+export function fieldText(widthUm: number, locale: Locale = "fr-FR"): string {
+  if (widthUm >= 1) return `${fmt(widthUm, widthUm < 10 ? 1 : 0, locale)} µm`;
   const nm = widthUm * 1000;
-  return `${fmt(nm, nm < 10 ? 1 : 0)} nm`;
+  return `${fmt(nm, nm < 10 ? 1 : 0, locale)} nm`;
 }
 
+const COMPARE: Record<Locale, [string, string, string]> = {
+  "fr-FR": ["{x} fois la largeur du noyau", "{x} % de la largeur du noyau", "{x} fois l'épaisseur de la double hélice"],
+  "en-GB": ["{x} times the width of the nucleus", "{x} % of the width of the nucleus", "{x} times the thickness of the double helix"],
+};
+
 /** Ce que mesure le champ, en objets familiers : combien de largeurs de noyau, de bille, d'hélice. */
-export function fieldCompare(widthUm: number): string {
+export function fieldCompare(widthUm: number, locale: Locale = "fr-FR"): string {
   const m = widthUm * 1e-6;
-  if (m >= FACTS.nucleus / 2) return `${fmt(m / FACTS.nucleus, 1)} fois la largeur du noyau`;
-  if (m >= 50e-9) return `${fmt(m / FACTS.nucleus * 100, 1)} % de la largeur du noyau`;
-  return `${fmt(m / FACTS.helix, 0)} fois l'épaisseur de la double hélice`;
+  const [nuc, pct, hel] = COMPARE[locale];
+  if (m >= FACTS.nucleus / 2) return nuc.replace("{x}", fmt(m / FACTS.nucleus, 1, locale));
+  if (m >= 50e-9) return pct.replace("{x}", fmt(m / FACTS.nucleus * 100, 1, locale));
+  return hel.replace("{x}", fmt(m / FACTS.helix, 0, locale));
 }

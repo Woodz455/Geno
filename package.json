@@ -9,6 +9,7 @@
     "verify": "node tools/build.mjs && node tools/verify.mjs && node tools/test-discover.mjs"
   },
   "devDependencies": {
+    "axe-core": "4.10.3",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0"
   }

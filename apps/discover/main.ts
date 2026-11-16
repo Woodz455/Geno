@@ -1,4 +1,4 @@
-/** Geno — mode Découverte (semaine 19) : « Du noyau à une lettre ».
+/** Geno — mode Découverte (semaines 19–20) : « Du noyau à une lettre ».
  *
  *  La plongée de la semaine 12 (`openDive`, cible TP53), avec un préréglage et une couche
  *  narrative : sept étapes du noyau à une base, quatre haltes commentées, un glossaire au survol et
@@ -8,59 +8,101 @@
  *  d'évidence lit `scene.evidence()` — le texte ne peut pas dire « mesuré » quand la couche
  *  affichée est simulée sans que la mesure (`tools/discover.mjs`) le voie.
  *
- *  Le contenu est hors du code (`content/fr.json`, `content/glossary.fr.json`) : l'anglais de la
- *  semaine 20 est une traduction de fichiers, pas une réécriture.
+ *  Semaine 20 : français et anglais (le contenu et l'interface sont des fichiers, `content/`),
+ *  et l'accessibilité WCAG 2.2 AA — lien d'évitement, focus sur le titre de chaque écran, une
+ *  description en mots de chaque vue 3D (lue par la scène, pas écrite à la main), le glossaire
+ *  en boutons décrits, une description chiffrée de la carte de contacts, des animations qu'on
+ *  peut couper. Mesuré par `tools/a11y.mjs`.
  *
  *  URL : `#t=<étape ou halte>` reprend le parcours où il était.
- *  Paramètres : f=… (.g3d), w=, h= (taille fixe, pour la mesure), motion=0 (sans vol).
+ *  Paramètres : lang=fr|en, f=… (.g3d), w=, h= (taille fixe, pour la mesure), motion=0 (sans vol).
  */
 
 import { ContactsReader, FicheReader, HttpSource, SearchIndex } from "@geno/g3d";
 import { distanceFor, dive, type Orbit, widthAt } from "@geno/viewer";
 import { type DiveScene, FOV, openDive } from "../dive/dive.js";
 import { destination } from "../dive/navigate.js";
-import content from "./content/fr.json";
-import glossary from "./content/glossary.fr.json";
-import { fieldCompare, fieldText, fill } from "./scale.js";
+import contentEn from "./content/en.json";
+import contentFr from "./content/fr.json";
+import glossaryEn from "./content/glossary.en.json";
+import glossaryFr from "./content/glossary.fr.json";
+import uiEn from "./content/ui.en.json";
+import uiFr from "./content/ui.fr.json";
+import { fieldCompare, fieldText, fill, type Locale, values } from "./scale.js";
+
+const q = new URLSearchParams(location.search);
+const store = {
+  get: (k: string): string | null => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k: string, v: string): void => { try { localStorage.setItem(k, v); } catch { /* navigation privée */ } },
+};
+
+// — Langue : ?lang=, sinon le choix gardé, sinon celle du navigateur —
+const asked = q.get("lang");
+const LANG: "fr" | "en" = asked === "en" || asked === "fr" ? asked
+  : (store.get("geno.decouverte.lang") as "fr" | "en" | null) ?? (navigator.language.toLowerCase().startsWith("en") ? "en" : "fr");
+if (asked === "en" || asked === "fr") store.set("geno.decouverte.lang", asked);
+const content: typeof contentFr = LANG === "en" ? (contentEn as typeof contentFr) : contentFr;
+const GLOSS: Record<string, string> = LANG === "en" ? glossaryEn : glossaryFr;
+const UI: typeof uiFr = LANG === "en" ? (uiEn as typeof uiFr) : uiFr;
+const LOC = UI.locale as Locale;
+const VALS = values(LOC);
+/** Une chaîne de l'interface, ses `{clés}` remplies. */
+const T = (s: string, v: Record<string, string | number> = {}): string => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
+const num = (x: number, d = 0): string => x.toLocaleString(LOC, { maximumFractionDigits: d, minimumFractionDigits: d });
 
 type Step = (typeof content.steps)[number];
 type Halt = (typeof content.halts)[number];
 type Stop = { kind: "step"; index: number; step: Step } | { kind: "halt"; index: number; halt: Halt };
 
-const q = new URLSearchParams(location.search);
 const FILE = q.get("f") ?? "data/gm12878.g3d";
 const CONTACTS = FILE.replace(/\.g3d$/, ".contacts");
 const SEARCH = FILE.replace(/\.g3d$/, ".search");
 const FICHE = FILE.replace(/\.g3d$/, ".fiche");
 const FIXED = q.has("w");
-const REDUCED = q.get("motion") === "0" || matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Mouvement : ?motion=0 et la préférence du système d'abord ; puis le bouton de la page, gardé.
+const savedMotion = store.get("geno.decouverte.motion");
+let reduced = q.get("motion") === "0" || (savedMotion === null ? matchMedia("(prefers-reduced-motion: reduce)").matches : savedMotion === "0");
 
 // — Style —
+// Jetons de couleur choisis pour les seuils AA (semaine 20) : texte ≥ 4,5:1 sur le panneau,
+// bordures de composants et contours de focus ≥ 3:1. `tools/a11y.mjs` les recalcule.
 const style = document.createElement("style");
 style.textContent = `
-  :root { --bg: #0b0f14; --panel: rgba(14,18,24,.92); --ink: #e8edf3; --mute: #9aa7b8; --line: #2b3646;
-          --accent: #f0e342; --link: #9cc3ff; }
+  :root { --bg: #0b0f14; --panel: #0e1218; --ink: #e8edf3; --mute: #a9b4c4; --line: #2b3646;
+          --edge: #6b7a90; --accent: #f0e342; --link: #9cc3ff; }
   html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--ink);
                font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
   canvas { display: block; touch-action: none; }
   #overlay { position: fixed; left: 0; top: 0; pointer-events: none; }
+  .skip { position: fixed; left: 8px; top: -60px; z-index: 20; background: var(--panel); color: var(--ink);
+          padding: 8px 12px; border: 2px solid var(--link); border-radius: 8px; }
+  .skip:focus { top: 8px; }
   #story { position: fixed; right: 0; top: 0; bottom: 0; width: min(400px, 100vw); box-sizing: border-box;
            background: var(--panel); border-left: 1px solid var(--line); padding: 18px 20px 14px;
-           display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+           display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere; }
+  #story:focus { outline: none; }
+  #story header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; align-items: baseline; }
   #story header .kicker { color: var(--mute); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
-  #story h1 { font-size: 15px; margin: 2px 0 0; font-weight: 600; color: var(--mute); }
+  #story header .tools { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  #story header .tools a, #story header .tools button { min-height: 24px; }
+  #story h1 { font-size: 15px; margin: 2px 0 0; font-weight: 600; color: var(--mute); flex-basis: 100%; }
   #story h2 { font-size: 22px; line-height: 1.25; margin: 4px 0 0; }
+  #story h2:focus { outline: none; }
+  #story h2:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
   #story p { margin: 0; }
   #story .show { color: var(--mute); font-size: 13.5px; }
   #story .summary { border-left: 3px solid var(--accent); padding: 4px 0 4px 10px; font-weight: 500; }
-  .term { text-decoration: underline dotted 1.5px; text-underline-offset: 3px; cursor: help; color: inherit; }
-  .term:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 2px; }
-  #tip { position: fixed; z-index: 10; max-width: 300px; background: #1b2330; color: var(--ink);
-         border: 1px solid #3a4658; border-radius: 8px; padding: 8px 10px; font-size: 13.5px; line-height: 1.45;
-         pointer-events: none; display: none; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+  a { color: var(--link); }
+  a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  button.term { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; border-radius: 2px;
+                text-decoration: underline dotted 1.5px; text-underline-offset: 3px; cursor: help; text-align: inherit; }
+  button.term:hover { background: none; }
+  #tip { position: fixed; z-index: 10; max-width: min(300px, calc(100vw - 16px)); box-sizing: border-box; background: #1b2330; color: var(--ink);
+         border: 1px solid var(--edge); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; line-height: 1.45;
+         display: none; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
   #tip b { display: block; margin-bottom: 2px; }
   .badge { display: inline-flex; gap: 6px; align-items: baseline; font-size: 12.5px; padding: 3px 9px;
-           border-radius: 999px; border: 1px solid var(--line); background: #121822; }
+           border-radius: 999px; border: 1px solid var(--edge); background: #121822; }
   .badge .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; align-self: center; }
   #evidence-detail { color: var(--mute); font-size: 12px; }
   #ruler { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--mute); }
@@ -69,34 +111,41 @@ style.textContent = `
   #ruler .bar::before { left: 0; } #ruler .bar::after { right: 0; }
   #ruler b { color: var(--ink); font-weight: 600; }
   #contacts { width: 100%; height: auto; border-radius: 6px; background: #0e131b; }
-  #contacts-caption { color: var(--mute); font-size: 12px; }
-  nav.steps { display: flex; gap: 8px; margin-top: auto; padding-top: 8px; }
-  button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid #3a4658;
-           background: #1b2330; color: inherit; cursor: pointer; }
+  #contacts-caption, #contacts-summary { color: var(--mute); font-size: 12.5px; }
+  nav.steps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 8px; }
+  button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--edge);
+           background: #1b2330; color: inherit; cursor: pointer; min-height: 24px; }
   button:hover { background: #243042; }
   button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-  button.primary { background: #2c4a73; border-color: #3d6396; }
+  button.primary { background: #2c4a73; border-color: #7f9cc4; }
   button[disabled] { opacity: .45; cursor: default; }
-  .dots { display: flex; gap: 5px; align-items: center; }
-  .dots span { width: 8px; height: 8px; border-radius: 50%; background: #3a4658; }
-  .dots span.on { background: var(--accent); }
+  button.small { font-size: 13px; padding: 2px 8px; }
+  ol.dots { display: flex; gap: 5px; align-items: center; list-style: none; margin: 0; padding: 0; }
+  ol.dots li { width: 8px; height: 8px; border-radius: 50%; background: #56647a; }
+  ol.dots li.on { background: var(--accent); }
   #halts { display: flex; flex-wrap: wrap; gap: 6px; }
   #halts button { font-size: 13px; padding: 4px 10px; }
   #halts-label { color: var(--mute); font-size: 12px; }
-  .quiz fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 8px; padding: 8px 10px; }
+  .quiz fieldset { border: 1px solid var(--edge); border-radius: 8px; margin: 0 0 8px; padding: 8px 10px; min-width: 0; }
   .quiz legend { padding: 0 4px; font-weight: 500; }
-  .quiz label { display: block; padding: 2px 0; cursor: pointer; }
+  .quiz label { display: flex; gap: 8px; align-items: center; padding: 3px 0; cursor: pointer; }
+  .quiz input[type=radio] { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
   .quiz .verdict { font-size: 13px; margin-top: 4px; }
   .quiz textarea { width: 100%; box-sizing: border-box; min-height: 90px; font: inherit; color: inherit;
-                   background: #0e131b; border: 1px solid #3a4658; border-radius: 6px; padding: 6px 8px; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+                   background: #0e131b; border: 1px solid var(--edge); border-radius: 6px; padding: 6px 8px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; margin: -1px; padding: 0; border: 0; }
   @media (max-width: 760px) { #story { top: auto; height: 55vh; width: 100vw; border-left: 0; border-top: 1px solid var(--line); } }
 `;
 document.head.appendChild(style);
-document.documentElement.lang = "fr";
+document.documentElement.lang = LANG;
 document.title = `Geno — ${content.title}`;
 
 // — Squelette —
+const skip = document.createElement("a");
+skip.className = "skip";
+skip.href = "#story";
+skip.textContent = UI.skip;
+document.body.appendChild(skip);
 const canvas = document.createElement("canvas");
 canvas.setAttribute("aria-hidden", "true");
 document.body.appendChild(canvas);
@@ -107,11 +156,21 @@ document.body.appendChild(overlay);
 overlay.getContext("2d", { willReadFrequently: true });
 const story = document.createElement("main");
 story.id = "story";
+story.tabIndex = -1;
 story.setAttribute("aria-label", content.title);
 document.body.appendChild(story);
+// La vue 3D en mots : réécrite à chaque arrivée depuis ce que la scène montre au centre.
+const view = document.createElement("div");
+view.id = "view";
+view.className = "sr";
+view.setAttribute("role", "status");
+view.setAttribute("aria-live", "polite");
+view.setAttribute("aria-label", UI.viewLabel);
+document.body.appendChild(view);
+// La bulle du glossaire est visuelle : chaque terme porte déjà sa définition (aria-describedby).
 const tip = document.createElement("div");
 tip.id = "tip";
-tip.setAttribute("role", "tooltip");
+tip.setAttribute("aria-hidden", "true");
 document.body.appendChild(tip);
 
 const panelWidth = (): number => (window.innerWidth <= 760 ? 0 : Math.min(400, window.innerWidth));
@@ -139,13 +198,16 @@ function fit(): [number, number] {
 }
 
 // — Glossaire : [[terme]] ou [[terme|texte affiché]] —
-const GLOSS = glossary as Record<string, string>;
+// Chaque terme est un bouton ; sa définition est dans le DOM (cachée), liée par aria-describedby :
+// un lecteur d'écran la lit au focus, sans dépendre de la bulle.
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 let tipFor: HTMLElement | null = null;
+let termSeq = 0;
 function rich(text: string): string {
-  return esc(fill(text)).replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, term: string, shown?: string) => {
+  return esc(fill(text, VALS)).replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, term: string, shown?: string) => {
     if (!(term in GLOSS)) throw new Error(`terme absent du glossaire : ${term}`);
-    return `<span class="term" tabindex="0" role="button" aria-describedby="tip" data-term="${esc(term)}">${shown ?? term}</span>`;
+    const id = `def-${++termSeq}`;
+    return `<button type="button" class="term" aria-describedby="${id}" data-term="${esc(term)}">${shown ?? term}</button><span id="${id}" hidden>${esc(GLOSS[term])}</span>`;
   });
 }
 function showTip(el: HTMLElement): void {
@@ -153,7 +215,7 @@ function showTip(el: HTMLElement): void {
   tip.innerHTML = `<b>${esc(term)}</b>${esc(GLOSS[term])}`;
   tip.style.display = "block";
   const r = el.getBoundingClientRect();
-  const w = Math.min(300, window.innerWidth - 16);
+  const w = tip.offsetWidth;
   tip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left))}px`;
   const below = r.bottom + 8, h = tip.offsetHeight;
   tip.style.top = `${below + h < window.innerHeight ? below : Math.max(8, r.top - h - 8)}px`;
@@ -163,10 +225,15 @@ function hideTip(): void {
   tip.style.display = "none";
   tipFor = null;
 }
+// La bulle reste tant que le pointeur est sur le terme **ou sur elle** (WCAG 1.4.13), et Échap
+// la ferme sans déplacer le focus.
+const leaving = (e: MouseEvent) => { const to = e.relatedTarget as Node | null; if (!to || !(tip.contains(to) || (tipFor && tipFor.contains(to)))) hideTip(); };
 story.addEventListener("mouseover", (e) => { const t = (e.target as HTMLElement).closest<HTMLElement>(".term"); if (t) showTip(t); });
-story.addEventListener("mouseout", (e) => { if ((e.target as HTMLElement).closest(".term")) hideTip(); });
+story.addEventListener("mouseout", (e) => { if ((e.target as HTMLElement).closest(".term")) leaving(e); });
+tip.addEventListener("mouseout", leaving);
 story.addEventListener("focusin", (e) => { const t = (e.target as HTMLElement).closest<HTMLElement>(".term"); if (t) showTip(t); else hideTip(); });
-story.addEventListener("focusout", () => hideTip());
+story.addEventListener("focusout", (e) => { if (!(e.relatedTarget as HTMLElement | null)?.closest?.(".term")) hideTip(); });
+story.addEventListener("click", (e) => { const t = (e.target as HTMLElement).closest<HTMLElement>(".term"); if (t) (tipFor === t && tip.style.display === "block" ? hideTip() : showTip(t)); });
 
 // — Évidence : ce que la couche affichée est vraiment —
 const EVIDENCE_COLORS: Record<string, string> = { "mesuré": "#5ec27a", "simulé": "#e0a84a", "prédit": "#c58be0", "illustratif": "#7aa8e6" };
@@ -177,10 +244,38 @@ export function categories(evidence: string): string[] {
   if (evidence.startsWith("fibre")) return ["simulé"];
   return ["simulé", "prédit"];
 }
+/** Le détail d'évidence dans la langue de la page : la scène rend l'une de quatre phrases
+ *  françaises fixes ; on la reconnaît **entière** et on rend sa traduction. Une phrase inconnue
+ *  passe telle quelle — et la mesure la compte comme une faute. */
+const EV_FR = uiFr.evidenceDetail as Record<string, string>;
+function evidenceDetail(ev: string): { text: string; known: boolean } {
+  const key = Object.keys(EV_FR).find((k) => EV_FR[k] === ev);
+  return key ? { text: (UI.evidenceDetail as Record<string, string>)[key], known: true } : { text: ev, known: false };
+}
+const evLabel = (cat: string): string => (UI.evidenceLabels as Record<string, string>)[cat] ?? cat;
+
+/** L'en-tête du panneau : la langue (le lien garde l'étape) et le bouton des animations. */
+function headerHtml(): string {
+  const other = UI.switchLang;
+  const p = new URLSearchParams(location.search);
+  p.set("lang", other);
+  const href = `${location.pathname}?${p.toString()}${location.hash}`;
+  return `<header><div class="kicker">${esc(UI.kicker)}</div><div class="tools"><a id="lang" href="${esc(href)}" lang="${other}" hreflang="${other}" title="${esc(UI.switchLabel)}">${esc(UI.switchTo)}</a>` +
+    `<button type="button" class="small" id="motion">${esc(reduced ? UI.motionOff : UI.motionOn)}</button></div><h1>${esc(content.title)}</h1></header>`;
+}
+story.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("#motion");
+  if (!b) return;
+  reduced = !reduced;
+  store.set("geno.decouverte.motion", reduced ? "0" : "1");
+  b.textContent = reduced ? UI.motionOff : UI.motionOn;
+});
+// Le lien de langue suit l'étape courante (le #t= change sans recharger).
+window.addEventListener("hashchange", () => { const a = story.querySelector<HTMLAnchorElement>("#lang"); if (a) a.href = a.href.replace(/#.*$/, "") + location.hash; });
 
 async function main(): Promise<void> {
   const [w0, h0] = fit();
-  story.innerHTML = `<header><div class="kicker">Geno · mode Découverte</div><h1>${esc(content.title)}</h1></header><p>Chargement du noyau…</p>`;
+  story.innerHTML = `${headerHtml()}<p role="status">${esc(UI.loading)}</p>`;
   const scene: DiveScene = await openDive(canvas, FILE, { target: "tp53" });
   scene.resize(w0, h0);
   const index = SearchIndex.open(new HttpSource(SEARCH)).catch(() => null);
@@ -259,7 +354,7 @@ async function main(): Promise<void> {
 
   const flyTo = (to: Orbit, jump = false): void => {
     arrived = false;
-    if (REDUCED || jump) {
+    if (reduced || jump) {
       orbit = to;
       anim = null;
       dirty = true;
@@ -271,38 +366,38 @@ async function main(): Promise<void> {
   };
 
   // — Rendu du panneau —
-  const dots = () => `<div class="dots" aria-hidden="true">${content.steps.map((_, k) => `<span class="${k <= cur ? "on" : ""}"></span>`).join("")}</div>`;
-  const haltsHtml = () => `<div id="halts-label">Haltes commentées</div><div id="halts">${content.halts.map((h) => `<button type="button" data-halt="${h.id}">${esc(h.title.split(",")[0])}</button>`).join("")}</div>`;
-  const evidenceHtml = () => `<div><span class="badge" id="badge"><span class="dot"></span><span id="badge-text"></span></span></div><div id="evidence-detail"></div>`;
-  const rulerHtml = () => `<div id="ruler" aria-live="off"><span class="bar"></span><span id="ruler-text"></span></div>`;
+  const dots = () => `<ol class="dots" aria-label="${esc(UI.stepsLabel)}">${content.steps.map((st, k) => `<li class="${k <= cur ? "on" : ""}"${k === cur ? ' aria-current="step"' : ""}><span class="sr">${esc(st.title)}</span></li>`).join("")}</ol>`;
+  const haltsHtml = () => `<div id="halts-label">${esc(UI.haltsLabel)}</div><div id="halts" role="group" aria-labelledby="halts-label">${content.halts.map((h) => `<button type="button" data-halt="${h.id}">${esc(h.title.split(",")[0])}</button>`).join("")}</div>`;
+  const evidenceHtml = () => `<div><span class="badge" id="badge"><span class="dot" aria-hidden="true"></span><span id="badge-text"></span></span></div><div id="evidence-detail"></div>`;
+  const rulerHtml = () => `<div id="ruler" role="group" aria-label="${esc(UI.rulerLabel)}"><span class="bar" aria-hidden="true"></span><span id="ruler-text"></span></div>`;
   const nav = (prevLabel: string, nextLabel: string, prevOff = false, nextOff = false) =>
-    `<nav class="steps" aria-label="Parcours"><button type="button" id="prev" ${prevOff ? "disabled" : ""}>← ${prevLabel}</button><button type="button" class="primary" id="next" ${nextOff ? "disabled" : ""}>${nextLabel} →</button></nav>`;
+    `<nav class="steps" aria-label="${esc(UI.navLabel)}"><button type="button" id="prev" ${prevOff ? "disabled" : ""}><span aria-hidden="true">← </span>${esc(prevLabel)}</button><button type="button" class="primary" id="next" ${nextOff ? "disabled" : ""}>${esc(nextLabel)}<span aria-hidden="true"> →</span></button></nav>`;
 
   let declared = "";
   const render = (): void => {
     hideTip();
-    let html = `<header><div class="kicker">Geno · mode Découverte</div><h1>${esc(content.title)}</h1></header>`;
+    let html = headerHtml();
     if (cur < 0) {
       declared = "";
-      html += `<h2>${esc(content.subtitle)}</h2><p>${rich(content.intro)}</p>${rulerHtml()}${haltsHtml()}${nav("Retour", "Commencer", true)}`;
+      html += `<h2 tabindex="-1">${esc(content.subtitle)}</h2><p>${rich(content.intro)}</p>${rulerHtml()}${haltsHtml()}${nav(UI.back, UI.start, true)}`;
     } else if (cur < content.steps.length) {
       const st = content.steps[cur];
       declared = st.evidence;
-      html += `<div class="kicker">Étape ${cur + 1} sur ${content.steps.length}</div>${dots()}<h2>${esc(st.title)}</h2><p>${rich(st.text)}</p>`;
+      html += `<div class="kicker">${esc(T(UI.stepOf, { n: cur + 1, total: content.steps.length }))}</div>${dots()}<h2 tabindex="-1">${esc(st.title)}</h2><p>${rich(st.text)}</p>`;
       if ("how" in st && st.how) html += `<p>${rich(st.how)}</p>`;
-      if ("contacts" in st && st.contacts) html += `<canvas id="contacts" width="360" height="190" role="img" aria-label="Carte de contacts de la région : un triangle sombre marque le TAD"></canvas><div id="contacts-caption">Carte de contacts du modèle autour du TAD : plus c'est sombre, plus les deux morceaux se touchent. Les traits marquent ses frontières.</div>`;
+      if ("contacts" in st && st.contacts) html += `<canvas id="contacts" width="360" height="190" role="img" aria-label="${esc(UI.contactsLabel)}" aria-describedby="contacts-caption contacts-summary"></canvas><div id="contacts-caption">${esc(UI.contactsCaption)}</div><div id="contacts-summary"></div>`;
       if ("summary" in st && st.summary) html += `<p class="summary">${rich(st.summary)}</p>`;
-      html += `<p class="show">${rich(st.show)}</p>${evidenceHtml()}${rulerHtml()}${nav("Précédent", cur === content.steps.length - 1 ? "Terminer" : "Suivant", false)}${haltsHtml()}`;
+      html += `<p class="show">${rich(st.show)}</p>${evidenceHtml()}${rulerHtml()}${nav(UI.prev, cur === content.steps.length - 1 ? UI.finish : UI.next, false)}${haltsHtml()}`;
     } else if (cur >= content.steps.length && cur < stops.length) {
       const h = (stops[cur] as Extract<Stop, { kind: "halt" }>).halt;
       declared = "simulé";
-      html += `<div class="kicker">Halte</div><h2>${esc(h.title)}</h2><p>${rich(h.text)}</p><p class="show"><b>Ce que le modèle ne montre pas.</b> ${rich(h.limits)}</p><div id="halt-facts" class="show"></div>${evidenceHtml()}${rulerHtml()}${nav("Retour au parcours", "Fin du parcours")}${haltsHtml()}`;
+      html += `<div class="kicker">${esc(UI.halt)}</div><h2 tabindex="-1">${esc(h.title)}</h2><p>${rich(h.text)}</p><p class="show"><b>${esc(UI.notShown)}</b> ${rich(h.limits)}</p><div id="halt-facts" class="show"></div>${evidenceHtml()}${rulerHtml()}${nav(UI.backToTour, UI.endOfTour)}${haltsHtml()}`;
     } else {
       declared = "";
       const Q = content.quiz;
-      html += `<div class="kicker">Fin du parcours</div><h2>${esc(Q.intro)}</h2><form class="quiz" id="quiz"><fieldset><legend>${esc(Q.open)}</legend><label class="sr" for="open">Votre réponse</label><textarea id="open"></textarea><div class="show">${esc(Q.openNote)}</div></fieldset>` +
-        Q.choices.map((c, k) => `<fieldset><legend>${esc(c.q)}</legend>${c.options.map((o, j) => `<label><input type="radio" name="q${k}" value="${j}"> ${esc(o)}</label>`).join("")}<div class="verdict" id="v${k}" aria-live="polite"></div></fieldset>`).join("") +
-        `<button type="submit" class="primary">Vérifier</button></form>${haltsHtml()}${nav("Revoir la dernière étape", "Recommencer")}`;
+      html += `<div class="kicker">${esc(UI.endOfTour)}</div><h2 tabindex="-1">${esc(Q.intro)}</h2><form class="quiz" id="quiz"><fieldset><legend>${esc(Q.open)}</legend><label class="sr" for="open">${esc(UI.yourAnswer)}</label><textarea id="open" aria-describedby="open-note"></textarea><div class="show" id="open-note">${esc(Q.openNote)}</div></fieldset>` +
+        Q.choices.map((c, k) => `<fieldset aria-describedby="v${k}"><legend>${esc(c.q)}</legend>${c.options.map((o, j) => `<label><input type="radio" name="q${k}" value="${j}"> ${esc(o)}</label>`).join("")}<div class="verdict" id="v${k}" aria-live="polite"></div></fieldset>`).join("") +
+        `<button type="submit" class="primary">${esc(UI.check)}</button></form>${haltsHtml()}${nav(UI.reviewLast, UI.restart)}`;
     }
     story.innerHTML = html;
     wire();
@@ -317,16 +412,16 @@ async function main(): Promise<void> {
     story.querySelectorAll<HTMLButtonElement>("[data-halt]").forEach((b) => b.addEventListener("click", () => void goHalt(b.dataset.halt!)));
     const quiz = story.querySelector<HTMLFormElement>("#quiz");
     if (quiz) {
-      const saved = (() => { try { return localStorage.getItem("geno.decouverte.reponse") ?? ""; } catch { return ""; } })();
+      const saved = store.get("geno.decouverte.reponse") ?? "";
       const ta = quiz.querySelector<HTMLTextAreaElement>("#open")!;
       ta.value = saved;
-      ta.addEventListener("input", () => { try { localStorage.setItem("geno.decouverte.reponse", ta.value); } catch { /* navigation privée */ } });
+      ta.addEventListener("input", () => store.set("geno.decouverte.reponse", ta.value));
       quiz.addEventListener("submit", (e) => {
         e.preventDefault();
         content.quiz.choices.forEach((c, k) => {
           const v = quiz.querySelector<HTMLInputElement>(`input[name=q${k}]:checked`);
           const out = quiz.querySelector<HTMLDivElement>(`#v${k}`)!;
-          out.textContent = !v ? "Pas de réponse." : Number(v.value) === c.answer ? `Juste. ${c.explain}` : `Pas tout à fait. ${c.explain}`;
+          out.textContent = !v ? UI.noAnswer : Number(v.value) === c.answer ? `${UI.right} ${c.explain}` : `${UI.wrong} ${c.explain}`;
         });
       });
     }
@@ -339,20 +434,21 @@ async function main(): Promise<void> {
     if (badge) {
       const cats = categories(ev);
       const shown = declared && cats.includes(declared) ? declared : cats[0];
-      badge.textContent = `ce que vous voyez : ${shown}`;
+      badge.textContent = T(UI.badge, { cat: evLabel(shown) });
       story.querySelector<HTMLSpanElement>("#badge .dot")!.style.background = EVIDENCE_COLORS[shown] ?? "#888";
-      story.querySelector<HTMLDivElement>("#evidence-detail")!.textContent = ev;
+      story.querySelector<HTMLDivElement>("#evidence-detail")!.textContent = evidenceDetail(ev).text;
     }
     const ruler = story.querySelector<HTMLSpanElement>("#ruler-text");
     if (ruler) {
       const width = widthAt(orbit.distance, FOV);
       const bar = width * (80 / Math.max(1, canvas.clientWidth));       // la barre fait 80 px de l'image
-      ruler.innerHTML = `<b>${fieldText(bar)}</b> · image : ${fieldText(width)}, ${fieldCompare(width)}`;
+      ruler.innerHTML = `<b>${fieldText(bar, LOC)}</b> · ${esc(T(UI.ruler, { width: fieldText(width, LOC), compare: fieldCompare(width, LOC) }))}`;
     }
   };
 
   // — La carte de contacts de l'étape TAD : triangle, diagonale en bas —
   let contactsDrawn: { bins: number; resolution: number; domain: [number, number] } | null = null;
+  let contactRatio = NaN;
   const drawContacts = async (): Promise<void> => {
     const cv = story.querySelector<HTMLCanvasElement>("#contacts");
     const r = await contacts;
@@ -372,6 +468,23 @@ async function main(): Promise<void> {
       M[i * n + j] = v;
       if (j > i + 1) max = Math.max(max, v);
     }
+    // En mots, pour qui ne voit pas le triangle : à séparation égale le long du fil, le contact
+    // moyen entre deux bins du domaine, rapporté au contact moyen d'un bin du domaine avec un bin
+    // hors du domaine. Les séparations comparées sont celles qui existent des deux côtés.
+    const i0 = Math.floor(r.absolute(domain.chrom, domain.start)! / res) - b0, i1 = Math.ceil(r.absolute(domain.chrom, domain.end)! / res) - b0;
+    const inD = (k: number) => k >= i0 && k < i1;
+    let sumIn = 0, sumOut = 0;
+    for (let d = 1; d < i1 - i0; d++) {
+      let a = 0, na = 0, c = 0, nc = 0;
+      for (let i = 0; i + d < n; i++) {
+        const j = i + d, v = M[i * n + j];
+        if (inD(i) && inD(j)) { a += v; na++; } else if (inD(i) !== inD(j)) { c += v; nc++; }
+      }
+      if (na && nc) { sumIn += a / na; sumOut += c / nc; }
+    }
+    contactRatio = sumOut > 0 ? sumIn / sumOut : NaN;
+    const summary = story.querySelector<HTMLDivElement>("#contacts-summary");
+    if (summary && Number.isFinite(contactRatio)) summary.textContent = T(UI.contactsSummary, { bins: n, res: num(res / 1000), ratio: num(contactRatio, 1) });
     const ctx = cv.getContext("2d")!;
     const W = cv.width, H = cv.height, cell = W / n;
     ctx.clearRect(0, 0, W, H);
@@ -414,13 +527,13 @@ async function main(): Promise<void> {
     const named = [...new Set(genes.filter((g) => !/^ENSG\d/.test(g)))];
     const told = named.filter((g) => new RegExp(`(?<![\\w-])${g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(`${h.gene} ${h.text}`));
     const shown = [...told, ...named.filter((g) => !told.includes(g))].slice(0, 6);
-    const fmt = (x: number) => x.toLocaleString("fr-FR");
-    out.innerHTML = `Dans le modèle : bille de ${fmt(Math.round((d.end - d.start) / 1000))} kb, ${esc(d.copy)}, ${fmt(d.start + 1)}–${fmt(d.end)} (hg38)` +
-      (genes.length ? ` · ${genes.length} gène${genes.length > 1 ? "s" : ""}, dont ${esc(shown.join(", "))}${named.length > shown.length ? "…" : ""}` : "");
+    const list = `${shown.join(", ")}${named.length > shown.length ? "…" : ""}`;
+    out.textContent = T(UI.haltFacts, { kb: num(Math.round((d.end - d.start) / 1000)), copy: d.copy, start: num(d.start + 1), end: num(d.end) }) +
+      (genes.length ? ` · ${T(genes.length > 1 ? UI.genesMany : UI.genesOne, { n: num(genes.length), list })}` : "");
   };
 
   // — Navigation —
-  const enter = async (k: number, jump = false): Promise<void> => {
+  const enter = async (k: number, jump = false, focusTitle = !jump): Promise<void> => {
     cur = k;
     scene.fiber?.highlight(-1, -1);
     scene.highlight(null);
@@ -439,7 +552,12 @@ async function main(): Promise<void> {
       }
     }
     render();
+    // Le focus va au titre du nouvel écran : un lecteur d'écran l'annonce, et Tab repart de là.
+    if (focusTitle) story.querySelector<HTMLElement>("h2")?.focus();
+    view.textContent = "";
     try { history.replaceState(null, "", `${location.pathname}${location.search}#t=${k < 0 ? "intro" : k < stops.length ? idOf(stops[k]) : "fin"}`); } catch { /* fichier local */ }
+    const a = story.querySelector<HTMLAnchorElement>("#lang");
+    if (a) a.href = a.href.replace(/#.*$/, "") + location.hash;
   };
   const haltDestination = async (h: Halt) => {
     if (haltDest[h.id]) {
@@ -487,14 +605,33 @@ async function main(): Promise<void> {
     if (t.closest("textarea, input")) return;
     if (e.key === "ArrowRight") { e.preventDefault(); forward(); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); back(); }
-    else if (e.key === "Escape") { hideTip(); if (cur >= content.steps.length && cur < stops.length) back(); }
-    else if (e.key === "Enter" && t.classList.contains("term")) { tipFor === t ? hideTip() : showTip(t); }
+    else if (e.key === "Escape") {
+      // Échap ferme d'abord la bulle, sans toucher au focus (WCAG 1.4.13) ; sinon, quitte la halte.
+      if (tip.style.display === "block") { e.preventDefault(); hideTip(); }
+      else if (cur >= content.steps.length && cur < stops.length) back();
+    }
   });
   window.addEventListener("resize", () => {
     if (FIXED) return;
     scene.resize(...fit());
     dirty = true;
   });
+
+  // — La vue en mots, à chaque arrivée : ce que le picking voit au centre de l'image —
+  let described: { what: string; chrom: string; cat: string; known: boolean } | null = null;
+  const describe = (): void => {
+    const field = fieldText(widthAt(orbit.distance, FOV), LOC);
+    const s = cur >= 0 && cur < stops.length ? scene.select(canvas.width / 2, canvas.height / 2) : null;
+    if (!s) { described = null; view.textContent = cur >= 0 && cur < stops.length ? T(UI.describeNone, { field }) : ""; return; }
+    const cats = categories(scene.evidence());
+    const cat = declared && cats.includes(declared) ? declared : cats[0];
+    const whatMap = UI.what as Record<string, string>;
+    const what = whatMap[s.what] ?? s.what;
+    const chrom = T(UI.chromosome, { n: s.chrom.replace(/^chr/, "") });
+    const range = s.pos >= 0 ? num(s.pos + 1) : `${num(s.start + 1)}–${num(s.end)}`;
+    view.textContent = T(UI.describe, { what, chrom, range, field, cat: evLabel(cat) });
+    described = { what: s.what, chrom: s.chrom, cat, known: s.what in whatMap };
+  };
 
   // — Boucle d'images —
   const labels = (): void => {
@@ -532,6 +669,7 @@ async function main(): Promise<void> {
     }
     if (!anim && !arrived && !scene.busy) {
       arrived = true;
+      describe();
       const a = arrivals[arrivals.length - 1];
       if (a && a.arrivedAt < 0) a.arrivedAt = now;
     }
@@ -544,7 +682,7 @@ async function main(): Promise<void> {
   // Reprise : on y est d'emblée, sans vol ; sinon l'introduction, sur le noyau entier.
   if (start >= 0) await enter(start, true);
   else {
-    await enter(t === "fin" ? stops.length : -1);
+    await enter(t === "fin" ? stops.length : -1, false, false);
     orbit = scene.overview;
   }
   dirty = true;
@@ -569,6 +707,10 @@ async function main(): Promise<void> {
     region: () => scene.region,
     haltDest: () => haltDest,
     contacts: () => contactsDrawn,
+    contactRatio: () => contactRatio,
+    lang: LANG,
+    described: () => described && { ...described, text: view.textContent },
+    evidenceKnown: () => evidenceDetail(scene.evidence()).known,
     ids: () => Array.from(scene.ids()).length,
     /** Le TSS d'un gène, par l'index de la page : chrom et position 0-based. */
     resolve: async (gene: string) => {
@@ -580,6 +722,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  story.innerHTML = `<p>La page n'a pas pu s'ouvrir : ${esc(String(e))}</p>`;
+  story.innerHTML = `<p role="alert">${esc(T(UI.failed, { error: String(e) }))}</p>`;
   console.error(e);
 });

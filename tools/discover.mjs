@@ -17,7 +17,9 @@
  *    5  URL         chaque arrêt rejoué dans un onglet neuf par `#t=` : image identique au pixel
  *                   près : 11/11.
  *
- *    node tools/discover.mjs           (après make g3d fiche linked search, et node tools/build.mjs)
+ *    node tools/discover.mjs [fr|en]   (après make g3d fiche linked search, et node tools/build.mjs)
+ *
+ *  Semaine 20 : la même mesure, mêmes critères, dans chaque langue (`lang`, français par défaut).
  */
 
 import { cdp, launch, shutdown } from "./cdp.mjs";
@@ -39,7 +41,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = 1280, H = 720, PANEL = 400;
 const server = await serve(0);
 const port = server.address().port;
-const base = `http://127.0.0.1:${port}/decouverte.html?w=${W - PANEL}&h=${H}`;
+const LANG = process.argv[2] === "en" ? "en" : "fr";
+const base = `http://127.0.0.1:${port}/decouverte.html?w=${W - PANEL}&h=${H}&lang=${LANG}`;
 const { proc, url, profile } = await launch();
 const browser = await cdp(url);
 
@@ -226,8 +229,8 @@ try {
     faits: !!tad?.contacts && tad.contacts.domain[0] === ctx.domain.start && factsOk === 4,
     url: replayOk === 11,
   };
-  writeFileSync(resolve(OUT, "discover.json"), JSON.stringify({ ctx, results, replay, glossary, atEnd, backToIntro, crit }, null, 1));
-  console.log("\n  Mode Découverte — semaine 19");
+  writeFileSync(resolve(OUT, LANG === "fr" ? "discover.json" : `discover-${LANG}.json`), JSON.stringify({ ctx, results, replay, glossary, atEnd, backToIntro, crit }, null, 1));
+  console.log(`\n  Mode Découverte — semaines 19–20 (${LANG})`);
   console.log(`  1  parcours    centre juste ${centreOk}/11 · fin → quiz ${quizShown ? "oui" : "non"} → introduction ${backToIntro === "intro" ? "oui" : "non"} · haltes au clavier ${results.filter((r) => r.reached).length}/4 ${crit.parcours ? "✓" : "✗"}`);
   for (const r of results) console.log(`                 ${r.centre.ok ? "✓" : "✗"} ${r.id.padEnd(14)} ${r.centre.why}${r.width ? ` · champ ${r.width.toFixed(r.width < 0.1 ? 4 : 2)} µm` : ""}`);
   console.log(`  2  glossaire   ${glossary.terms} termes · survol ${glossary.hover} · focus ${glossary.focus}${glossary.misses.length ? ` · manqués : ${glossary.misses.slice(0, 6).join(" ; ")}` : ""} ${crit.glossaire ? "✓" : "✗"}`);
