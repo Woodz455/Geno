@@ -179,7 +179,14 @@ téléchargement, et c'est dit.
 | `gtex.median.tpm` | GTEx v10, TPM médian par tissu | — |
 | `mondo.obo`, `hpo.obo` | ontologies MONDO et HPO | — |
 
-**Trois remarques qui changent la lecture.**
+**Quatre remarques qui changent la lecture.**
+
+- **ClinVar, le GWAS Catalog et MONDO sont lus à une adresse datée** (2026-11-16, semaine 19).
+  Leurs adresses « dernière version » avaient changé de contenu depuis le verrou : l'empreinte ne
+  correspondait plus et le téléchargement était refusé. Le manifeste pointe désormais sur les
+  archives datées des mêmes versions — ClinVar `weekly/clinvar_20261019.vcf.gz`, GWAS
+  `releases/2026/10/05/`, MONDO `releases/2026-10-06/` —, dont les empreintes sont **identiques**
+  à celles du verrou. Aucune donnée ne change ; le téléchargement redevient reproductible.
 
 - **Aucune mesure de lamina, de speckles ni de nucléole n'existe en GM12878** dans 4DN : DamID,
   pA-DamID et TSA-seq y couvrent K562, HCT116, H1, HFFc6, RPE — pas les lymphoblastes. Décision
