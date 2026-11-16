@@ -53,7 +53,7 @@ Critères fixés avant cette mesure, mais après les premiers essais en ligne de
 | une carte dix fois moins profonde est plus incertaine | variabilité médiane **52 nm** à 40 M de contacts, **128 nm** à 4 M : × 2,46 | ≥ 1,5 |
 | 2 · statistiques | 2 courbes tracées, valeurs = `statistics.json` ; P(s) −1,07, R(s) 0,42 ; P(s) recompté sur cooler aux séparations 1, 2, 3 (test Python) | égal |
 | 3 · PDB, 3DG, glTF relus en JavaScript contre les positions dessinées | 997 billes chacun ; écarts max 5,2·10⁻³ nm (PDB, unité 10 nm), 9,1·10⁻⁴ nm, 4,8·10⁻⁴ nm | précision du format |
-| SVG | 997 cercles pour 997 billes ; **80/80** centres portent leur bille ou une bille qui les couvre | 80/80 (révisé, voir ci-dessous) |
+| SVG (après la reprise du 2026-11-16, voir ci-dessous) | 997 silhouettes pour 997 billes ; bille visible du fichier = bille de l'écran en **60/60** centres et **300/300** points de grille | tous les points jugés (révisé) |
 | PNG | 53,5 ko, `image/png`, aux dimensions du canevas | — |
 | 4 · `.hic` public importé par son chemin | converti en 6 s ; à 2,5 Mb, 92 billes, 90 vues | une structure |
 | 5 · manifestes rejoués, service relancé, sessions **et conversions** effacées | **5/5** à l'octet près, structure et 4 ou 5 fichiers chacun (dont l'ensemble et le `.hic`) | 5/5 |
@@ -65,12 +65,8 @@ réplicats) : variabilité médiane 100 nm pour des billes de 40 nm de rayon.
 
 ### Ce qui n'a pas tenu, ou seulement à moitié
 
-- **L'ordre de dessin du SVG : 77/80.** Le critère d'abord écrit — au centre de chaque cercle, le
-  tampon d'identifiants rend cette bille ou une bille **dessinée après** — échoue sur 3 centres
-  (5 avec un tri par profondeur, 3 avec un tri par distance à l'œil). La cause exacte n'est pas
-  établie. Critère révisé, géométrie seule : la bille, ou une bille dont le disque couvre ce point
-  — 80/80. Le SVG est une figure faite de disques peints, pas le rendu : là où des billes se
-  touchent, l'ordre peut différer de celui de l'écran.
+- **L'ordre de dessin du SVG : 77/80 à la première mesure — corrigé à la reprise** (ci-dessous).
+  Le critère avait été révisé à la géométrie seule ; cette révision est retirée.
 - **La variabilité ne dit que faiblement où la structure est fausse.** Sur le chromosome planté,
   la corrélation de rang entre variabilité et erreur réelle par bille est de **0,27**, pour une
   erreur médiane (93 nm) presque double de la variabilité médiane (51 nm). Le rééchantillonnage
@@ -82,6 +78,97 @@ réplicats) : variabilité médiane 100 nm pour des billes de 40 nm de rayon.
   normalisation du `.hic` (KR, VC) ne sont pas repris comme « poids du fichier ».
 - **PDB** : une première version débordait de ses colonnes pour une grande structure négative
   (−9998,123 fait neuf caractères) ; l'unité passe à 10 nm dès 999 nm.
+
+### Reprise du 2026-11-16 : le SVG corrigé, la semaine remesurée
+
+Demandé : « corriger S18, et ensuite remesurer S18 ». Le conteneur avait été recréé : dépôt
+récupéré à 094ce1c, venv refait, et les deux fichiers d'exemple re-téléchargés, md5 et taille
+égaux à DATA_SOURCES § 8 sexies et § 8 septies.
+
+**La cause des 3 centres sur 80 : trois défauts, trouvés l'un après l'autre.**
+
+1. **La forme.** Une sphère vue en perspective se projette en **ellipse**, plus large que le
+   disque et décalée vers l'extérieur. Le SVG dessinait un cercle centré sur le centre projeté.
+   Correction : la silhouette exacte (cône tangent depuis l'œil), avec ses demi-axes
+   r/√(D²−r²) et r√k/(D²−r²) et son centre décalé.
+2. **L'ordre.** Le tri par distance du centre n'est pas un ordre de visibilité quand les rayons
+   diffèrent. Correction : le tri par **puissance de l'œil** (d² − r²), exact pour des sphères
+   disjointes (acyclicité d'Edelsbrunner, 1989).
+
+   Avec ces deux corrections, la grille passe à 297/297, mais les centres restent à 77/80.
+3. **Les sphères sécantes.** La structure plantée est compacte : **46 221 paires de billes se
+   coupent, 93 voisines par bille**. Pour deux sphères sécantes, aucun ordre de disques entiers
+   n'est exact.
+
+   Du côté de l'œil du plan radical, la bille peinte en premier est contenue dans l'autre ; de
+   l'autre côté, c'est l'inverse. L'écran montre donc l'une ou l'autre selon le point.
+
+   Correction : un **masque** sur la bille peinte après, là où son point d'entrée est à
+   l'intérieur de l'autre. Le masque est la projection de l'arc avant du cercle d'intersection,
+   complétée par l'arc du contour apparent.
+
+   Masquer toutes les paires produisait des centaines de Mo, et l'export ne revenait plus. On ne
+   masque que les paires qui se voient : un lancer de rayons analytique sur le CPU, pixel par
+   pixel, les trouve. Il y en a **1 189**, sur 379 billes. Le SVG pèse **0,57 Mo** et s'écrit en
+   **172 ms**.
+
+**Et un défaut du rendu, trouvé par la mesure.** Une fois le SVG exact, il restait 6 points sur 60
+où l'écran différait. Dans les 6 cas, le SVG montrait la bille la plus proche selon un lancer de
+rayons en float64 ; l'écran en montrait une autre, de **0,07 à 0,7 nm** plus loin, à environ 20 µm
+de l'œil.
+
+La faute était dans le shader des billes (`packages/viewer/src/impostors.ts`). Il calculait
+b² − (|c|² − r²) en float32 : deux nombres d'environ 400 µm², pour une différence d'environ
+0,005 µm². Cette annulation coûtait quelques dixièmes de nanomètre de profondeur.
+
+Correction : la forme stable de *Ray Tracing Gems* (Haines et al., chap. 7). La distance du
+centre au rayon vient d'une différence de vecteurs. C'est mathématiquement la même intersection,
+et `pnpm verify` passe 82/82 avec elle.
+
+Les ellipsoïdes des nucléosomes (`disc.ts`) ont la même forme de calcul, en coordonnées propres
+normalisées. Elle n'a été ni mesurée ni changée ici.
+
+**Le critère, révisé et dit.** L'ancien critère supposait des disques peints sans masque :
+« au centre, cette bille ou une bille peinte après ». Le nouveau est plus strict. La bille que
+montre **le fichier SVG** (ellipses et masques relus dans son texte) doit être celle du tampon
+d'identifiants. Elle est jugée au **centre du pixel lu**, là où passe le rayon du rendu, au centre
+de 80 billes et sur une grille de 20 × 15 points.
+
+Un point à moins de **0,1 px** d'un bord qui décide est compté à part. C'est deux fois l'écart
+maximal des polygones à l'arc vrai : un point par pixel, moins de 0,05 px dès 2,5 px de rayon. Il
+faut au moins 40 centres et 100 points jugés.
+
+Les billes font **2,7 px** de rayon dans cette vue, d'où 20 centres sur 80 à moins de 0,1 px d'un
+bord. Avec 1 px de bande, il y en avait 55 et la mesure n'en jugeait que 25 : la tolérance a été
+resserrée **avant** le résultat final, sans être choisie sur lui.
+
+| SVG, reprise | Résultat |
+|---|---|
+| bille visible du fichier = écran, centres | **60/60** (20 en bord, non jugés) |
+| idem, grille de 300 points | **300/300** (0 en bord) |
+| masques | 379 billes, 1 189 polygones ; 0,57 Mo ; 172 ms |
+
+**La semaine remesurée en entier** (`tools/research18.mjs`, verdict **fait**) donne les mêmes
+chiffres qu'à la première mesure pour tout le reste :
+- ensemble : réplicat affiché = fichier, 21 492 octets sur 143 280, × 2,46 ;
+- statistiques : P(s) −1,07, R(s) 0,42 ;
+- exports PDB, 3DG et glTF : 5,2·10⁻³, 9,1·10⁻⁴ et 4,8·10⁻⁴ nm ;
+- `.hic` : 92 billes, r 0,494 ;
+- **5/5** manifestes rejoués à l'octet près.
+
+**Non-régression relancée :**
+- `make test` : **311** ;
+- `pnpm verify` : **82/82**, shader corrigé compris ;
+- `tools/research.mjs` (S17) : **fait**, nRMSD 0,140 et 0,154, 12/12 manifestes.
+
+**Non relancées :** les mesures de la plongée, de la recherche et des vues liées (S9–S16). Leurs
+données ont été effacées avec le conteneur, et les refaire demande plusieurs Go et des heures de
+calcul. Ces pages ne sont touchées que par le shader des billes, dont les 82 vérifications de
+rendu passent.
+
+**Trouvé en route :** un venv neuf prenait cooler 0.12, que cooltools 0.7.1 ne sait plus lire
+(8 tests sur 311 tombaient). La dépendance est maintenant épinglée à `cooler<0.11`
+(`pyproject.toml`, SETUP).
 
 ### Ce que ça ne dit pas
 
