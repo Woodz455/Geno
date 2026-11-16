@@ -104,7 +104,9 @@ try {
   let P = await openPage(browser, svc.url);
   const sessions = [];
 
+  const T0 = Date.now(), step = (m) => console.error(`  [${((Date.now() - T0) / 1000).toFixed(0)} s] ${m}`);
   // — 1. Ensemble —
+  step("ensemble");
   await P.importPath(PLANTED);
   const deep = await P.run({ resolution: 50000, region: "chrP1", alpha: 0.35, balance: "aucun", ensemble: 20, seed: 1 });
   sessions.push({ file: PLANTED, name: "planté, ensemble 20", manifest: deep.last.manifest });
@@ -132,12 +134,14 @@ try {
   sessions.push({ file: SHALLOW, name: "planté peu profond, ensemble 20", manifest: shallow.last.manifest });
   const varShallow = (await P.ev("window.__research.statistics()")).variability_nm.median;
 
+  step("statistiques");
   // — 2. Statistiques —
   const stFile = JSON.parse((await get(`${svc.base}/sessions/${shallow.last.session}/statistics.json`)).buf.toString());
   const stPage = await P.ev("window.__research.statistics()");
   const charts = await P.ev("window.__research.charts()");
   const okStats = charts === 2 && JSON.stringify(stFile) === JSON.stringify(stPage) && stFile.ps_slope < 0 && stFile.rs_nu > 0;
 
+  step("exports");
   // — 3. Exports, sur la session profonde (rejouée par son manifeste : la page la réaffiche) —
   await P.importPath(PLANTED);
   const again = await P.run({ resolution: 50000, region: "génome", alpha: 0.35, balance: "aucun", ensemble: 0, seed: 0 });
@@ -192,7 +196,9 @@ try {
     }
     return best;
   };
+  step("svg");
   const svg = await P.ev("window.__research.svg()");
+  step(`svg rendu, ${svg.svg.length} caractères`);
   const circlesInSvg = (svg.svg.match(/<ellipse /g) ?? []).length;
   const masked = (svg.svg.match(/ mask="url/g) ?? []).length;
   // L'ordre de dessin : du fond vers l'avant.
@@ -231,6 +237,7 @@ try {
     seen++;
     await judge(c.x, c.y, centres, { bead: c.id });
   }
+  step(`centres ${centres.agree}/${centres.tested}`);
   const grid = { tested: 0, agree: 0, edge: 0, misses: [] };
   for (let gy = 0; gy < 15; gy++) for (let gx = 0; gx < 20; gx++) await judge(405 + (gx + 0.5) * (860 / 20), 10 + (gy + 0.5) * (740 / 15), grid, {});
   writeFileSync(resolve(OUT, "svg18.json"), JSON.stringify({ masked, centres, grid }, null, 1));
@@ -244,6 +251,7 @@ try {
   exportsRes.svg = { circles: circlesInSvg, masked, centres, grid, ok: circlesInSvg === svg.circles.length && circlesInSvg === nb && centres.tested >= 40 && centres.agree === centres.tested && grid.tested >= 100 && grid.agree === grid.tested };
   exportsRes.png = { exported, canvas: png, ok: exported.some((e) => e.name === "structure.png" && e.type === "image/png" && e.bytes > 1000) && exported.some((e) => e.name === "structure.svg" && e.bytes > 1000) };
 
+  step("hic");
   // — 4. .hic, et une session réelle avec ensemble —
   let hic = null;
   if (HIC) {
@@ -266,6 +274,7 @@ try {
     sessions.push({ file: REAL, name: "réel, ensemble 12", manifest: r.last.manifest });
   }
 
+  step("manifestes");
   // — 5. Manifestes, service relancé, sessions et conversions effacées —
   svc.proc.kill();
   await sleep(500);
