@@ -141,6 +141,14 @@ export class SequenceLayer {
     return out;
   }
 
+  /** Semaine 20 : recalcule la fenêtre à la prochaine image, là où est la caméra. `update` ne la
+   *  recalcule que si la caméra a bougé de plus de 10 % du champ : au bout d'un vol, elle peut
+   *  rester celle d'un point un peu avant l'arrivée, et l'image dépend alors du chemin (5 pixels
+   *  d'écart, d'un niveau, entre un vol et un saut direct à la base de TP53). Appelé à l'arrêt. */
+  settle(): void {
+    this.ready = false;
+  }
+
   /** Une image : prépare la fenêtre si l'hélice est proche, compte ce qui manque. Rend
    *  la part d'hélice à dessiner — nulle si la séquence n'est pas là. */
   update(p: number[], widthUm: number, st: State): number {

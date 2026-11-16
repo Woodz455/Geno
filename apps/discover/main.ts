@@ -278,6 +278,10 @@ async function main(): Promise<void> {
   story.innerHTML = `${headerHtml()}<p role="status">${esc(UI.loading)}</p>`;
   const scene: DiveScene = await openDive(canvas, FILE, { target: "tp53" });
   scene.resize(w0, h0);
+  // Toute la fenêtre de la fibre, générée une fois : la fenêtre de séquence de l'hélice ne retient
+  // que les monomères déjà générés, et un vol en génère d'autres qu'un saut direct — l'image d'un
+  // arrêt dépendait du chemin (5 pixels d'un niveau à l'hélice, semaine 20).
+  scene.fiber?.grow(scene.final.target as number[], Number.POSITIVE_INFINITY);
   const index = SearchIndex.open(new HttpSource(SEARCH)).catch(() => null);
   const fiche = FicheReader.open(new HttpSource(FICHE)).catch(() => null);
   const contacts = ContactsReader.open(new HttpSource(CONTACTS)).catch(() => null);
@@ -351,9 +355,11 @@ async function main(): Promise<void> {
   let dirty = true;
   const arrivals: { id: string; orbit: Orbit; arrivedAt: number; dest?: unknown }[] = [];
   let arrived = true;
+  let settled = true;
 
   const flyTo = (to: Orbit, jump = false): void => {
     arrived = false;
+    settled = false;
     if (reduced || jump) {
       orbit = to;
       anim = null;
@@ -667,7 +673,13 @@ async function main(): Promise<void> {
       updateLive();
       dirty = false;
     }
-    if (!anim && !arrived && !scene.busy) {
+    if (!anim && !arrived && !scene.busy && !settled) {
+      // À l'arrêt, la fenêtre de séquence est recalculée là où est la caméra, puis l'image
+      // refaite : l'image d'un arrêt ne dépend plus du chemin qui y a mené.
+      settled = true;
+      scene.sequence?.settle();
+      dirty = true;
+    } else if (!anim && !arrived && !scene.busy) {
       arrived = true;
       describe();
       const a = arrivals[arrivals.length - 1];
@@ -702,6 +714,8 @@ async function main(): Promise<void> {
     widthUm: () => widthAt(orbit.distance, FOV),
     /** La sélection sous le centre de l'image (pixels du canevas) : ce que la caméra vise. */
     centre: () => { scene.render(orbit); const s = scene.select(canvas.width / 2, canvas.height / 2); return s && { ...s, world: null }; },
+    /** La sélection sous un pixel quelconque du canevas (mesure). */
+    pick: (x: number, y: number) => { scene.render(orbit); const s = scene.select(x, y); return s && { ...s, world: null }; },
     domain: () => domain,
     focus: () => focus && { i: focus.i, j: focus.j },
     region: () => scene.region,
