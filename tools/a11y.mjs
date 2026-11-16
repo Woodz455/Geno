@@ -18,6 +18,9 @@
  *                 `categories()`), dans la langue de la page, et le détail d'évidence est reconnu :
  *                 11/11 par langue.
  *
+ *  Témoin : la même page, dégradée exprès (texte gris foncé, panneau de 500 px, contours de focus
+ *  retirés), doit échouer à chacun des contrôles 1 à 4 — sinon les contrôles ne voient rien.
+ *
  *  La non-régression des critères S19 dans chaque langue est `tools/discover.mjs fr|en`.
  *
  *    node tools/a11y.mjs        (après make g3d fiche linked search, et node tools/build.mjs)
@@ -218,6 +221,20 @@ try {
       await Q.close();
     }
   }
+  // Témoin : chaque contrôle doit voir la page dégradée.
+  {
+    const P = await open("fr", 320, 640);
+    await P.settle("intro");
+    await P.ev(`(() => { const st = document.createElement("style"); st.textContent = "#story p { color: #3a3f47 !important } #story { width: 500px !important } *:focus-visible, *:focus { outline: none !important }"; document.head.appendChild(st); })()`);
+    await P.ev(AXE);
+    const ax = await P.ev(`axe.run(document, { runOnly: { type: "tag", values: ${JSON.stringify(AXE_TAGS)} }, resultTypes: ["violations"] }).then((r) => r.violations.map((v) => v.id))`);
+    const co = await P.ev(CONTRAST), fl = await P.ev(REFLOW);
+    await P.ev(`document.querySelector("#story h2").focus()`);
+    await P.key("Tab", "Tab", 9);
+    const fo = await P.ev(FOCUS);
+    result.control = { axe: ax, contrastLow: co.low.length, reflow: fl.n, focusOk: fo?.ok ?? null, sees: ax.length > 0 && co.low.length > 0 && fl.n > 0 && fo?.ok === false };
+    await P.close();
+  }
 } finally {
   browser.close?.();
   await shutdown(proc, profile).catch(() => {});
@@ -251,6 +268,8 @@ for (const lang of ["fr", "en"]) {
   console.log(`  5  vue 3D      ${views}/${R.view.length} descriptions justes${R.view.filter((x) => !x.ok).map((x) => ` · ✗ ${x.id} « ${x.text} » (centre : ${x.centre})`).join("")} ${m(c.vue)}`);
   console.log(`                 ex. « ${R.view.find((x) => x.id === "helice")?.text ?? ""} »`);
 }
-const pass = Object.values(crit).every((c) => Object.values(c).every(Boolean));
+const C = result.control;
+console.log(`  témoin (page dégradée) : axe ${C.axe.join(", ") || "rien"} · ${C.contrastLow} textes sous le seuil · ${C.reflow} débordements · contour ${C.focusOk === false ? "absent vu" : "non vu"} ${C.sees ? "✓ tout est vu" : "✗ un contrôle est aveugle"}`);
+const pass = Object.values(crit).every((c) => Object.values(c).every(Boolean)) && C.sees;
 console.log(`\n  verdict : ${pass ? "\x1b[32mfait\x1b[0m" : "\x1b[31méchec\x1b[0m"}`);
 process.exitCode = pass ? 0 : 1;

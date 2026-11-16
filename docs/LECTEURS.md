@@ -8,6 +8,11 @@ fixe **avant toute passation** qui elles sont, ce qu'on leur demande et comment 
 commité avant la première version du parcours. Une modification ultérieure sera datée et dite
 dans `VALIDATION.md`, jamais faite en silence.
 
+> **2026-11-16 — critère reporté, sans date, par décision de l'utilisateur** (semaine 20). La
+> grille, les seuils et la question sont **inchangés**. La page existe désormais aussi en anglais
+> (`?lang=en`) ; ce protocole reste écrit pour des lecteurs francophones, et un test en anglais
+> demanderait d'abord d'en traduire la question et la grille, datées, avant toute passation.
+
 ## Qui
 
 - **3 à 5 personnes** sans formation en biologie au-delà du lycée : pas d'études de biologie,
