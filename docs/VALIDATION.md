@@ -9,6 +9,130 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S19 — Mode Découverte, le contenu : parcours mesuré 5 sur 5, critère lecteurs en attente
+
+### Le périmètre, et ce qui a été décidé avec vous
+
+Trois décisions prises par vous avant de commencer : un ton **documentaire** (deuxième personne,
+une image puis le fait chiffré) ; le **contenu** en S19, l'accessibilité complète, l'anglais et la
+passation en S20 ; un critère jugé par **de vrais lecteurs**, sur une grille fixée d'avance. La
+page est la plongée de la semaine 12 plus une couche narrative (principe de l'ADR S4) : elle ouvre
+`openDive(…, { target: "tp53" })` et réutilise les arrêts de la scène, `destination()` de la
+semaine 16, la fiche, les contacts et l'index de recherche, sans les dupliquer.
+
+### Ce qui est construit
+
+- **`dist/decouverte.html`** (120 ko) : 7 étapes du noyau (24 µm) à une base de TP53 (4 nm) —
+  noyau, territoires, compartiments, **TAD**, boucle, fibre, hélice —, 4 haltes commentées (HBB,
+  FTO → IRX3, HOXD, X inactif), chacune avec « ce que le modèle ne montre pas », un badge
+  d'évidence à chaque arrêt, une règle qui suit le champ de la caméra, une fin de parcours avec la
+  question ouverte et trois questions corrigées sur place.
+- **Le contenu hors du code**, prêt pour l'anglais : `apps/discover/content/fr.json` et un
+  glossaire de 28 définitions, au survol et au focus clavier.
+- **Les analogies calculées** (`apps/discover/scale.ts`) depuis les vrais nombres : 2,1 m d'ADN,
+  10 µm, 0,34 nm par paire. Aucun nombre d'échelle n'est écrit à la main dans les textes.
+- **L'étape TAD porte le critère** : le domaine en jaune dans la fibre, sa carte de contacts en
+  triangle (89 × 89 bins de 2 kb, lue par `ContactsReader`), les CTCF et la cohésine nommés, et
+  une phrase-résumé.
+- **Le protocole lecteurs** (`docs/LECTEURS.md`), commité **avant** toute mesure : 3 à 5
+  personnes sans formation en biologie, une question ouverte, une grille à 3 éléments, réussite
+  d'un lecteur à 2 sur 3, critère 4 sur 5, 3 sur 4 ou 3 sur 3.
+
+### Mesures automatiques (seuils fixés avant la première mesure)
+
+`node tools/test-discover.mjs`, hors navigateur, appelé par `pnpm verify` :
+
+| Critère | Résultat |
+|---|---|
+| structure : 7 étapes dans l'ordre, 4 haltes, quiz | **fait** |
+| glossaire : chaque balise a sa définition, aucune orpheline | 28 définitions, 28 appelées |
+| jargon : 1ʳᵉ occurrence de chaque terme du lexique balisée, par écran | **63 contrôlées, 0 sans définition** |
+| échelles : 15 valeurs recalculées par un autre chemin, à 1 % | **15/15** |
+| lisibilité Kandel-Moles (rapportée, sans seuil) | 79 à 95 par écran (standard : 60–70) |
+
+`node tools/discover.mjs`, dans Chromium, clavier seul, 1 280 × 720 :
+
+| Critère | Seuil | Résultat |
+|---|---|---|
+| 1 parcours : cible au centre de l'image à chaque arrivée, fin → quiz → introduction | 11/11 | **11/11** |
+| 2 glossaire : définition au survol et au focus Tab | 100 % | **64/64 et 64/64** |
+| 3 évidence : badge = couche réellement rendue | 11/11 | **11/11** |
+| 4 faits : carte du TAD sur le domaine ; haltes qui nomment leur gène depuis la fiche | 4/4 | **fait, 4/4** |
+| 5 URL : chaque arrêt rejoué par `#t=` au pixel près | 11/11 | **11/11** |
+
+### Ce que la mesure a trouvé, et ce qui a été corrigé
+
+La première mesure a échoué sur quatre critères sur cinq. Aucun seuil n'a été changé.
+
+- **Il n'y avait pas de TAD à montrer.** La page supposait une boucle tenue autour de la base de
+  TP53 ; dans la conformation affichée, aucune cohésine n'en tient (c'était déjà le cas à la
+  semaine 12 : la plongée TP53 n'a pas de vue de boucle). Le TAD de l'étape est désormais le
+  **domaine CTCF de la population** qui contient la base : la paire d'ancres convergentes la plus
+  étroite au-dessus du seuil des arcs, monomères 962–1005 (88 kb, chr17:7,594–7,682 Mb), tenue
+  dans **15,8 %** des 1 200 conformations. C'est aussi un domaine planté de la simulation. Le texte
+  de l'étape boucle a été réécrit pour dire ce qu'on voit : une borne CTCF, aucune cohésine dans
+  cette image, une boucle fermée environ une fois sur six.
+- **Le centre de l'image tombait à côté.** À 16 µm, la vue de la plongée montrait chrX devant la
+  cible ; à 3,2 µm, une autre région de chr17 ; aux haltes, une bille voisine. La page tourne
+  désormais autour de la même cible, au même champ, jusqu'à ce que le picking du centre désigne
+  l'objet de l'étape (12 azimuts × 5 hauteurs, ordre fixe).
+- **Les haltes ne se rejouaient pas par l'URL** : leur orientation venait de la vue d'où l'on
+  partait. Elles partent maintenant de la vue d'ensemble.
+- **Les faits des haltes ne nommaient pas leur gène** : seuls les six premiers gènes de la bille
+  s'affichaient (HBB est au milieu de 72 gènes, dont des récepteurs olfactifs). Les gènes dont
+  parle la halte passent en premier, sans les identifiants Ensembl sans nom.
+- **Deux défauts de l'outil de mesure, pas de la page** : la touche Entrée envoyée sans son
+  caractère n'active pas un bouton dans Chromium (un clic, si) ; quatre termes du glossaire
+  étaient sous le bas du panneau. L'outil envoie désormais le caractère et fait défiler le terme
+  jusqu'à lui, comme un lecteur.
+
+Les données ont été refaites de zéro (le conteneur avait été recréé) : 32 sources vérifiées par
+empreinte. ClinVar, GWAS et MONDO avaient changé à leur adresse « dernière version » ; ils sont lus
+aux archives datées des mêmes versions, empreintes identiques au verrou
+([`DATA_SOURCES.md`](DATA_SOURCES.md)).
+
+### Non-régression, données refaites
+
+| Mesure | Résultat |
+|---|---|
+| `make test` (pipeline) | **311 passés**, 0 échec |
+| `pnpm verify` | 16 · 20 · 13 · 21 · 12 réussis, 0 échec ; contenu Découverte **fait** |
+| lectures croisées `.g3d` · magasin · fiche · contacts · recherche · variant | **46 · 7 · 6 · 5 · 9 · 6**, 0 échec |
+| recherche S16 (`tools/search.mjs`) | 645/645 résolutions · 90/90 vols · 30/30 vues rejouées · **fait** |
+| plongée (`tools/dive.mjs 240`) | **0 saut** ; le témoin en a 3, comme il doit |
+| mode Recherche S18 (`tools/research18.mjs`) | ensemble · statistiques · exports · SVG 60/60 et 300/300 · `.hic` · **5/5** manifestes · **fait** |
+
+C'est la non-régression S9–S16 qui n'avait pas pu être relancée à la reprise de la S18, faute de
+données : elle passe sur des données refaites de zéro.
+
+### Ce que ça ne dit pas
+
+- **Le critère de la feuille de route n'est pas jugé.** « Un lecteur sans formation sait expliquer
+  ce qu'est un TAD » se mesure sur des personnes ; les mesures ci-dessus disent seulement que le
+  parcours se fait de bout en bout, que chaque mot technique est défini et que chaque nombre est
+  juste. La S19 est **« contenu fait, critère lecteurs en attente »** jusqu'à ce que les réponses
+  verbatim des lecteurs soient rapportées et notées sur la grille de `LECTEURS.md`.
+- **L'indice de Kandel-Moles est une formule de longueur de mots et de phrases.** 79 à 95 dit des
+  phrases courtes, pas un texte compris.
+- **Le TAD montré est un domaine simulé sur des CTCF plantés**, et la page le dit à l'écran. La
+  carte de contacts est calculée sur le modèle. Ce sont les règles qui sont réelles, pas ce TAD-là.
+- **La vue de la boucle est peu lisible** : à 0,3 µm, la fibre du domaine remplit l'image et la
+  flèche CTCF est petite. Elle passe le critère du centre ; elle n'a pas été jugée par un œil
+  naïf.
+- **Accessibilité minimale seulement** (clavier, `prefers-reduced-motion`) : lecteur d'écran,
+  contrastes et anglais sont la semaine 20.
+
+### Reproduire
+
+```bash
+make -C pipeline data data-seq data-clinical nucleus ensemble fine fine-tp53 g3d fiche linked search
+node tools/build.mjs
+node tools/test-discover.mjs     # contenu
+node tools/discover.mjs          # parcours, dans Chromium
+```
+
+---
+
 ## S18 — Ensemble, statistiques, exports, .hic : 5 sessions sur 5 rejouées avec tous leurs fichiers
 
 ### Le périmètre, et ce qui a été décidé sans vous
