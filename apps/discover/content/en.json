@@ -1,0 +1,134 @@
+{
+  "lang": "en",
+  "title": "From the nucleus to a single letter",
+  "subtitle": "A seven-step dive into the genome of a human cell",
+  "intro": "You are about to travel down into a human cell, from the whole [[nucleus]] to a single letter of its [[DNA]]. Seven steps, from ten micrometres to two nanometres: five thousand times closer at the end than at the start. Move on with the → key or the “Next” button. Underlined words have a definition: hover over them, or reach them with the Tab key.",
+  "steps": [
+    {
+      "id": "noyau",
+      "title": "The nucleus",
+      "stop": "noyau",
+      "evidence": "simulé",
+      "text": "This is the [[nucleus]] of a human white blood cell, from the [[GM12878]] cell line. It is {nucleus_um} micrometres across: a hundred of them side by side would make one millimetre. Yet it holds {dna_m} metres of [[DNA]], {fold} times its own width. If this nucleus were the size of a tennis ball, that thread would be {ball_dna_km} kilometres long, and thinner than a hair. Each bead you see carries {bead_kb},000 letters of it, enough to fill {bead_novels} novels.",
+      "show": "What you see is not a photograph: it is a [[simulated]] model, computed to respect what is known about nuclei."
+    },
+    {
+      "id": "territoires",
+      "title": "Each chromosome in its own place",
+      "stop": "territoires",
+      "evidence": "simulé",
+      "text": "The thread is not tangled at random. It is cut into 46 pieces, the [[chromosome|chromosomes]]: 23 from the mother, 23 from the father. Each one occupies its own region of the [[nucleus]], its [[chromosome territory|territory]], like balls of wool stored side by side in a basket without mixing. In yellow, the two copies of chromosome 17, one from the mother and one from the father: each has its own territory.",
+      "show": "The model's territories are [[simulated]]; their existence, however, has been observed under the microscope since the 1980s."
+    },
+    {
+      "id": "compartiments",
+      "title": "Busy neighbourhoods and quiet ones",
+      "stop": "compartiments",
+      "evidence": "prédit",
+      "text": "Closer in, the colours change. The [[genome]] sorts itself into two kinds of neighbourhood, the [[compartment|compartments]]. In compartment A, the [[DNA]] is loose and its [[gene|genes]] are read: it tends to sit towards the centre. In compartment B, the DNA is tight and silent, mostly against the edge of the [[nucleus]]. Regions of the same kind gather together, even when they are far apart along the thread.",
+      "show": "The compartments shown here are [[predicted]] by the model, not [[measured]] in this cell."
+    },
+    {
+      "id": "tad",
+      "title": "TADs, balls within the ball",
+      "stop": "tad",
+      "evidence": "simulé",
+      "contacts": true,
+      "text": "You are now very close to a famous [[gene]], TP53, the “guardian of the [[genome]]”. At this scale, the thread folds into balls of a few hundred thousand letters, {tad_kb},000 on average: the [[TAD|TADs]]. Inside a TAD, pieces of the thread often touch one another, and rarely touch those of the next TAD. The map below shows it: each dot counts these [[contact|contacts]], and the dark triangle is the TAD.",
+      "how": "How does such a ball form? A ring of proteins, [[cohesin]], grips the thread and slides it through itself, making a loop that grows: this is [[loop extrusion]]. It stops when it runs into a boundary protein, [[CTCF]], sitting the right way round. Two boundaries facing each other close the TAD.",
+      "summary": "A TAD is a stretch of the [[DNA]] thread folded onto itself: what is inside mostly touches itself, and proteins at both ends, CTCF, form its [[border|borders]].",
+      "show": "The CTCF boundaries in this region are [[planted]] in the simulation, and the contact map is computed from the model, not [[measured]]: the rules are real, not this particular TAD."
+    },
+    {
+      "id": "boucle",
+      "title": "The loop and its boundaries",
+      "stop": "boucle",
+      "evidence": "simulé",
+      "text": "This is one end of the [[TAD]]. The arrows mark [[CTCF]] sites: this TAD's arrow points inwards, towards another boundary that, at the far end, points back at it. In this frozen image, no [[cohesin]] is holding the loop closed: among all the [[simulated]] shapes, it is closed only about one time in six. Loops form and come apart all the time. While they hold, they bring distant points of the thread together: an [[enhancer]], a switch in the [[DNA]], can then touch the [[promoter]] of a [[gene]] tens of thousands of letters away.",
+      "show": "CTCF boundaries [[planted]]; loop formed by [[loop extrusion|extrusion]], and held in a minority of the computed shapes."
+    },
+    {
+      "id": "fibre",
+      "title": "The string of beads",
+      "stop": "fibre",
+      "evidence": "illustratif",
+      "text": "Closer still. The [[DNA]] thread winds regularly around small spools of protein, the [[nucleosome|nucleosomes]]: {nuc_bp} letters make {nuc_turns} turns around each spool, then the thread moves on to the next one. This is called [[chromatin]], a string of beads that packs DNA without making it unreadable.",
+      "show": "Here, the position of the nucleosomes is [[illustrative]]: the model does not know it; it shows their shape and spacing, not their exact place."
+    },
+    {
+      "id": "helice",
+      "title": "A single letter",
+      "stop": "helice",
+      "evidence": "mesuré",
+      "text": "You have reached the end of the journey: the [[double helix]], {helix_nm} nanometres wide, one letter every {rise_nm} nanometres. The letters are the [[base|bases]] A, C, G and T, read in order. The one pointed out belongs to TP53, on [[chromosome]] 17: in the recipe of the [[gene]], it is a G (opposite it, on the other strand, a C). When this G becomes an A, the protein loses its guardian role; it is one of the most frequent [[mutation|mutations]] in human cancers.",
+      "show": "The sequence of letters is that of the reference human [[genome]], [[measured]]; the shape of the helix is an ideal geometry."
+    }
+  ],
+  "halts": [
+    {
+      "id": "hbb",
+      "title": "HBB, the haemoglobin gene",
+      "gene": "HBB",
+      "text": "This [[gene]] makes part of haemoglobin, the protein that carries oxygen in the blood. A single changed letter, at the sixth amino acid, causes sickle cell disease. In cells that become red blood cells, a group of [[enhancer|enhancers]] upstream, the LCR, reaches the gene through a loop and switches it on.",
+      "limits": "But you are in a white blood cell: here, these genes are silent and the loop does not form. And the model stops at the bead of {bead_kb},000 letters, which holds the whole gene cluster: it does not show the loop itself."
+    },
+    {
+      "id": "fto",
+      "title": "FTO and IRX3, a remote switch",
+      "gene": "FTO",
+      "text": "Variations of the [[DNA]] in the [[gene]] FTO are associated with the risk of obesity. For a long time they were thought to act on FTO itself. In 2014, it was found that this region touches, through the folding of DNA, another gene, IRX3, about half a million letters away. It is IRX3 that it regulates (Smemo et al., 2014).",
+      "limits": "At the scale of this model, FTO and IRX3 are in the same bead or in two neighbouring beads: you can see that they are close in space, not the precise [[contact]]."
+    },
+    {
+      "id": "hoxd",
+      "title": "HOXD, two TADs to build a limb",
+      "gene": "HOXD13",
+      "text": "The HOXD [[gene|genes]] guide the building of the embryo's limbs. They sit on the [[border]] between two [[TAD|TADs]], each full of [[enhancer|enhancers]]. In the mouse, the Hoxd genes first listen to the TAD on one side and shape the forearm, then to the one on the other side and shape the fingers (Andrey et al., 2013). When a rearrangement of the [[DNA]] moves a border, an enhancer can switch on the wrong gene: this is how some limb malformations arise, as near EPHA4, on this same [[chromosome]] 2 (Lupiáñez et al., 2015).",
+      "limits": "The model has no fine simulation at HOXD: you see the bead that carries the gene cluster, not its two TADs. And the attempt to replay the EPHA4 case in this project did not succeed (week 15)."
+    },
+    {
+      "id": "xi",
+      "title": "The inactive X, switched off in two blocks",
+      "gene": "XIST",
+      "text": "This cell comes from a woman: she has two X [[chromosome|chromosomes]]. So as not to make twice as much protein as a man, one of the two is switched off, coated by an RNA called XIST. This [[inactive X]] folds differently from the active one: instead of many [[TAD|TADs]], it forms two huge blocks, [[superdomain|superdomains]], separated near a region called DXZ4 (Rao et al., 2014).",
+      "limits": "Here, the model is wrong by omission: it builds both X chromosomes the same way. Both copies are highlighted; their real differences are not shown."
+    }
+  ],
+  "quiz": {
+    "intro": "Before you go, one question for you, without looking back.",
+    "open": "What is a TAD? Explain it in your own words, as you would to a friend.",
+    "openNote": "Your answer stays in this browser; it is not sent anywhere.",
+    "choices": [
+      {
+        "q": "Inside a TAD, pieces of DNA touch…",
+        "options": [
+          "mostly each other",
+          "mostly those of the next TAD",
+          "never"
+        ],
+        "answer": 0,
+        "explain": "A TAD is a neighbourhood: you mostly bump into your own neighbours."
+      },
+      {
+        "q": "What marks the borders of a TAD?",
+        "options": [
+          "the membrane of the nucleus",
+          "boundary proteins, CTCF, facing each other",
+          "a cut in the DNA thread"
+        ],
+        "answer": 1,
+        "explain": "The thread is not cut: cohesin extrudes it until it runs into two CTCF boundaries."
+      },
+      {
+        "q": "In this model, the exact shape of the TAD you saw is…",
+        "options": [
+          "photographed under the microscope",
+          "simulated following known rules",
+          "invented without rules"
+        ],
+        "answer": 1,
+        "explain": "The rules (extrusion, CTCF boundaries) are real; this TAD is computed, and its boundaries are planted."
+      }
+    ]
+  }
+}
