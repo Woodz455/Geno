@@ -113,14 +113,17 @@ void main() {
   if (uInvert ? h < 1.0 - vAlpha : h >= vAlpha) discard;
 
   // Caméra à l'origine en espace vue : le rayon part de 0 vers vRay.
+  // Forme stable (Haines et al., Ray Tracing Gems, chap. 7) : la distance du centre au rayon vient
+  // d'une différence de vecteurs, pas de b² − (|c|² − r²). En float32, à 20 µm de l'œil, b² et |c|²
+  // valent ~400 µm² pour une différence de ~0,005 µm² : l'ancienne forme perdait 0,1 à 0,7 nm de
+  // profondeur et départageait mal deux billes sécantes (mesuré en S18, reprise).
   vec3 dir = normalize(vRay);
-  vec3 oc = -vCenter;                       // origine - centre
-  float b = dot(oc, dir);
-  float c = dot(oc, oc) - vRadius * vRadius;
-  float disc = b * b - c;
+  float b = dot(vCenter, dir);              // projection du centre sur le rayon
+  vec3 h = vCenter - b * dir;               // du rayon au centre, perpendiculaire
+  float disc = vRadius * vRadius - dot(h, h);
   if (disc < 0.0) discard;                  // le pixel est hors du disque
 
-  float t = -b - sqrt(disc);                // racine la plus proche
+  float t = b - sqrt(disc);                 // racine la plus proche
   if (t < 0.0) discard;                     // sphère derrière la caméra
 
   vec3 hit = dir * t;
