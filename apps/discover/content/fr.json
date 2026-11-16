@@ -1,0 +1,134 @@
+{
+  "lang": "fr",
+  "title": "Du noyau à une lettre",
+  "subtitle": "Une plongée en sept étapes dans le génome d'une cellule humaine",
+  "intro": "Vous allez descendre dans une cellule humaine, du [[noyau]] entier jusqu'à une seule lettre de son [[ADN]]. Sept étapes, de dix micromètres à deux nanomètres : cinq mille fois plus près à la fin qu'au début. Avancez avec la flèche → ou le bouton « Suivant ». Les mots soulignés ont une définition : survolez-les, ou atteignez-les avec la touche Tab.",
+  "steps": [
+    {
+      "id": "noyau",
+      "title": "Le noyau",
+      "stop": "noyau",
+      "evidence": "simulé",
+      "text": "Voici le [[noyau]] d'un globule blanc humain, de la lignée [[GM12878]]. Il mesure {nucleus_um} micromètres : il en faudrait cent côte à côte pour faire un millimètre. Il contient pourtant {dna_m} mètres d'[[ADN]], {fold} fois sa propre largeur. Si ce noyau avait la taille d'une balle de tennis, ce fil ferait {ball_dna_km} kilomètres, et il serait plus fin qu'un cheveu. Chaque bille que vous voyez en porte {bead_kb} 000 lettres, de quoi remplir {bead_novels} romans.",
+      "show": "Ce que vous voyez n'est pas une photographie : c'est un modèle [[simulé]], calculé pour respecter ce que l'on sait des noyaux."
+    },
+    {
+      "id": "territoires",
+      "title": "Chaque chromosome chez soi",
+      "stop": "territoires",
+      "evidence": "simulé",
+      "text": "Le fil n'est pas emmêlé au hasard. Il est coupé en 46 morceaux, les [[chromosome|chromosomes]] : 23 venus de la mère, 23 du père. Chacun occupe sa propre région du [[noyau]], son [[territoire chromosomique|territoire]], comme des pelotes de laine rangées dans un panier sans se mélanger. En jaune, les deux copies du chromosome 17, l'une venue de la mère, l'autre du père : chacune a son territoire.",
+      "show": "Les territoires du modèle sont [[simulé|simulés]] ; leur existence, elle, est observée au microscope depuis les années 1980."
+    },
+    {
+      "id": "compartiments",
+      "title": "Les quartiers actifs et les quartiers calmes",
+      "stop": "compartiments",
+      "evidence": "prédit",
+      "text": "Plus près, les couleurs changent. Le [[génome]] se range en deux sortes de quartiers, les [[compartiment|compartiments]]. Dans le compartiment A, l'[[ADN]] est lâche et ses [[gène|gènes]] sont lus : il se tient plutôt vers le centre. Dans le compartiment B, l'ADN est serré et silencieux, plutôt contre le bord du [[noyau]]. Les régions de même sorte se regroupent, même éloignées le long du fil.",
+      "show": "Les compartiments affichés ici sont [[prédit|prédits]] par le modèle, pas [[mesuré|mesurés]] dans cette cellule."
+    },
+    {
+      "id": "tad",
+      "title": "Les TAD, des pelotes dans la pelote",
+      "stop": "tad",
+      "evidence": "simulé",
+      "contacts": true,
+      "text": "Vous êtes maintenant tout près d'un [[gène]] célèbre, TP53, le « gardien du [[génome]] ». À cette échelle, le fil se replie en pelotes de quelques centaines de milliers de lettres, en moyenne {tad_kb} 000 : les [[TAD]]. À l'intérieur d'un TAD, les morceaux du fil se touchent souvent entre eux, et rarement avec ceux du TAD voisin. La carte ci-dessous le montre : chaque point compte ces [[contact|contacts]], et le triangle sombre, c'est le TAD.",
+      "how": "Comment une pelote se forme-t-elle ? Un anneau de protéines, la [[cohésine]], s'accroche au fil et le fait glisser à travers lui, en agrandissant une boucle : c'est l'[[extrusion de boucle]]. Il s'arrête quand il bute sur une protéine-borne, [[CTCF]], posée dans le bon sens. Deux bornes face à face ferment le TAD.",
+      "summary": "Un TAD est un morceau du fil d'[[ADN]] replié sur lui-même : ce qu'il y a dedans se touche surtout entre soi, et des protéines aux deux bouts, CTCF, en font les [[frontière|frontières]].",
+      "show": "Les bornes CTCF de cette région sont [[planté|plantées]] dans la simulation, et la carte de contacts est calculée sur le modèle, pas [[mesuré|mesurée]] : ce sont les règles qui sont réelles, pas ce TAD-là."
+    },
+    {
+      "id": "boucle",
+      "title": "La boucle et ses bornes",
+      "stop": "boucle",
+      "evidence": "simulé",
+      "text": "Voici le pied d'une boucle. Les flèches marquent les bornes [[CTCF]] : elles regardent vers l'intérieur de la boucle, face à face. L'anneau turquoise, c'est la [[cohésine]], arrêtée contre elles. Ces boucles rapprochent des points éloignés du fil : un [[enhancer]], un interrupteur de l'[[ADN]], peut ainsi venir toucher le [[promoteur]] d'un [[gène]] situé des dizaines de milliers de lettres plus loin.",
+      "show": "Boucle [[simulé|simulée]] par [[extrusion de boucle|extrusion]], sur des CTCF [[planté|plantés]]."
+    },
+    {
+      "id": "fibre",
+      "title": "Le collier de perles",
+      "stop": "fibre",
+      "evidence": "illustratif",
+      "text": "Plus près encore. Le fil d'[[ADN]] s'enroule régulièrement autour de petites bobines de protéines, les [[nucléosome|nucléosomes]] : {nuc_bp} lettres font {nuc_turns} tours de chaque bobine, puis le fil repart vers la suivante. On parle de [[chromatine]], ce collier de perles qui compacte l'ADN sans le rendre illisible.",
+      "show": "Ici, la position des nucléosomes est [[illustratif|illustrative]] : le modèle ne la connaît pas ; il montre leur forme et leur pas, pas leur place exacte."
+    },
+    {
+      "id": "helice",
+      "title": "Une seule lettre",
+      "stop": "helice",
+      "evidence": "mesuré",
+      "text": "Vous voici au bout du voyage : la [[double hélice]], large de {helix_nm} nanomètres, une lettre tous les {rise_nm} nanomètre. Les lettres sont les [[base|bases]] A, C, G et T, lues dans l'ordre. Celle qui est désignée appartient à TP53, sur le [[chromosome]] 17 : dans la recette du [[gène]], c'est un G (en face, sur l'autre brin, un C). Quand ce G devient un A, la protéine perd sa fonction de gardien ; c'est l'une des [[mutation|mutations]] les plus fréquentes dans les cancers humains.",
+      "show": "La suite des lettres est celle du [[génome]] humain de référence, [[mesuré|mesurée]] ; la forme de l'hélice est une géométrie idéale."
+    }
+  ],
+  "halts": [
+    {
+      "id": "hbb",
+      "title": "HBB, le gène de l'hémoglobine",
+      "gene": "HBB",
+      "text": "Ce [[gène]] fabrique une partie de l'hémoglobine, la protéine qui transporte l'oxygène dans le sang. Une seule lettre changée, au sixième acide aminé, cause la drépanocytose. Dans les cellules qui deviennent des globules rouges, un groupe d'[[enhancer|enhancers]] situé en amont, la LCR, vient toucher le gène par une boucle et l'allume.",
+      "limits": "Mais vous êtes dans un globule blanc : ici, ces gènes sont silencieux et la boucle ne se forme pas. Et le modèle s'arrête à la bille de {bead_kb} 000 lettres, qui contient tout le groupe de gènes : il ne montre pas la boucle elle-même."
+    },
+    {
+      "id": "fto",
+      "title": "FTO et IRX3, un interrupteur à distance",
+      "gene": "FTO",
+      "text": "Des variations de l'[[ADN]] dans le [[gène]] FTO sont associées au risque d'obésité. On a longtemps cru qu'elles agissaient sur FTO lui-même. En 2014, on a découvert que cette région touche, par le repliement de l'ADN, un autre gène, IRX3, situé à environ un demi-million de lettres. C'est IRX3 qu'elle règle (Smemo et al., 2014).",
+      "limits": "À l'échelle de ce modèle, FTO et IRX3 sont dans la même bille ou dans deux billes voisines : on voit qu'ils sont proches dans l'espace, pas le [[contact]] précis."
+    },
+    {
+      "id": "hoxd",
+      "title": "HOXD, deux TAD pour bâtir un membre",
+      "gene": "HOXD13",
+      "text": "Les [[gène|gènes]] HOXD guident la construction des membres de l'embryon. Ils sont posés à la [[frontière]] entre deux [[TAD]], chacun rempli d'[[enhancer|enhancers]]. Chez la souris, les gènes Hoxd écoutent d'abord le TAD d'un côté et façonnent l'avant-bras, puis celui de l'autre côté et façonnent les doigts (Andrey et al., 2013). Quand un remaniement de l'[[ADN]] déplace une frontière, un enhancer peut allumer le mauvais gène : c'est ainsi que des malformations des membres apparaissent, comme près d'EPHA4, sur ce même [[chromosome]] 2 (Lupiáñez et al., 2015).",
+      "limits": "Le modèle n'a pas de simulation fine à HOXD : on voit la bille qui porte le groupe de gènes, pas ses deux TAD. Et l'essai de rejouer le cas EPHA4 dans ce projet n'a pas abouti (semaine 15)."
+    },
+    {
+      "id": "xi",
+      "title": "Le X inactif, éteint en deux blocs",
+      "gene": "XIST",
+      "text": "Cette cellule vient d'une femme : elle a deux [[chromosome|chromosomes]] X. Pour ne pas produire deux fois plus de protéines que chez un homme, l'un des deux est éteint, recouvert d'un ARN nommé XIST. Ce [[X inactif]] se replie autrement que l'actif : au lieu de nombreux [[TAD]], il forme deux immenses blocs, des [[superdomaine|superdomaines]], séparés près d'une région appelée DXZ4 (Rao et al., 2014).",
+      "limits": "Ici, le modèle se trompe par omission : il construit les deux X de la même façon. Les deux copies sont surlignées ; leurs différences réelles ne sont pas représentées."
+    }
+  ],
+  "quiz": {
+    "intro": "Avant de partir, une question pour vous, sans regarder en arrière.",
+    "open": "Qu'est-ce qu'un TAD ? Expliquez-le avec vos mots, comme à un ami.",
+    "openNote": "Votre réponse reste dans ce navigateur ; elle n'est envoyée nulle part.",
+    "choices": [
+      {
+        "q": "Dans un TAD, les morceaux d'ADN se touchent…",
+        "options": [
+          "surtout entre eux",
+          "surtout avec ceux du TAD voisin",
+          "jamais"
+        ],
+        "answer": 0,
+        "explain": "Un TAD est un quartier : on s'y croise surtout entre voisins."
+      },
+      {
+        "q": "Qu'est-ce qui marque les frontières d'un TAD ?",
+        "options": [
+          "la membrane du noyau",
+          "des protéines-bornes, CTCF, face à face",
+          "une coupure du fil d'ADN"
+        ],
+        "answer": 1,
+        "explain": "Le fil n'est pas coupé : la cohésine l'extrude jusqu'à buter sur deux bornes CTCF."
+      },
+      {
+        "q": "Dans ce modèle, la forme exacte du TAD que vous avez vu est…",
+        "options": [
+          "photographiée au microscope",
+          "simulée selon des règles connues",
+          "inventée sans règle"
+        ],
+        "answer": 1,
+        "explain": "Les règles (extrusion, bornes CTCF) sont réelles ; ce TAD-là est calculé, ses bornes sont plantées."
+      }
+    ]
+  }
+}
