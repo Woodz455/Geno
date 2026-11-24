@@ -1403,6 +1403,11 @@ def cmd_sv(args: argparse.Namespace) -> int:
     return 0 if all(res["pass"].values()) else 1
 
 
+def cmd_validate(args: argparse.Namespace) -> int:
+    from .validate import report
+    return report.run()
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="geno", description="Socle 1D du génome — magasin d'intervalles.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1652,6 +1657,9 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--dump", default=str(ROOT.parent / "dist" / "variant-test" / "expected.json"))
     sv.add_argument("--out", default=str(ROOT / "data" / "g3d" / "epha4.variant.json"))
     sv.set_defaults(fn=cmd_sv)
+
+    va = sub.add_parser("validate", help="validation contre les données orthogonales (semaine 21)")
+    va.set_defaults(fn=cmd_validate)
 
     n = sub.add_parser("bench", help="mesure la latence de requête à l'échelle réelle")
     n.add_argument("--n", type=int, default=1_000_000)

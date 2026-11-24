@@ -5,7 +5,7 @@ LOCK  := $(HERE)/scripts/lock.sh
 PY    := $(if $(wildcard $(HERE)/.venv/bin/python),$(HERE)/.venv/bin/python,python3)
 GENO  := PYTHONPATH=$(HERE) $(PY) -m geno_pipeline
 
-.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine fine-tp53 g3d g3d-bench fiche linked search research
+.PHONY: help data data-core data-seq data-annot data-hic data-nuclear data-clinical data-validation data-all data-lock verify selftest status build-store query tracks bench test hic-validate recon nucleus ensemble fine fine-tp53 g3d g3d-bench fiche linked search research validate
 
 help:
 	@echo "Geno — pipeline de données"
@@ -62,6 +62,7 @@ data-annot:     ; @TIERS="annot" $(FETCH)
 data-hic:       ; @TIERS="hic" $(FETCH)
 data-nuclear:   ; @TIERS="nuclear" $(FETCH)
 data-clinical:  ; @TIERS="clinical" $(FETCH)
+data-validation: ; @TIERS="validation" $(FETCH)
 data-all:       ; @TIERS="all" $(FETCH)
 
 data-lock:      ; @$(LOCK)
@@ -82,6 +83,7 @@ fiche:          ; @$(GENO) fiche build && $(GENO) fiche check
 linked:         ; @$(GENO) linked build && $(GENO) linked check
 research:       ; @$(GENO) research serve
 search:         ; @$(GENO) search build && $(GENO) search check
+validate:       ; @$(GENO) validate
 fine:           ; @$(GENO) fine $(if $(N),--bp-per-bead $(N),) $(if $(CTCF),--ctcf $(CTCF),)
 # Semaine 12. D'autres graines que la région ACTB : avec les mêmes, le 1D (numpy pur, graines
 # fixes) planterait exactement les mêmes sites aux mêmes rangs, et rendrait les mêmes boucles.

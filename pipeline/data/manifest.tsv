@@ -7,7 +7,7 @@
 # sha256  PENDING tant qu'aucun téléchargement n'a eu lieu. `make data-lock` l'inscrit.
 #         Une fois inscrite, toute divergence fait échouer le fetch.
 #
-# tier    core seq annot hic nuclear clinical
+# tier    core seq annot hic nuclear clinical validation
 #
 id	tier	status	license	url	sha256	bytes	notes
 hg38.chrom.sizes	core	ok	ucsc-free	https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes	e1d9152418038457a959e949d99c9caf7ae3e4f87cfbb4ffe7d8b9a54ba1202b	11672	Tailles de chromosomes, référentiel primaire
@@ -48,3 +48,9 @@ nads.hffc6.nucleolus	nuclear	ok	4dn	https://4dn-open-data-public.s3.amazonaws.co
 nads.hffc6.control	nuclear	ok	4dn	https://4dn-open-data-public.s3.amazonaws.com/fourfront-webprod/wfoutput/7e6a1b11-6014-41f8-b04b-1a053f4b1da6/4DNFI2S373O8.bedGraph.gz	b424159dac5d635994a5cfb206c0464ee3749d13f63505a7bba880c77bc2babc	4041843	NAD-seq HFFc6, controle (ADN total), RPKM — 4DNFI2S373O8, md5 4DN c5e274fc41f794c61cc236cce5700a8d
 gtex.median.tpm	clinical	ok	gtex-open	https://storage.googleapis.com/adult-gtex/bulk-gex/v10/rna-seq/GTEx_Analysis_v10_RNASeQCv2.4.2_gene_median_tpm.gct.gz	b951fd32aae5cad48435026e07225860596a411a75efd0519e00f330b7a98294	8846936	Expression GTEx v10, TPM median par tissu — inclut Cells_EBV-transformed_lymphocytes
 hpo.obo	clinical	ok	hpo-license	https://purl.obolibrary.org/obo/hp.obo	93dace952fcb3ec4728818857f6ba76bc2d5312f4d83266519b8694b8e798f22	10863613	Human Phenotype Ontology — noms des termes HP cites par ClinVar
+sprite.gm12878.intra1mb	validation	ok	geo-free	https://ftp.ncbi.nlm.nih.gov/geo/series/GSE114nnn/GSE114242/suppl/GSE114242_human_intra_1Mb.tar.gz	7087e39ed7b044fc8d5a4b88f4d4a0b6b1f79c71bbd2fa7969739e275904f791	2015848	
+sprite.gm12878.inter1mb	validation	ok	geo-free	https://ftp.ncbi.nlm.nih.gov/geo/series/GSE114nnn/GSE114242/suppl/GSE114242_human_inter_1Mb.tar.gz	261267e488ae70612da0eeb653252b62a7dab1a6ccc54bf026e12fb01f9ad345	263437933	
+sprite.readme	validation	ok	geo-free	https://ftp.ncbi.nlm.nih.gov/geo/series/GSE114nnn/GSE114242/suppl/GSE114242_SPRITE_readme_heatmaps.rtf	089dffead6348a1463b99cf014c9c6fb9d103002b0e0e6e9585cbc28743ccb67	6602	
+su2020.chr21	validation	ok	cc-by-4.0	https://zenodo.org/records/3928890/files/chromosome21.tsv?download=1	483b4a26de73e5cf815d63291c37a101b1fc0d1dd0b17cbc79384f402c326a9a	260629499	
+su2020.genome	validation	ok	cc-by-4.0	https://zenodo.org/records/3928890/files/genomic-scale.tsv?download=1	88b0d1cc181815634d50dbbaa3a8a8bb80007669a0087126bd29bd0785f7bcfb	200285524	
+su2020.readme	validation	ok	cc-by-4.0	https://zenodo.org/records/3928890/files/README_August%202020.txt?download=1	614397c8d473c71889a5afcd93608c753279983c8e089614e6c1d5cecff981a2	4508	
