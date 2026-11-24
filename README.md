@@ -207,7 +207,7 @@ Aucun lecteur d'écran réel ne l'a encore essayé
 
 **Ce que vaut le modèle, mesuré (semaine 21).** Confronté à des données qu'il n'a jamais vues, le
 noyau ne sait rien de la 3D réelle de GM12878 au-delà de la distance le long du fil :
-- la distance génomique seule prédit SPRITE mieux que lui (ρ = 0,85 contre 0,49) ;
+- la distance génomique seule prédit SPRITE mieux que lui (ρ = 0,82 contre 0,37) ;
 - sa position radiale ne corrèle ni avec le traçage ni avec la lamina (ρ ≈ 0) ;
 - ses lois d'échelle sont fausses (pente de P(s) −1,30 contre −0,82).
 

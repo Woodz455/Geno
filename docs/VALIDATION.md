@@ -9,7 +9,7 @@ un rapport qui n'a pas cherché.
 
 ---
 
-## S21 — Validation contre les données orthogonales : 1 accord, 5 partiels, 7 échecs, et un témoin en échec
+## S21 — Validation contre les données orthogonales : 1 accord, 4 partiels, 8 échecs, témoins tenus
 
 ### Ce qui est validé, et ce qu'on attendait
 
@@ -37,11 +37,14 @@ Les critères ont été fixés et commités **avant** tout téléchargement
 `docs/figures/s21/`. Rejoué une seconde fois, il donne un fichier **identique à l'octet** : les
 permutations ont une graine fixe. `make test` : 317 passés, dont les 6 de `test_validate.py`.
 
+Ces chiffres sont ceux du **second passage**, après la révision datée de la proximité SPRITE (plus
+bas, et [`S21_CRITERES.md`](S21_CRITERES.md)). Le premier passage, invalide, est gardé à la suite.
+
 | # | Données | Mesure | Valeur | Référence | Verdict |
 |---|---|---|---:|---|---|
-| C1a | SPRITE GM12878, intra | ρ brut, proximité du modèle / SPRITE (208 487 paires) | +0,485 | **N1 (distance seule) +0,852** | **échec** |
-| C1b | SPRITE GM12878, intra | ρ corrigé de la distance | +0,020 | permutations p95 +0,008 | partiel |
-| C1c | SPRITE GM12878, intra | compartiments : signe de E1 identique (2 821 bins) | 56,1 % | hasard 50 %, seuil 70 % | partiel |
+| C1a | SPRITE GM12878, intra | ρ brut, proximité du modèle / SPRITE (208 487 paires) | +0,372 | **N1 (distance seule) +0,823** | **échec** |
+| C1b | SPRITE GM12878, intra | ρ corrigé de la distance | +0,006 | permutations p95 +0,007 | **échec** |
+| C1c | SPRITE GM12878, intra | compartiments : signe de E1 identique (2 821 bins) | 53,9 % | hasard 50 %, seuil 70 % | partiel |
 | C1d | SPRITE GM12878, intra | pente de P(s), 1–10 Mb | modèle −1,30, SPRITE −0,82 | écart ≤ 0,2 | **échec** |
 | C2 | SPRITE GM12878, inter | ρ des enrichissements par paire de chromosomes (253) | −0,129 | permutations p95 +0,084 | **échec** |
 | C3a | Su 2020 chr21 (IMR90) | exposant ν de R(s), 0,75–10 Mb | modèle 0,49, traçage 0,24 | écart ≤ 0,1 | **échec** |
@@ -69,34 +72,52 @@ permutations ont une graine fixe. `make test` : 317 passés, dont les 6 de `test
     p95 ;
   - **C4a, +0,054** : le modèle place certains chromosomes entiers plus au centre que d'autres ; la
     permutation garde cette moyenne par chromosome.
-- **Le témoin positif échoue sur une de ses deux mesures.** La règle demandait ρ ≥ 0,9 entre les
-  deux moitiés de l'ensemble :
+- **Le témoin positif tient**, après la révision. La règle demande ρ ≥ 0,9 entre les deux moitiés
+  de l'ensemble :
 
-  | Mesure | Moitié A contre moitié B |
-  |---|---:|
-  | position radiale par bille | **0,997** |
-  | carte intra corrigée de la distance | **0,744** |
+  | Mesure | Premier passage | Second passage |
+  |---|---:|---:|
+  | position radiale par bille | 0,997 | **0,997** |
+  | carte intra corrigée de la distance | 0,744 (échec) | **0,922** |
 
-  Selon la règle écrite d'avance, le rapport est donc **invalide**.
+### Le premier passage, invalide, et la révision
 
-  Cause probable : ce n'est pas l'outil, que les deux témoins précédents disculpent. C'est **le
-  modèle lui-même**. Au-delà de la distance génomique, sa carte de proximité change d'un tirage de
-  100 repliements à l'autre : chaque repliement place ses territoires au hasard, et sur 100 tirages
-  la carte corrigée ne se stabilise pas. Corrigé par Spearman-Brown, l'ensemble entier aurait une
-  fiabilité d'environ 0,85, sous le seuil de 0,9.
+Au premier passage, le témoin positif a échoué sur la carte intra corrigée (0,744). Selon la règle
+écrite d'avance, l'outil était cassé et le rapport invalide.
 
-  Je **n'ai pas changé la règle**. Les critères qui reposent sur cette carte (C1b, C1c) sont à lire
-  sous cette réserve.
+J'avais d'abord attribué l'échec au modèle (« sa carte change d'un tirage à l'autre ») et proposé
+de laisser la règle telle quelle. **C'était faux : l'outil était cassé.** La proximité était la
+**médiane** des distances sur toutes les paires de copies. Pour deux régions d'un même chromosome,
+ces paires forment un mélange à deux bosses : dans la même copie (proches) et entre les deux
+homologues (loin, dans deux territoires). La médiane tombe entre les deux bosses et saute d'un
+tirage à l'autre.
+
+Quatre définitions ont été mesurées **sur le modèle seul**, sans aucune comparaison aux données :
+
+| Définition | Moitié A contre moitié B |
+|---|---:|
+| médiane, toutes paires de copies | 0,744 |
+| médiane, même copie | 0,913 |
+| moyenne de 1/distance, toutes paires de copies | 0,922 |
+| probabilité de contact | 0,635 |
+
+La moyenne de 1/distance est retenue par principe : SPRITE n'est pas phasé et **additionne** les
+contacts des deux homologues. La révision a été datée et commitée **avant** la seconde mesure
+contre les données ; seuils, références et autres critères sont inchangés.
+
+Premier passage, pour mémoire : C1a 0,485 contre N1 0,852 (échec) ; C1b 0,020 contre p95 0,008
+(partiel) ; C1c 56,1 % (partiel). Soit 1 accord, 5 partiels, 7 échecs, sous un témoin en échec. La
+révision a fait passer C1b de « partiel » à « échec » : elle n'a pas avantagé le modèle.
 
 ### Les échecs, nommés
 
 1. **Le modèle fait moins bien que la distance seule.** Contre SPRITE, la proximité du modèle
-   donne ρ = 0,485, et un prédicteur qui ne connaît que la séparation génomique donne 0,852. Ce
+   donne ρ = 0,372, et un prédicteur qui ne connaît que la séparation génomique donne 0,823. Ce
    que la 3D du modèle ajoute à la distance le long du fil est du **bruit** au regard des données
    (C1a).
 2. **Au-delà de la distance, presque rien.**
-   - La carte corrigée de SPRITE : ρ = 0,02, à peine au-dessus des permutations (C1b).
-   - Les compartiments : 56 % d'accord, pour 50 % au hasard (C1c).
+   - La carte corrigée de SPRITE : ρ = 0,006, au niveau des permutations (C1b).
+   - Les compartiments : 54 % d'accord, pour 50 % au hasard (C1c).
    - Les paires de chromosomes : ρ = −0,13 (C2).
 
    C'est ce qu'on attendait d'un modèle sans données de conformation : il n'y a rien dedans à

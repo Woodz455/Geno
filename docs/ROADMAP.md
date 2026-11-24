@@ -460,23 +460,21 @@ Découverte est le mode Recherche avec un préréglage curaté et une couche nar
   (Bintu 2018, Su 2020), DamID lamin B1, contacts SPRITE et GAM.
 - **Livrable** : rapport de validation quantitatif. C'est ce qui sépare un outil d'une jolie image.
 - **Fait quand** : le rapport existe, avec ses corrélations **et ses échecs nommés**.
-- **Semaine 21 — rapport écrit : 1 accord, 5 partiels, 7 échecs ; témoin positif en échec, donc
-  semaine non faite au sens du critère pré-enregistré.** Le modèle tel quel est confronté à SPRITE
-  dans GM12878, au traçage de Su 2020 (IMR90) et au DamID (K562), sur 13 critères fixés d'avance
-  ([`S21_CRITERES.md`](S21_CRITERES.md)).
+- **Semaine 21 — fait : rapport écrit, témoins tenus, 1 accord, 4 partiels, 8 échecs nommés.**
+  Le modèle tel quel est confronté à SPRITE dans GM12878, au traçage de Su 2020 (IMR90) et au DamID
+  (K562), sur 13 critères fixés d'avance ([`S21_CRITERES.md`](S21_CRITERES.md)).
   - **La 3D n'ajoute rien :** la distance génomique seule prédit SPRITE mieux que le modèle
-    (ρ = 0,85 contre 0,49).
-  - **Au-delà de cette distance, presque rien :** ρ = 0,02 sur la carte corrigée, 56 %
-    d'accord sur les compartiments.
+    (ρ = 0,82 contre 0,37).
+  - **Au-delà de cette distance, rien :** ρ = 0,006 sur la carte corrigée ; 54 % d'accord sur
+    les compartiments.
   - **Les lois d'échelle sont fausses :** pente de P(s) −1,30 contre −0,82 ; ν = 0,49 contre
     0,24.
   - **La position radiale ne suit rien de réel :** ρ ≈ 0 contre le traçage et contre la lamina.
-    Elle suit fidèlement la piste LAD synthétique qu'elle a reçue (ρ = 0,78).
+    Elle suit la piste LAD synthétique qu'elle a reçue (ρ = 0,78).
 
-  **Le témoin positif** (une moitié de l'ensemble contre l'autre) passe sur le rayon (0,997)
-  mais échoue sur la carte corrigée (0,744 pour un seuil de 0,9). La cause est le bruit du
-  modèle, pas l'outil ; la règle n'est pas changée
-  ([`VALIDATION.md` § S21](VALIDATION.md)).
+  Le premier passage avait un témoin en échec (0,744). La cause, la médiane d'un mélange de
+  paires de copies, a été trouvée et corrigée par une révision datée, commitée avant la seconde
+  mesure ; le témoin donne alors 0,922 ([`VALIDATION.md` § S21](VALIDATION.md)).
 
 #### Semaine 22 — Performance et compatibilité
 - Budget de frame, mémoire, mobile, chemin de repli WebGPU, particularités Safari.

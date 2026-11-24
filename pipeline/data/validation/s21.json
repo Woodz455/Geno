@@ -4,11 +4,11 @@
    "id": "C1a",
    "data": "SPRITE GM12878, intra, 1 Mb",
    "measure": "ρ brut, proximité du modèle contre SPRITE",
-   "value": 0.4847,
+   "value": 0.372002,
    "threshold": "> ρ(N1)",
    "verdict": "échec",
    "null_p95": null,
-   "reference": 0.851688,
+   "reference": 0.822755,
    "extra": {
     "pairs": 208487
    }
@@ -17,20 +17,20 @@
    "id": "C1b",
    "data": "SPRITE GM12878, intra, 1 Mb",
    "measure": "ρ corrigé de la distance",
-   "value": 0.020394,
+   "value": 0.005995,
    "threshold": "≥ 0,3",
-   "verdict": "partiel",
-   "null_p95": 0.007608,
+   "verdict": "échec",
+   "null_p95": 0.007186,
    "reference": null,
    "extra": {
-    "null_mean": -0.000783
+    "null_mean": -0.00025
    }
   },
   {
    "id": "C1c",
    "data": "SPRITE GM12878, intra, 1 Mb",
    "measure": "signe de E1, modèle = SPRITE (part des bins)",
-   "value": 0.560794,
+   "value": 0.538816,
    "threshold": "≥ 70 %",
    "verdict": "partiel",
    "null_p95": null,
@@ -38,29 +38,29 @@
    "extra": {
     "bins": 2821,
     "per_chrom": {
-     "chr1": 0.309091,
-     "chr2": 0.722689,
-     "chr3": 0.507692,
-     "chr4": 0.271277,
-     "chr5": 0.960674,
-     "chr6": 0.488095,
-     "chr7": 0.56129,
-     "chr8": 0.671329,
-     "chr9": 0.862069,
-     "chr10": 0.361538,
-     "chr11": 0.454545,
-     "chr12": 0.480916,
-     "chr13": 0.589474,
-     "chr14": 0.431818,
-     "chr15": 0.592593,
-     "chr16": 0.607595,
-     "chr17": 0.426667,
-     "chr18": 0.391892,
-     "chr19": 0.410714,
-     "chr20": 0.566667,
-     "chr21": 0.805556,
+     "chr1": 0.522727,
+     "chr2": 0.651261,
+     "chr3": 0.533333,
+     "chr4": 0.5,
+     "chr5": 0.550562,
+     "chr6": 0.52381,
+     "chr7": 0.380645,
+     "chr8": 0.51049,
+     "chr9": 0.758621,
+     "chr10": 0.438462,
+     "chr11": 0.507576,
+     "chr12": 0.534351,
+     "chr13": 0.505263,
+     "chr14": 0.454545,
+     "chr15": 0.469136,
+     "chr16": 0.594937,
+     "chr17": 0.6,
+     "chr18": 0.648649,
+     "chr19": 0.428571,
+     "chr20": 0.433333,
+     "chr21": 0.722222,
      "chr22": 0.617647,
-     "chrX": 0.85906
+     "chrX": 0.597315
     }
    }
   },
@@ -542,8 +542,8 @@
  ],
  "positive_control": {
   "radial": 0.997366,
-  "intra_oe": 0.743691,
-  "ok": false
+  "intra_oe": 0.922483,
+  "ok": true
  },
  "model": {
   "structures": 200,
@@ -578,5 +578,5 @@
   },
   "same_bead_pairs": 1
  },
- "valid": false
+ "valid": true
 }
