@@ -18,6 +18,49 @@ long du fil explique. Ce rapport les chiffre.
 Les régions fines (2 kb, ACTB et TP53) ne sont **pas** validées : aucune des données ci-dessous ne
 les mesure à cette échelle dans GM12878, et leurs CTCF sont plantés.
 
+## Révision du 2026-11-24 — la proximité de SPRITE, après l'échec du témoin positif
+
+Écrite et commitée **avant** la seconde mesure contre les données ; les seuils ne changent pas.
+
+**Ce qui a échoué.** Au premier passage, le témoin positif (moitié A des repliements contre
+moitié B) a donné 0,997 sur les positions radiales, mais **0,744** sur la carte intra corrigée de
+la distance, sous le seuil de 0,9. La règle ci-dessous dit alors : « l'outil est cassé et le
+rapport invalide ».
+
+**La cause, trouvée.** La proximité était la **médiane** des distances sur toutes les paires de
+copies. Pour deux régions d'un même chromosome, ces paires forment un mélange à deux bosses : dans
+la même copie (proches, dans un territoire) et entre les deux homologues (loin, dans deux
+territoires). La médiane d'un tel mélange tombe entre les deux bosses et saute d'un tirage à
+l'autre.
+
+**Mesuré sur le modèle seul** (moitié A contre moitié B, carte intra corrigée, mêmes bins que
+SPRITE, aucune valeur SPRITE comparée) :
+
+| Définition de la proximité | ρ |
+|---|---:|
+| médiane, toutes paires de copies (définition initiale) | 0,744 |
+| médiane, paires dans une même copie seulement | 0,913 |
+| **moyenne de 1/distance, toutes paires de copies** | **0,922** |
+| probabilité de contact à 1,5 × (r_i + r_j) | 0,635 |
+
+**La révision.** Pour les comparaisons à SPRITE (C1a, C1b, C1c) et pour le témoin positif, la
+proximité de deux régions devient **la moyenne de 1/distance sur les 200 repliements et les quatre
+paires de copies**.
+
+Le choix est fixé par le principe, avant toute nouvelle comparaison : SPRITE n'est pas phasé et
+**additionne** les contacts des deux homologues, et l'analogue est une moyenne sur les paires de
+copies, pas une médiane. La médiane de la même copie passe aussi le seuil (0,913), mais elle jette
+les contacts entre homologues, que SPRITE compte.
+
+**Ce qui ne change pas :**
+- les seuils ;
+- les références N1 et N2 ;
+- les autres critères. C1d et C2 utilisent les contacts ; C3 compare copie à copie, où il n'y a
+  pas de mélange ; C4c ne compare que des chromosomes différents, où toutes les paires sont entre
+  territoires.
+
+Les résultats du premier passage restent écrits dans `VALIDATION.md` § S21.
+
 ## Les données
 
 | Jeu | Lignée | Assemblage | Source |
