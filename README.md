@@ -205,6 +205,16 @@ accessible au sens de WCAG 2.2 AA, mesuré :
 Aucun lecteur d'écran réel ne l'a encore essayé
 ([`docs/VALIDATION.md` § S20](docs/VALIDATION.md)).
 
+**Ce que vaut le modèle, mesuré (semaine 21).** Confronté à des données qu'il n'a jamais vues, le
+noyau ne sait rien de la 3D réelle de GM12878 au-delà de la distance le long du fil :
+- la distance génomique seule prédit SPRITE mieux que lui (ρ = 0,85 contre 0,49) ;
+- sa position radiale ne corrèle ni avec le traçage ni avec la lamina (ρ ≈ 0) ;
+- ses lois d'échelle sont fausses (pente de P(s) −1,30 contre −0,82).
+
+C'est ce qu'on attend d'un modèle construit sans aucune donnée de conformation mesurée : seules la
+physique du polymère et une piste LAD synthétique l'ont formé. Le rapport, ses témoins et ses 13
+critères fixés d'avance sont dans [`docs/VALIDATION.md` § S21](docs/VALIDATION.md).
+
 Côté moteur, `pnpm verify` lance 16 assertions sur les imposteurs de sphères dans un vrai
 Chromium : la profondeur bombe, l'interpénétration se résout par fragment et non par quad, et
 le picking GPU reste exact parmi 250 005 instances sur toute la plage d'identifiants 32 bits.

@@ -9,6 +9,167 @@ un rapport qui n'a pas cherché.
 
 ---
 
+## S21 — Validation contre les données orthogonales : 1 accord, 5 partiels, 7 échecs, et un témoin en échec
+
+### Ce qui est validé, et ce qu'on attendait
+
+Le modèle **tel quel** (votre décision) : le noyau diploïde de 8 082 billes de 750 kb et ses 200
+repliements. Ce noyau n'a été construit à partir d'**aucune donnée de conformation mesurée**. Ses
+seules contraintes sont :
+- le volume exclu ;
+- les liaisons ;
+- le confinement ;
+- un rappel radial ordonné par une piste LAD **synthétique**.
+
+Les critères ont été fixés et commités **avant** tout téléchargement
+([`S21_CRITERES.md`](S21_CRITERES.md)). Les données :
+
+| Jeu | Lignée |
+|---|---|
+| SPRITE à 1 Mb (Quinodoz 2018) | **GM12878**, hg19 levé en hg38 |
+| traçage multiplexé de Su 2020 : chr21 à 50 kb (7 591 copies) ; 1 041 loci sur le génome (1 787 cellules) | **IMR90**, pas GM12878 |
+| pA-DamID LMNB1 | **K562**, pas GM12878 |
+| FISH des territoires en lymphoblastes | tirée du **texte** de Croft 1999 et Boyle 2001 |
+
+### Résultats
+
+`make validate` (930 s). Écrit `pipeline/data/validation/s21.json` et les figures de
+`docs/figures/s21/`. Rejoué une seconde fois, il donne un fichier **identique à l'octet** : les
+permutations ont une graine fixe. `make test` : 317 passés, dont les 6 de `test_validate.py`.
+
+| # | Données | Mesure | Valeur | Référence | Verdict |
+|---|---|---|---:|---|---|
+| C1a | SPRITE GM12878, intra | ρ brut, proximité du modèle / SPRITE (208 487 paires) | +0,485 | **N1 (distance seule) +0,852** | **échec** |
+| C1b | SPRITE GM12878, intra | ρ corrigé de la distance | +0,020 | permutations p95 +0,008 | partiel |
+| C1c | SPRITE GM12878, intra | compartiments : signe de E1 identique (2 821 bins) | 56,1 % | hasard 50 %, seuil 70 % | partiel |
+| C1d | SPRITE GM12878, intra | pente de P(s), 1–10 Mb | modèle −1,30, SPRITE −0,82 | écart ≤ 0,2 | **échec** |
+| C2 | SPRITE GM12878, inter | ρ des enrichissements par paire de chromosomes (253) | −0,129 | permutations p95 +0,084 | **échec** |
+| C3a | Su 2020 chr21 (IMR90) | exposant ν de R(s), 0,75–10 Mb | modèle 0,49, traçage 0,24 | écart ≤ 0,1 | **échec** |
+| C3b | Su 2020 chr21 (IMR90) | ρ corrigé de la distance, par paire de billes (1 081) | +0,254 | permutations p95 +0,097 | partiel |
+| C3c | Su 2020 chr21 (IMR90) | distance médiane modèle / traçage | 0,57 à 1 Mb ; 1,01 à 5 Mb | entre 1/1,5 et 1,5 | **échec** |
+| C4a | Su 2020, génome (IMR90) | ρ des positions radiales, 1 041 loci | +0,071 | permutations p95 +0,072 | **échec** |
+| C4b | Su 2020, génome (IMR90) | ρ des positions radiales moyennes, 23 chromosomes | +0,242 | seuil 0,5 | partiel |
+| C4c | Su 2020, génome (IMR90) | ρ des distances entre chromosomes (515 696 paires) | +0,132 | permutations p95 +0,131 | partiel |
+| C5 | pA-DamID LMNB1 (K562) | ρ position radiale / lamina, 3 842 billes | −0,003 | permutations p95 −0,012 | **échec** |
+| C6 | FISH, lymphoblastes (texte) | chr19 plus central que chr18 | −0,013 du rayon | < 0 | accord |
+
+![Les critères en corrélation](figures/s21/summary.png)
+
+### Les témoins
+
+- **Les outils voient ce qu'on leur a imposé.** Contre la piste LAD synthétique qu'il a reçue, la
+  position radiale du modèle donne ρ = **+0,78**. La même mesure contre le vrai DamID donne −0,003.
+  La piste synthétique et le vrai DamID ne se ressemblent pas : ρ = −0,007.
+- **Données plantées.** Des données égales au modèle donnent ρ > 0,999 et « accord ». Mélangées,
+  elles ne passent pas (`tests/test_validate.py`).
+- **Permutations.** Elles sont centrées sur 0 partout où elles brisent l'identité des loci :
+  moyennes entre −0,001 et +0,014. Deux exceptions :
+  - **C4c, +0,111** : permuter des loci à l'intérieur d'un chromosome garde leur chromosome, donc
+    la distance entre territoires ; il faut l'information au-delà du chromosome pour battre ce
+    p95 ;
+  - **C4a, +0,054** : le modèle place certains chromosomes entiers plus au centre que d'autres ; la
+    permutation garde cette moyenne par chromosome.
+- **Le témoin positif échoue sur une de ses deux mesures.** La règle demandait ρ ≥ 0,9 entre les
+  deux moitiés de l'ensemble :
+
+  | Mesure | Moitié A contre moitié B |
+  |---|---:|
+  | position radiale par bille | **0,997** |
+  | carte intra corrigée de la distance | **0,744** |
+
+  Selon la règle écrite d'avance, le rapport est donc **invalide**.
+
+  Cause probable : ce n'est pas l'outil, que les deux témoins précédents disculpent. C'est **le
+  modèle lui-même**. Au-delà de la distance génomique, sa carte de proximité change d'un tirage de
+  100 repliements à l'autre : chaque repliement place ses territoires au hasard, et sur 100 tirages
+  la carte corrigée ne se stabilise pas. Corrigé par Spearman-Brown, l'ensemble entier aurait une
+  fiabilité d'environ 0,85, sous le seuil de 0,9.
+
+  Je **n'ai pas changé la règle**. Les critères qui reposent sur cette carte (C1b, C1c) sont à lire
+  sous cette réserve.
+
+### Les échecs, nommés
+
+1. **Le modèle fait moins bien que la distance seule.** Contre SPRITE, la proximité du modèle
+   donne ρ = 0,485, et un prédicteur qui ne connaît que la séparation génomique donne 0,852. Ce
+   que la 3D du modèle ajoute à la distance le long du fil est du **bruit** au regard des données
+   (C1a).
+2. **Au-delà de la distance, presque rien.**
+   - La carte corrigée de SPRITE : ρ = 0,02, à peine au-dessus des permutations (C1b).
+   - Les compartiments : 56 % d'accord, pour 50 % au hasard (C1c).
+   - Les paires de chromosomes : ρ = −0,13 (C2).
+
+   C'est ce qu'on attendait d'un modèle sans données de conformation : il n'y a rien dedans à
+   retrouver.
+3. **La loi d'échelle est fausse, et dans le même sens que la S7.**
+   - P(s) du modèle chute deux fois plus vite que celle de SPRITE entre 1 et 10 Mb (−1,30 contre
+     −0,82), puis devient plate, le plateau de territoires déjà vu en S7 (C1d).
+   - R(s) grandit deux fois plus vite que dans le traçage (ν = 0,49 contre 0,24 ; C3a). Le
+     traçage retrouve la valeur publiée (0,25–0,33, § S8).
+   - À 1 Mb, le modèle est trop compact (0,37 contre 0,64 µm) ; à 5 Mb il tombe juste
+     (1,01 contre 0,99 µm), par croisement des deux courbes (C3c).
+
+   ![P(s)](figures/s21/ps.png) ![R(s)](figures/s21/rs.png)
+4. **La position radiale ne sait rien.**
+   - ρ = 0,07 contre le traçage, par locus (C4a) ; ρ = 0,08 contre la distance à la lamina que
+     mesurent les auteurs.
+   - ρ = −0,003 contre le DamID (C5).
+
+   La piste LAD qui ordonne le rayon du modèle est synthétique. Le modèle suit fidèlement sa piste
+   (ρ = +0,78), et sa piste ne suit rien de réel.
+
+   ![Rayons](figures/s21/radial.png) ![DamID](figures/s21/damid.png)
+5. **Les accords partiels sont faibles.**
+   - **C3b, ρ = 0,25 sur chr21 corrigé** : c'est le meilleur, et il est bien au-delà des
+     permutations (p95 0,10). Cause probable : le modèle reproduit la forme d'un chromosome
+     linéaire confiné (bras, extrémités), que le traçage voit aussi. C'est de la géométrie de
+     chaîne, pas de la biologie de GM12878.
+   - **C4b, ρ = 0,24 sur 23 chromosomes** : sous le seuil.
+   - **C4c, ρ = 0,132** : égale au p95 des permutations (0,131), donc rien au-delà du chromosome.
+6. **C6 passe, mais de peu.** Dans le modèle, chr19 est plus central que chr18 dans 80 % des
+   repliements. L'écart moyen est de 1,3 % du rayon (environ 65 nm), soit 11 erreurs-types : il est
+   réel. La FISH en lymphoblastes décrit, elle, chr19 au centre et chr18 à la périphérie. L'accord
+   est de signe, pas d'ampleur. Il vient de la seule information génomique que le modèle ait sur
+   les chromosomes : leur taille et leur contenu.
+
+### Précisions et écarts au protocole, dits
+
+- **C2, la référence par permutation.** Le protocole prévoyait de permuter les billes à
+  l'intérieur de chaque chromosome. Pour une mesure par paire de chromosomes, cela ne change aucune
+  somme : la référence serait le modèle lui-même. La référence permute donc les **chromosomes entre
+  eux** (1 000 tirages). Ce n'est pas un seuil adouci : sans elle, C2 ne pouvait pas avoir de
+  référence.
+- **Choix de cartes SPRITE, faits avant la mesure.**
+  - Intra : les 23 matrices publiées à 1 Mb.
+  - Inter : `nover2_1000_raw`, la pondération 2/n de l'article, avec des amas de 1 000 lectures au
+    plus. Les comptes bruts suffisent, puisque l'enrichissement se rapporte aux marges.
+  - Levée en hg38 : 230 bins perdus sur 3 053, surtout près des centromères et des bras
+    acrocentriques (chr1, chr9, chr13–15, chr21–22).
+- **Position radiale du traçage.** Elle est définie par rapport au centroïde des loci de la
+  cellule. Les noyaux d'IMR90 sont aplatis : cette définition mélange hauteur et rayon.
+
+### Ce que ça ne dit pas
+
+- **Que le modèle soit faux en principe.** Il est construit sans aucune donnée de conformation, et
+  ce rapport mesure exactement ce manque. Une piste LAD réelle et une contrainte de contact
+  mesurée en entrée changeraient la question. Ce n'était pas la semaine.
+- **Les régions fines** (2 kb, ACTB et TP53) ne sont pas validées : aucune de ces données ne les
+  mesure à cette échelle dans GM12878, et leurs CTCF sont plantés.
+- **Les lignées.** Le traçage (IMR90) et le DamID (K562) viennent d'autres cellules. Seul SPRITE
+  est mesuré dans GM12878. Un accord avec IMR90 n'en serait pas un avec GM12878, et un échec non
+  plus. Les échecs de C4 et C5 sont cependant si nets (ρ proche de 0) qu'aucune différence de
+  lignée ne les expliquerait.
+- **GAM et Bintu 2018** sont écartés avec leur raison ([`S21_CRITERES.md`](S21_CRITERES.md)).
+
+### Reproduire
+
+```bash
+make -C pipeline data-validation data-lock     # 6 fichiers, empreintes et md5 Zenodo vérifiés
+make -C pipeline validate                      # 15 min ; s21.json, figures, tableau
+```
+
+---
+
 ## S20 — Mode Découverte, accessibilité et anglais : WCAG 2.2 AA mesuré dans les deux langues, critère lecteurs reporté
 
 ### Le périmètre, et ce qui a été décidé avec vous
