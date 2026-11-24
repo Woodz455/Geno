@@ -33,8 +33,9 @@ provient de HG002. À garder en tête quand on parle d'haplotypes.
 | Hi-C in situ GM12878 | GEO `GSE63525` (Rao et al. 2014, *Cell* 159:1665) | **Carte de référence.** La plus profonde publiée ; compartiments, TADs, boucles | Libre, citer |
 | Micro-C H1-hESC | 4DN Data Portal — *à figer en S1* (Krietenstein et al. 2020, *Mol Cell*) | Échelle fine, sous le TAD | 4DN — libre après publication |
 | Micro-C HFFc6 | 4DN Data Portal — *à figer en S1* (Akgol Oksuz et al. 2021, *Nat Methods*) | Second type cellulaire, contrôle | 4DN |
-| SPRITE | Quinodoz et al. 2018, *Cell* | Contacts d'ordre supérieur — **validation orthogonale** | Libre, citer |
-| GAM | Beagrie et al. 2017, *Nature* | Contacts sans ligature — validation orthogonale | Libre, citer |
+| SPRITE GM12878 | GEO `GSE114242` (Quinodoz et al. 2018, *Cell* 174:744), matrices à 1 Mb, hg19 | Contacts d'ordre supérieur — **validation orthogonale** (S21), dans la bonne lignée | Libre, citer |
+| Traçage multiplexé (DNA-MERFISH) | Zenodo `10.5281/zenodo.3928890` (Su et al. 2020, *Cell* 182:1641), chr21 à 50 kb et 1 041 loci, hg38 | Distances et positions radiales mesurées — validation (S21), **IMR90, pas GM12878** | CC-BY-4.0 |
+| GAM | Beagrie et al. 2017, *Nature* | Contacts sans ligature — **écarté en S21** : pas de jeu humain en lymphoblastes | Libre, citer |
 
 GM12878 est retenue comme lignée de référence : caryotype quasi normal, profondeur de
 séquençage inégalée, et lignée féminine — ce qui donne le X inactif et son superdomaine
