@@ -41,8 +41,8 @@ def positive_controls(model: Model, chain: Chain, genes) -> dict:
     A, B = halves(model)
     radial = spearman(A.radial(), B.radial())
     ca, cb = sprite.load_intra(A, chain, genes), sprite.load_intra(B, chain, genes)
-    oa = np.concatenate([sprite.oe_vec(1.0 / c.med[c.i, c.j], c.k) for c in ca])
-    ob = np.concatenate([sprite.oe_vec(1.0 / c.med[c.i, c.j], c.k) for c in cb])
+    oa = np.concatenate([sprite.oe_vec(c.prox[c.i, c.j], c.k) for c in ca])
+    ob = np.concatenate([sprite.oe_vec(c.prox[c.i, c.j], c.k) for c in cb])
     intra = spearman(oa, ob)
     return {"radial": radial, "intra_oe": intra, "ok": bool(radial >= 0.9 and intra >= 0.9)}
 

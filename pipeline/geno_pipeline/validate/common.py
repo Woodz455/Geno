@@ -1,6 +1,7 @@
 """Le modèle tel que la validation le lit, et les trois références de `docs/S21_CRITERES.md`.
 
-- **Proximité** : distance médiane entre billes, sur les repliements et les paires de copies.
+- **Proximité** : pour SPRITE, moyenne de 1/distance sur les repliements et les paires de copies
+  (révision du 2026-11-24, `docs/S21_CRITERES.md`) ; pour le traçage, distance médiane copie à copie.
 - **Contact** : centres à moins de 1,5 × (r_i + r_j), la définition de la semaine 7.
 - **N1** (distance seule) : la moyenne du modèle à la même séparation, sans la 3D.
 - **N2** (permutations) : identités des billes permutées à l'intérieur de chaque chromosome.

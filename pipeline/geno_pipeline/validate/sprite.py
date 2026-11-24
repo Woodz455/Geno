@@ -51,7 +51,7 @@ class Chrom:
     j: np.ndarray
     k: np.ndarray              # décalage en bins hg19
     sprite: np.ndarray         # valeur SPRITE de chaque paire
-    med: np.ndarray            # (n, n) distance médiane du modèle
+    prox: np.ndarray           # (n, n) proximité du modèle : moyenne de 1/distance (révision S21)
     contact: np.ndarray        # (n, n) probabilité de contact du modèle
     genes: np.ndarray          # (n,) gènes codants à ±500 kb du centre
     matrix: np.ndarray         # (n, n) SPRITE, bins valides
@@ -97,7 +97,11 @@ def load_intra(model: Model, chain: Chain, genes: dict[str, np.ndarray]) -> list
             rr = model.radius[np.maximum(idx[0], 0)]
             touch = (D < CUTOFF * (rr[:, None] + rr[None, :])[None]).astype(np.float32)
             touch[np.isnan(D)] = np.nan
-            med = np.nanmedian(D, axis=0)
+            # Proximité : moyenne de 1/distance sur les repliements et les quatre paires de copies
+            # — SPRITE additionne les homologues. La médiane d'abord pré-enregistrée tombait entre
+            # les deux bosses du mélange même copie / homologues (révision du 2026-11-24).
+            with np.errstate(divide="ignore", invalid="ignore"):
+                prox = np.nanmean(np.where(D > 0, 1.0 / D, np.nan), axis=0)
             contact = np.nanmean(touch, axis=0)
             iu, ju = np.triu_indices(len(sel), 1)
             same = idx[0][iu] == idx[0][ju]
@@ -106,7 +110,7 @@ def load_intra(model: Model, chain: Chain, genes: dict[str, np.ndarray]) -> list
             g = genes.get(chrom, np.array([], dtype=np.int64))
             gd = np.searchsorted(g, pos38 + BIN // 2) - np.searchsorted(g, pos38 - BIN // 2)
             out.append(Chrom(chrom, pos38, iu, ju, (sel[ju] - sel[iu]).astype(np.int64), Ms[iu, ju],
-                             med, contact, gd.astype(float), Ms, lost=int((~lifted).sum()), same_bead=int(same.sum())))
+                             prox, contact, gd.astype(float), Ms, lost=int((~lifted).sum()), same_bead=int(same.sum())))
     return out
 
 
@@ -131,7 +135,7 @@ def e1(matrix: np.ndarray, genes: np.ndarray) -> np.ndarray:
 def criteria(model: Model, chroms: list[Chrom], inter: "Inter") -> list[Result]:
     res: list[Result] = []
     # C1a — brut, contre la distance seule (N1 : la loi moyenne du modèle à chaque décalage).
-    prox = np.concatenate([-c.med[c.i, c.j] for c in chroms])
+    prox = np.concatenate([c.prox[c.i, c.j] for c in chroms])
     data = np.concatenate([c.sprite for c in chroms])
     k = np.concatenate([c.k for c in chroms])
     ok = np.isfinite(prox) & np.isfinite(data)
@@ -148,13 +152,13 @@ def criteria(model: Model, chroms: list[Chrom], inter: "Inter") -> list[Result]:
     def model_oe(perms=None):
         parts = []
         for t, c in enumerate(chroms):
-            med = c.med if perms is None else c.med[np.ix_(perms[t], perms[t])]
-            parts.append(oe_vec(1.0 / med[c.i, c.j], c.k))   # proximité = 1 / distance
+            P = c.prox if perms is None else c.prox[np.ix_(perms[t], perms[t])]
+            parts.append(oe_vec(P[c.i, c.j], c.k))
         return np.concatenate(parts)
 
     r = spearman(model_oe(), data_oe)
     p95, mean = null_p95(lambda v: spearman(v, data_oe),
-                         lambda rng: model_oe([rng.permutation(c.med.shape[0]) for c in chroms]))
+                         lambda rng: model_oe([rng.permutation(c.prox.shape[0]) for c in chroms]))
     res.append(Result("C1b", "SPRITE GM12878, intra, 1 Mb", "ρ corrigé de la distance", r, "≥ 0,3",
                       verdict(r, 0.3, p95=p95), null_p95=p95, extra={"null_mean": mean}))
 
@@ -163,7 +167,7 @@ def criteria(model: Model, chroms: list[Chrom], inter: "Inter") -> list[Result]:
     per = {}
     for c in chroms:
         a = e1(c.matrix, c.genes)
-        b = e1(1.0 / np.where(c.med > 0, c.med, np.nan), c.genes)
+        b = e1(c.prox, c.genes)
         same = np.sign(a) == np.sign(b)
         agree += int(same.sum()); total += len(a)
         per[c.name] = float(same.mean())
