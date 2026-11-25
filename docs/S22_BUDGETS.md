@@ -69,6 +69,41 @@ La plongée entière est ensuite jouée en qualité pleine.
 **Passage 2**, sur les trois cibles : la plongée entière avec la correction, jugée contre les deux
 budgets matériel.
 
+### Révision du 2026-11-25 — une cinquième variante, trouvée par l'instrumentation avant le passage 1
+
+Datée et commitée **avant** tout passage sur matériel ; les seuils ne changent pas.
+
+**Ce que les compteurs ont trouvé.** La mesure de référence, sous SwiftShader et sans aucun
+temps, donne **27,3 millions de sommets** soumis par image au pire moment de la plongée, à
+l'échelle de l'hélice. Un seul appel en soumet 19,3 millions : 1 536 indices × 12 544 segments du
+tube de la double hélice.
+
+**La cause.** `TubeRenderer.classify` (`packages/viewer/src/tube.ts`) n'écarte aucun segment hors
+du champ. Pire, un segment derrière la caméra voit sa profondeur ramenée à 10⁻⁶ : il paraît
+immense et part au niveau de détail maximal. Aucun de ces sommets ne fait un pixel.
+
+**La variante ajoutée** : l'élimination des segments de tube hors du cône de vue (sphère
+englobante du segment contre les quatre plans latéraux et le plan proche). Les compteurs, sur les
+240 images de la plongée :
+
+| Variante | Sommets par image (max) |
+|---|---:|
+| référence | 27,3 M |
+| élimination hors champ | 2,49 M |
+| fenêtre visible | 13,6 M |
+| élimination + fenêtre visible | 2,05 M |
+
+Le passage 1 joue donc cinq variantes et leurs combinaisons utiles :
+- pleine ;
+- élimination ;
+- occlusion coupée ;
+- occlusion à demi-résolution ;
+- fenêtre visible.
+
+La règle de choix ne change pas : la moins chère en écart d'image parmi celles qui tiennent.
+L'élimination ne devrait rien changer à l'image ; c'est mesuré, pas supposé
+(`tools/quality-diff.mjs`).
+
 ## Compatibilité
 
 - Sans WebGL2, chaque page qui ouvre la scène montre un **repli** : un message qui nomme ce qui

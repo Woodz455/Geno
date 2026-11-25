@@ -12,7 +12,7 @@
  */
 
 import { dive, type Orbit } from "@geno/viewer";
-import { type DiveScene, FOV } from "./dive.js";
+import { type DiveScene, FOV, type Quality } from "./dive.js";
 
 export interface BenchResult {
   frames: number;
@@ -49,13 +49,18 @@ export function divePath(scene: DiveScene): { length: number; at(s: number): Orb
 
 export interface BenchOptions {
   continuity?: boolean;
+  /** Semaine 22 : ne jouer qu'un segment du trajet, en fractions de sa longueur (0–1). */
+  from?: number;
+  to?: number;
   onProgress?: (fraction: number, phase: "synchronisée" | "rAF") => void;
 }
 
 export async function runBench(scene: DiveScene, frames: number, opts: BenchOptions = {}): Promise<BenchResult> {
   const gl = scene.gl;
   const [W, H] = scene.size();
-  const path = divePath(scene);
+  const full = divePath(scene);
+  const a = opts.from ?? 0, b = opts.to ?? 1;
+  const path = { length: full.length * (b - a), at: (s: number) => full.at(a * full.length + s) };
   const one = new Uint8Array(4);
   const px = opts.continuity ? new Uint8Array(W * H * 4) : null;
   const prev = opts.continuity ? new Uint8Array(W * H * 4) : null;
@@ -116,7 +121,7 @@ export async function runBench(scene: DiveScene, frames: number, opts: BenchOpti
     frames,
     size: [W, H],
     gpu: scene.gpu,
-    pathLength: path.length,
+    pathLength: full.length,
     instances: { preview: scene.preview.frame.count, noyau: scene.fine?.frame.count ?? 0 },
     diffs,
     frameMs,
@@ -134,3 +139,33 @@ export const percentile = (xs: number[], q: number): number => {
   const s = xs.slice().sort((a, b) => a - b);
   return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * q))] : NaN;
 };
+
+/** Semaine 22 : l'écart d'image entre deux qualités, image par image, sur le trajet entier.
+ *  Chaque image est rendue en qualité `ref` puis en `test` au même point, relue entière, et
+ *  l'écart moyen absolu RGB (0–255) est noté. C'est la mesure de « ce que la correction coûte à
+ *  l'œil » de `docs/S22_BUDGETS.md`. */
+export async function compareQuality(scene: DiveScene, frames: number, ref: Partial<Quality>, test: Partial<Quality>): Promise<number[]> {
+  const gl = scene.gl;
+  const [W, H] = scene.size();
+  const path = divePath(scene);
+  const pa = new Uint8Array(W * H * 4), pb = new Uint8Array(W * H * 4);
+  scene.arrival = 1;
+  await scene.preload();
+  scene.growBudgetMs = Infinity;
+  const out: number[] = [];
+  for (let k = 0; k <= frames; k++) {
+    const o = path.at((k / frames) * path.length);
+    scene.setQuality(ref);
+    scene.render(o);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pa);
+    scene.setQuality(test);
+    scene.render(o);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pb);
+    let d = 0;
+    for (let i = 0; i < pa.length; i += 4) d += Math.abs(pa[i] - pb[i]) + Math.abs(pa[i + 1] - pb[i + 1]) + Math.abs(pa[i + 2] - pb[i + 2]);
+    out.push(d / ((pa.length / 4) * 3));
+    if (k % 10 === 0) await new Promise((r) => setTimeout(r, 0));
+  }
+  scene.setQuality(ref);
+  return out;
+}

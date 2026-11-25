@@ -18,7 +18,8 @@ import { gzipSync } from "node:zlib";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MOUNTS = [
-  ["/data/", resolve(ROOT, "pipeline/data/g3d")],
+  // Semaine 22 : GENO_DATA remplace le dossier des .g3d (la CI sert `fixtures/`).
+  ["/data/", process.env.GENO_DATA ? resolve(process.env.GENO_DATA) : resolve(ROOT, "pipeline/data/g3d")],
   ["/ref/", resolve(ROOT, "pipeline/data/raw/seq")],
   ["/", resolve(ROOT, "dist")],
 ];

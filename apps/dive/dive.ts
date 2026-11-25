@@ -17,7 +17,9 @@ import {
   type Orbit,
   perspective,
   Picker,
+  type AoQuality,
   Ssao,
+  tubeSettings,
   type Targets,
   viewMatrix,
   widthAt,
@@ -189,6 +191,9 @@ export interface DiveScene {
    *  suivante peut montrer plus. Sinon, inutile de redessiner (semaine 13 : une image en
    *  vol fait attendre la lecture du pixel d'un clic). */
   busy: boolean;
+  /** Semaine 22 : la qualité courante, et son réglage (recrée l'occlusion si elle change). */
+  quality: Quality;
+  setQuality(q: Partial<Quality>): void;
   render(o: Orbit): void;
   resize(width: number, height: number): void;
   size(): [number, number];
@@ -229,7 +234,22 @@ export interface OpenOptions {
   target?: TargetName;
   /** Témoin de chargement : la séquence n'est lue qu'au moment où l'hélice en a besoin. */
   noPrefetch?: boolean;
+  /** Semaine 22 : la qualité de rendu (voir `Quality`). */
+  quality?: Partial<Quality>;
 }
+
+/** Semaine 22 : ce qui coûte sous la fibre, réglable pour l'isoler sur du vrai matériel.
+ *  - `ao` : l'occlusion ambiante, pleine, à demi-résolution, ou coupée ;
+ *  - `window` : les nucléosomes et l'ADN de toute la fenêtre générée (« context », jusqu'à
+ *    ±40 monomères autour de la base), ou seulement ceux du champ de vue (« visible ») ;
+ *  - `cull` : les tubes sans leurs segments hors du cône de vue. */
+export interface Quality {
+  ao: AoQuality;
+  window: "context" | "visible";
+  /** Les segments de tube hors du cône de vue ne sont pas dessinés (`tube.ts`, sans effet visible). */
+  cull: boolean;
+}
+export const DEFAULT_QUALITY: Quality = { ao: "full", window: "context", cull: false };
 
 /** Une paire de bases vue **de côté** (semaine 12) : l'œil sur la dyade de la paire `rank`
  *  (rang dans la région fine), son barreau couché dans le plan de l'image, `width` µm de champ.
@@ -260,7 +280,9 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
   let W = canvas.width;
   let H = canvas.height;
   let targets: Targets = createTargets(gl, W, H);
-  let ssao = new Ssao(gl, targets);
+  const quality: Quality = { ...DEFAULT_QUALITY, ...(opts.quality ?? {}) };
+  tubeSettings.cull = quality.cull;
+  let ssao = new Ssao(gl, targets, quality.ao);
   let picker = new Picker(gl, targets);
 
   const source = typeof file === "string" ? new HttpSource(file) : file;
@@ -304,6 +326,16 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
     arrival: 0,
     override: null,
     busy: false,
+    quality,
+    setQuality(q: Partial<Quality>): void {
+      const ao = quality.ao;
+      Object.assign(quality, q);
+      tubeSettings.cull = quality.cull;
+      if (quality.ao !== ao) {
+        ssao.dispose();
+        ssao = new Ssao(gl, targets, quality.ao);
+      }
+    },
 
     render(o: Orbit): void {
       const view = viewMatrix(o);
@@ -360,7 +392,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       gl.clearBufferfi(gl.DEPTH_STENCIL, 0, 1.0, 0);
       if (t < 1) preview.renderer.draw(proj, { view, fade: 1 - t, groupFade, mix: st.mix });
       if (fine && t > 0 && st.fiber < 1) fine.renderer.draw(proj, { view, fade: t, invert: true, groupFade, mix: st.mix });
-      if (fiber) fiber.draw(proj, view, H, { ...st, helix });
+      if (fiber) fiber.draw(proj, view, H, { ...st, helix, center: o.target, widthUm, visibleOnly: quality.window === "visible" });
       if (scene.sequence) scene.sequence.draw(proj, view, H, helix);
       // Rayon d'occlusion : l'échelle de ce qu'on regarde, interpolée en logarithme — deux
       // billes de 750 kb, puis deux fois le rayon de la fibre, puis un nucléosome, puis le
@@ -378,7 +410,7 @@ export async function openDive(canvas: HTMLCanvasElement, file: string | Source,
       H = height;
       ssao.dispose();
       targets = createTargets(gl, W, H);
-      ssao = new Ssao(gl, targets);
+      ssao = new Ssao(gl, targets, quality.ao);
       picker = new Picker(gl, targets);
     },
 

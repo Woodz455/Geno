@@ -26,6 +26,12 @@
 import { KIND, link } from "./gl.js";
 
 const TEX_W = 1024;
+
+/** Semaine 22 : élimination des segments hors du cône de vue. Sans elle, un segment derrière la
+ *  caméra voyait sa profondeur ramenée à 10⁻⁶, paraissait immense, et partait au niveau de
+ *  détail maximal — 19 millions de sommets par image à l'échelle de l'hélice, sans un pixel.
+ *  Réglage global de la page (une scène par page). */
+export const tubeSettings = { cull: false };
 const SUBDIV = [1, 2, 4, 8, 16] as const;
 const SIDES = [4, 6, 8, 12, 16] as const;
 
@@ -338,11 +344,25 @@ export class TubeRenderer {
     const P = this.points;
     let rMax = 0;
     const depth = (k: number) => -(view[2] * P[3 * k] + view[6] * P[3 * k + 1] + view[10] * P[3 * k + 2] + view[14]);
-    const sx = (k: number, z: number) => (view[0] * P[3 * k] + view[4] * P[3 * k + 1] + view[8] * P[3 * k + 2] + view[12]) / z;
-    const sy = (k: number, z: number) => (view[1] * P[3 * k] + view[5] * P[3 * k + 1] + view[9] * P[3 * k + 2] + view[13]) / z;
+    const vx = (k: number) => view[0] * P[3 * k] + view[4] * P[3 * k + 1] + view[8] * P[3 * k + 2] + view[12];
+    const vy = (k: number) => view[1] * P[3 * k] + view[5] * P[3 * k + 1] + view[9] * P[3 * k + 2] + view[13];
+    const sx = (k: number, z: number) => vx(k) / z;
+    const sy = (k: number, z: number) => vy(k) / z;
+    const cull = tubeSettings.cull;
+    // Cône de vue en espace caméra : demi-ouvertures, plan proche (perspective standard).
+    const tx = 1 / proj[0], ty = 1 / proj[5];
+    const near = proj[14] / (proj[10] - 1);
+    const nx = Math.hypot(1, tx), ny = Math.hypot(1, ty);
     for (const k of this.segments) {
-      const z0 = Math.max(depth(k), 1e-6);
-      const z1 = Math.max(depth(k + 1), 1e-6);
+      if (cull) {
+        // Sphère englobante du segment : milieu, demi-longueur + rayon du tube.
+        const mx = (vx(k) + vx(k + 1)) / 2, my = (vy(k) + vy(k + 1)) / 2, md = (depth(k) + depth(k + 1)) / 2;
+        const R = Math.hypot(vx(k) - vx(k + 1), vy(k) - vy(k + 1), depth(k) - depth(k + 1)) / 2 + this.radii[k];
+        if (md < near - R) continue;
+        if ((Math.abs(mx) - md * tx) / nx > R || (Math.abs(my) - md * ty) / ny > R) continue;
+      }
+      const z0 = Math.max(depth(k), cull ? near : 1e-6);
+      const z1 = Math.max(depth(k + 1), cull ? near : 1e-6);
       const px = Math.hypot(sx(k, z0) - sx(k + 1, z1), sy(k, z0) - sy(k + 1, z1)) * f;
       buckets[levelFor(px)].push(k);
       rMax = Math.max(rMax, (this.radii[k] / z0) * f);

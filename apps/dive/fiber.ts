@@ -90,6 +90,11 @@ export interface FiberState {
   nuc: number;
   /** 0 → 1 : l'ADN de 1 nm cède à la double hélice (semaine 12, dessinée ailleurs). */
   helix: number;
+  /** Semaine 22 : le point visé et le champ (µm). Avec `visibleOnly`, seuls les nucléosomes et
+   *  l'ADN des monomères proches du champ de vue sont dessinés. */
+  center?: number[];
+  widthUm?: number;
+  visibleOnly?: boolean;
 }
 
 export interface Fiber {
@@ -359,8 +364,21 @@ export async function openFiber(
   let uploaded = 0;
   let nucCores: Core[] = [];
   const AXIS_EVERY = 6;
+  // L'axe de chaque monomère, calculé une fois : la fenêtre « visible » refait l'assemblage à
+  // chaque palier de champ, et ne doit pas refaire la géométrie.
+  const axisCache = new Map<number, Float32Array | number[]>();
+  const axisOf = (k: number) => {
+    let ax = axisCache.get(k);
+    if (!ax) {
+      ax = path.axis(k * lv.bp_per_bead, (k + 1) * lv.bp_per_bead, AXIS_EVERY);
+      axisCache.set(k, ax);
+    }
+    return ax;
+  };
+  let shownKey = "all";
+  let keep: ((k: number) => boolean) | null = null;
   const rebuild = () => {
-    const ordered = doneList.slice().sort((a, b) => a - b);
+    const ordered = doneList.filter((k) => !keep || keep(k)).sort((a, b) => a - b);
     nucCores = ordered.flatMap((k) => path.monomer(k).cores);
     const m = nucCores.length;
     const centers = new Float32Array(m * 3);
@@ -388,7 +406,7 @@ export async function openFiber(
       if (k !== prev + 1 && pts.length) breaks.push(pts.length / 3);
       const b0 = k * lv.bp_per_bead;
       const b1 = (k + 1) * lv.bp_per_bead;
-      const ax = path.axis(b0, b1, AXIS_EVERY);
+      const ax = axisOf(k);
       for (let i = 0; i < ax.length; i += 3) {
         pts.push(ax[i], ax[i + 1], ax[i + 2]);
         ranks.push(Math.min(b1 - 1, b0 + (i / 3) * AXIS_EVERY));
@@ -489,7 +507,20 @@ export async function openFiber(
         if (symbols > 0) arcTube.draw(proj, { view, height, fade: symbols, idBase: IDS.arc });
       }
       if (s.nuc > 0) {
-        if (doneList.length !== uploaded) rebuild();
+        // Fenêtre « visible » (semaine 22) : un rayon de 1,2 champ + 50 nm autour du point visé,
+        // arrondi à un palier de ×1,25 pour ne réassembler qu'une quinzaine de fois par plongée.
+        let key = "all";
+        if (s.visibleOnly && s.center && s.widthUm) {
+          const q = Math.round(Math.log(1.2 * s.widthUm + 0.05) / Math.log(1.25));
+          const r2 = Math.pow(1.25, q) ** 2;
+          const c = s.center.map((v) => Math.round(v / 0.02) * 0.02);
+          key = `${q}:${c.join(",")}`;
+          if (key !== shownKey) keep = (k) => dist2(k, c) <= r2;
+        } else keep = null;
+        if (doneList.length !== uploaded || key !== shownKey) {
+          shownKey = key;
+          rebuild();
+        }
         // Les nucléosomes complètent le tube (h ≥ 1 − nuc), puis cèdent eux-mêmes à la double
         // hélice, qui garde h < helix : à nuc = 1, les deux masques se partagent l'image.
         const f = s.nuc * (1 - s.helix);

@@ -32,8 +32,8 @@
 
 import { FicheReader, HttpSource, SearchIndex, type SearchHit as Hit } from "@geno/g3d";
 import { BASE_COLORS, baseOf, dive, type Orbit, rotate, zoom } from "@geno/viewer";
-import { divePath, runBench } from "./bench.js";
-import { type DiveScene, FOV, openDive, type Region, type Selection, type TargetName } from "./dive.js";
+import { compareQuality, divePath, runBench } from "./bench.js";
+import { type DiveScene, FOV, openDive, type Quality, type Region, type Selection, type TargetName } from "./dive.js";
 import { compose, EVIDENCE_COLORS, FichePanel } from "./fiche.js";
 import { IDS } from "./fiber.js";
 import { measureJunction, measureLoop } from "./legibility.js";
@@ -244,7 +244,12 @@ function publish(r: Record<string, unknown>): void {
 
 async function main(): Promise<void> {
   fit();
-  const scene = await openDive(canvas, FILE, { hard: HARD, noIsolate: q.has("noisolate"), target: TARGET, noPrefetch: q.has("noprefetch") });
+  // Semaine 22 : ?ao=full|half|off et ?window=context|visible règlent la qualité (banc, mesure).
+  const quality: Partial<Quality> = {};
+  if (["full", "half", "off"].includes(q.get("ao") ?? "")) quality.ao = q.get("ao") as Quality["ao"];
+  if (["context", "visible"].includes(q.get("window") ?? "")) quality.window = q.get("window") as Quality["window"];
+  if (q.has("cull")) quality.cull = q.get("cull") !== "0";
+  const scene = await openDive(canvas, FILE, { hard: HARD, noIsolate: q.has("noisolate"), target: TARGET, noPrefetch: q.has("noprefetch"), quality });
 
   if (q.has("junction")) {
     publish({ ok: true, junction: await measureJunction(scene) });
@@ -322,8 +327,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (q.has("compare")) {
+    // Semaine 22 : ?compare&ao=…&window=… — l'écart d'image de cette qualité contre la pleine.
+    const test = { ...scene.quality };
+    const diffs = await compareQuality(scene, Number(q.get("frames") ?? 240), { ao: "full", window: "context", cull: false }, test);
+    publish({ ok: true, quality: test, diffs });
+    return;
+  }
+
   if (BENCH) {
-    const r = await runBench(scene, BENCH, { continuity: true });
+    const r = await runBench(scene, BENCH, { continuity: true, from: Number(q.get("from") ?? 0), to: Number(q.get("to") ?? 1) });
     publish({
       ok: r.diffs.length === BENCH && Number.isFinite(r.diffs[0]),
       hard: HARD,

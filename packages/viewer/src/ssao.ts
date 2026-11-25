@@ -42,6 +42,7 @@ uniform mat4 uProj;
 uniform mat4 uInvProj;
 uniform float uRadius;
 uniform vec3 uKernel[${SAMPLES}];
+uniform int uScale;                // 1 : pleine résolution ; 2 : un pixel d'occlusion pour 2 × 2
 
 out vec4 oAo;
 
@@ -61,7 +62,7 @@ float noise(vec2 p) {
 }
 
 void main() {
-  ivec2 px = ivec2(gl_FragCoord.xy);
+  ivec2 px = min(ivec2(gl_FragCoord.xy) * uScale, textureSize(uDepth, 0) - 1);
   vec2 size = vec2(textureSize(uDepth, 0));
   vec4 g = texelFetch(uDepth, px, 0);
   if (g.x >= 1.0) { oAo = vec4(1.0); return; }    // fond : rien à occulter
@@ -107,6 +108,7 @@ uniform highp sampler2D uDepth;
 uniform mat4 uProj;
 uniform float uRadius;
 uniform float uStrength;
+uniform int uScale;
 
 out vec4 oColor;
 
@@ -116,15 +118,18 @@ float viewZ(float depth) {
 
 void main() {
   ivec2 px = ivec2(gl_FragCoord.xy);
-  ivec2 size = textureSize(uAo, 0);
+  ivec2 size = textureSize(uDepth, 0);
+  ivec2 aoSize = textureSize(uAo, 0);
   vec4 col = texelFetch(uColor, px, 0);
   float d0 = texelFetch(uDepth, px, 0).x;
-  if (d0 >= 1.0) { oColor = col; return; }
+  if (d0 >= 1.0 || uStrength <= 0.0) { oColor = col; return; }
   float z0 = viewZ(d0);
 
   // Flou 4×4 qui ne mélange que des pixels de la même surface : une différence de
   // profondeur supérieure au rayon d'occlusion sépare deux objets, et leur occlusion
-  // ne doit pas baver de l'un sur l'autre.
+  // ne doit pas baver de l'un sur l'autre. À demi-résolution, chaque voisin lit son texel
+  // d'occlusion (q / 2) : le même filtre, guidé par la profondeur pleine, sert de
+  // suréchantillonnage bilatéral.
   float sum = 0.0;
   float wsum = 0.0;
   for (int y = -2; y < 2; y++) {
@@ -133,7 +138,7 @@ void main() {
       float d = texelFetch(uDepth, q, 0).x;
       if (d >= 1.0) continue;
       float w = abs(viewZ(d) - z0) < uRadius ? 1.0 : 0.0;
-      sum += texelFetch(uAo, q, 0).r * w;
+      sum += texelFetch(uAo, min(q / uScale, aoSize - 1), 0).r * w;
       wsum += w;
     }
   }
@@ -176,6 +181,11 @@ export interface SsaoOptions {
   strength?: number;
 }
 
+/** Semaine 22 : la résolution de l'occlusion. « half » calcule un pixel d'occlusion pour 2 × 2
+ *  pixels d'image (quatre fois moins de fragments dans la passe la plus chère) ; « off » saute
+ *  le calcul, et la composition recopie la couleur. */
+export type AoQuality = "full" | "half" | "off";
+
 export class Ssao {
   private readonly ssao: WebGLProgram;
   private readonly compose: WebGLProgram;
@@ -183,17 +193,24 @@ export class Ssao {
   readonly ao: WebGLTexture;
   readonly fbo: WebGLFramebuffer;
   private readonly kern = kernel();
+  readonly scale: 1 | 2;
+  private readonly aoW: number;
+  private readonly aoH: number;
 
   constructor(
     private readonly gl: WebGL2RenderingContext,
     private readonly targets: Targets,
+    readonly quality: AoQuality = "full",
   ) {
+    this.scale = quality === "half" ? 2 : 1;
+    this.aoW = Math.max(1, Math.ceil(targets.width / this.scale));
+    this.aoH = Math.max(1, Math.ceil(targets.height / this.scale));
     this.ssao = link(gl, FULLSCREEN, ssaoSource());
     this.compose = link(gl, FULLSCREEN, COMPOSE);
     this.vao = gl.createVertexArray()!;
     this.ao = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.ao);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, targets.width, targets.height);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, this.aoW, this.aoH);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     this.fbo = gl.createFramebuffer()!;
@@ -205,10 +222,12 @@ export class Ssao {
   /** Calcule l'occlusion depuis la cible des imposteurs. */
   occlusion(proj: Float32Array, o: SsaoOptions): void {
     const { gl, targets } = this;
+    if (this.quality === "off") return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-    gl.viewport(0, 0, targets.width, targets.height);
+    gl.viewport(0, 0, this.aoW, this.aoH);
     gl.disable(gl.DEPTH_TEST);
     gl.useProgram(this.ssao);
+    gl.uniform1i(gl.getUniformLocation(this.ssao, "uScale"), this.scale);
     this.bind(this.ssao, "uDepth", 0, targets.depth);
     gl.uniformMatrix4fv(gl.getUniformLocation(this.ssao, "uProj"), false, proj);
     gl.uniformMatrix4fv(gl.getUniformLocation(this.ssao, "uInvProj"), false, invert(proj));
@@ -230,7 +249,8 @@ export class Ssao {
     this.bind(this.compose, "uDepth", 2, targets.depth);
     gl.uniformMatrix4fv(gl.getUniformLocation(this.compose, "uProj"), false, proj);
     gl.uniform1f(gl.getUniformLocation(this.compose, "uRadius"), o.radius);
-    gl.uniform1f(gl.getUniformLocation(this.compose, "uStrength"), o.strength ?? 1);
+    gl.uniform1f(gl.getUniformLocation(this.compose, "uStrength"), this.quality === "off" ? 0 : o.strength ?? 1);
+    gl.uniform1i(gl.getUniformLocation(this.compose, "uScale"), this.scale);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
@@ -241,7 +261,7 @@ export class Ssao {
     const { gl, targets } = this;
     const buf = new Uint8Array(4);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbo);
-    gl.readPixels(Math.round(x), Math.round(targets.height - 1 - y), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    gl.readPixels(Math.floor(Math.round(x) / this.scale), Math.floor(Math.round(targets.height - 1 - y) / this.scale), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     return buf[0] / 255;
   }
