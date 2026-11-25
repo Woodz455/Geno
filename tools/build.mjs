@@ -77,8 +77,23 @@ const targets = [
 ];
 
 await mkdir(resolve(ROOT, "dist"), { recursive: true });
+// Semaine 22 : les pages qui ouvrent une scène WebGL passent par la porte (`apps/dive/gate.ts`) :
+// repli propre si le navigateur n'a pas ce qu'il faut, la page sinon.
+// `first.html` porte sa détection elle-même (`apps/first/main.ts`) : la porte coûtait 2 Kio à la page
+// la plus petite, celle du premier rendu mesuré en S9.
+const GATED = new Set(["apps/dive/main.ts", "apps/variant/main.ts", "apps/research/main.ts",
+  "apps/discover/main.ts", "apps/linked/main.ts"]);
+async function gated(entry, minify) {
+  const out = await build({
+    stdin: { contents: `import { gate } from "./apps/dive/gate.ts";\ngate(() => import("./${entry}"));\n`, resolveDir: ROOT, loader: "ts" },
+    bundle: true, format: "iife", target: "es2022", write: false, minify, plugins: [stripGlsl],
+    define: { "process.env.NODE_ENV": '"production"', global: "globalThis" }, logLevel: "warning",
+  });
+  return out.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
+}
+
 for (const t of targets) {
-  const js = await bundle(t.entry, t.minify);
+  const js = GATED.has(t.entry) ? await gated(t.entry, t.minify) : await bundle(t.entry, t.minify);
   const css = t.css ? await readFile(resolve(ROOT, t.css), "utf8") : "";
   await writeFile(resolve(ROOT, t.out), page(t.title, js, "", css));
   console.log(`  ${t.out}  ${(js.length / 1024).toFixed(1)} ko`);

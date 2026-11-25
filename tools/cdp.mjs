@@ -24,8 +24,10 @@ export function cdp(url) {
   const ws = new WebSocket(url);
   let next = 1;
   const pending = new Map();
+  const listeners = [];
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
+    if (msg.method) for (const [m, fn] of listeners) if (m === msg.method) fn(msg.params, msg.sessionId);
     if (msg.id && pending.has(msg.id)) {
       const { ok, ko } = pending.get(msg.id);
       pending.delete(msg.id);
@@ -39,7 +41,8 @@ export function cdp(url) {
       ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   return new Promise((ok, ko) => {
-    ws.onopen = () => ok({ send, close: () => ws.close() });
+    // `on(méthode, fn)` (semaine 22) : les évènements CDP, par exemple Runtime.exceptionThrown.
+    ws.onopen = () => ok({ send, close: () => ws.close(), on: (m, fn) => listeners.push([m, fn]) });
     ws.onerror = () => ko(new Error("connexion CDP impossible"));
   });
 }

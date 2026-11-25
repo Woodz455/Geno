@@ -39,3 +39,5 @@ export {
   WRAP_TURNS,
 } from "./dna.js";
 export type { BasePair, Core } from "./dna.js";
+export { detect } from "./support.js";
+export type { Support } from "./support.js";

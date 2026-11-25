@@ -11,7 +11,7 @@
  */
 
 import { G3D, HttpSource } from "@geno/g3d";
-import { createTargets, ImpostorRenderer, NO_HIT, perspective, Picker } from "@geno/viewer";
+import { createTargets, detect, ImpostorRenderer, NO_HIT, perspective, Picker } from "@geno/viewer";
 
 const q = new URLSearchParams(location.search);
 const file = q.get("f") ?? "data/gm12878.g3d";
@@ -38,6 +38,14 @@ function publish(r: Record<string, unknown>): void {
 
 async function main(): Promise<void> {
   const tScript = performance.now();
+  // Semaine 22 : sans ce qu'il faut, un message texte au lieu d'un écran noir (porte légère,
+  // directement ici : la page du premier rendu reste la plus petite).
+  const support = detect();
+  if (!support.ok) {
+    document.body.innerHTML = `<section id="geno-fallback" role="alert" style="max-width:720px;margin:24px auto;padding:16px;font:15px/1.5 system-ui,sans-serif">La vue 3D ne peut pas s'ouvrir dans ce navigateur : il lui manque ${support.missing.join(", ")}. Un navigateur à jour l'affichera.</section>`;
+    publish({ ok: false, fallback: true, missing: support.missing });
+    return;
+  }
   const source = new HttpSource(file);
   const g3d = await G3D.open(source, { prefix });
   const tOpen = performance.now();
