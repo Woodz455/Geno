@@ -248,7 +248,8 @@ async function main(): Promise<void> {
   const quality: Partial<Quality> = {};
   if (["full", "half", "off"].includes(q.get("ao") ?? "")) quality.ao = q.get("ao") as Quality["ao"];
   if (["context", "visible"].includes(q.get("window") ?? "")) quality.window = q.get("window") as Quality["window"];
-  if (q.has("cull")) quality.cull = q.get("cull") !== "0";
+  // ?cull=off|same|on (1 = on, 0 = off).
+  if (q.has("cull")) { const c = q.get("cull"); quality.cull = c === "0" || c === "off" ? "off" : c === "same" ? "same" : "on"; }
   const scene = await openDive(canvas, FILE, { hard: HARD, noIsolate: q.has("noisolate"), target: TARGET, noPrefetch: q.has("noprefetch"), quality });
 
   if (q.has("junction")) {
@@ -330,7 +331,7 @@ async function main(): Promise<void> {
   if (q.has("compare")) {
     // Semaine 22 : ?compare&ao=…&window=… — l'écart d'image de cette qualité contre la pleine.
     const test = { ...scene.quality };
-    const diffs = await compareQuality(scene, Number(q.get("frames") ?? 240), { ao: "full", window: "context", cull: false }, test);
+    const diffs = await compareQuality(scene, Number(q.get("frames") ?? 240), { ao: "full", window: "context", cull: "off" }, test);
     publish({ ok: true, quality: test, diffs });
     return;
   }

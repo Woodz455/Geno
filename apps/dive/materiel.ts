@@ -33,15 +33,16 @@ declare global {
 
 const FRAMES = 240;
 const SEGMENT = { from: 0.55, to: 0.95, frames: 120 };
-/** Semaine 22 : les réglages du diagnostic (`docs/S22_BUDGETS.md`, révision du 2026-11-25). */
+/** Semaine 22 : les réglages du diagnostic (`docs/S22_BUDGETS.md`, révisions du 2026-11-25). */
 const VARIANTS: [string, Partial<Quality>][] = [
   ["pleine", {}],
-  ["élimination hors champ", { cull: true }],
+  ["élimination, détail inchangé", { cull: "same" }],
+  ["élimination hors champ", { cull: "on" }],
   ["occlusion coupée", { ao: "off" }],
   ["occlusion à demi-résolution", { ao: "half" }],
   ["fenêtre visible", { window: "visible" }],
-  ["élimination + fenêtre visible", { cull: true, window: "visible" }],
-  ["élimination + occlusion moitié", { cull: true, ao: "half" }],
+  ["élimination + fenêtre visible", { cull: "on", window: "visible" }],
+  ["élimination + occlusion moitié", { cull: "on", ao: "half" }],
 ];
 const gpuBytes = (): number | null => (window as unknown as { __glcount?: { peak: number } }).__glcount?.peak ?? null;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;

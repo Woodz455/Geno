@@ -1,0 +1,44 @@
+# Semaine 22 — budgets de performance déterministes et repli sans WebGL.
+# Les compteurs (tools/glcount.js) ne mesurent aucun temps : ils comptent ce que la page demande
+# au GPU sous SwiftShader. Un commit qui dépasse un budget de tools/perf-budgets.json échoue ici.
+# Voir docs/S22_BUDGETS.md.
+name: perf
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  budgets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: build
+        run: node tools/build.mjs
+      - name: budgets déterministes
+        run: node tools/perf.mjs --check
+      - name: découverte (textes, parité FR/EN)
+        run: node tools/test-discover.mjs
+      - name: repli sans WebGL
+        run: node tools/fallback.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf
+          path: dist/perf/
+          if-no-files-found: ignore

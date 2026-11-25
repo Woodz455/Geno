@@ -2,7 +2,7 @@
  *  qualité pleine, image par image, sur la plongée entière (`dive.html?compare`). C'est la mesure
  *  de la règle de choix de `docs/S22_BUDGETS.md`.
  *
- *    node tools/quality-diff.mjs [frames]
+ *    node tools/quality-diff.mjs [frames] [requête d'une variante]
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -13,14 +13,17 @@ import { serve } from "./serve.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FRAMES = Number(process.argv[2] ?? 240);
-const VARIANTS = [
-  ["élimination hors champ", "cull=1"],
+const ALL = [
+  ["élimination, détail inchangé", "cull=same"],
+  ["élimination hors champ", "cull=on"],
   ["fenêtre visible", "window=visible"],
   ["occlusion à demi-résolution", "ao=half"],
   ["occlusion coupée", "ao=off"],
-  ["élimination + fenêtre visible", "cull=1&window=visible"],
-  ["élimination + occlusion moitié", "cull=1&ao=half"],
+  ["élimination + fenêtre visible", "cull=on&window=visible"],
+  ["élimination + occlusion moitié", "cull=on&ao=half"],
 ];
+// `node tools/quality-diff.mjs 240 cull=same` : une seule variante.
+const VARIANTS = process.argv[3] ? ALL.filter(([, q]) => q === process.argv[3]) : ALL;
 
 async function run(browser, url) {
   const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });

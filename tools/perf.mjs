@@ -13,7 +13,7 @@
  *    node tools/perf.mjs                  mesure, écrit dist/perf/perf.json
  *    node tools/perf.mjs --check          échoue si un budget de tools/perf-budgets.json est dépassé
  *    node tools/perf.mjs --write          inscrit le cliquet : valeur mesurée + 10 %
- *    options : --ao=full|half|off  --window=context|visible  --cull=0|1  --frames=N
+ *    options : --ao=full|half|off  --window=context|visible  --cull=off|same|on  --frames=N
  *
  *  Données : `pipeline/data/g3d/` si présent, sinon `fixtures/` (empreinte vérifiée).
  */
@@ -88,7 +88,7 @@ try {
   const max = (k) => Math.max(...fr.map((f) => f[k]));
   const at = (k) => fr.findIndex((f) => f[k] === max(k));
   result = {
-    quality: { ao: AO || "full", window: WINDOW || "context", cull: CULL === "1" },
+    quality: { ao: AO || "full", window: WINDOW || "context", cull: CULL || "off" },
     frames_counted: fr.length,
     unknown_formats: dive.gl.unknownFormats,
     budgets: {

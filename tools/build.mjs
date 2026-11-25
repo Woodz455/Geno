@@ -105,8 +105,9 @@ for (const t of targets) {
 {
   const js = await bundle("apps/dive/materiel.ts", true);
   const tpl = await readFile(resolve(ROOT, "apps/dive/materiel.html"), "utf8");
-  const g3d = resolve(ROOT, "pipeline/data/g3d/gm12878.g3d");
-  const data = existsSync(g3d) ? (await readFile(g3d)).toString("base64") : "";
+  // Sans le pipeline (CI), la fixture commitée, de même contenu (empreinte vérifiée par perf.mjs).
+  const g3d = [resolve(ROOT, "pipeline/data/g3d/gm12878.g3d"), resolve(ROOT, "fixtures/gm12878.g3d")].find(existsSync) ?? "";
+  const data = g3d ? (await readFile(g3d)).toString("base64") : "";
   await mkdir(resolve(ROOT, "dist/materiel"), { recursive: true });
   // Semaine 22 : les compteurs WebGL (`tools/glcount.js`) d'abord, pour la mémoire GPU allouée.
   const glcount = await readFile(resolve(ROOT, "tools/glcount.js"), "utf8");

@@ -12,6 +12,7 @@ import { join } from "node:path";
 export const CHROME = [
   process.env.CHROME_PATH,
   "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  "/opt/pw-browsers/chromium",
   "/usr/bin/chromium",
 ].filter(Boolean).find((p) => existsSync(p));
 if (!CHROME) {
@@ -54,6 +55,8 @@ export function launch(extra = []) {
     "--no-sandbox",
     "--use-gl=angle",
     "--use-angle=swiftshader",
+    // Chrome ≥ 137 ne repasse plus seul sur SwiftShader pour WebGL (runners GitHub, semaine 22).
+    "--enable-unsafe-swiftshader",
     "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
     "--no-first-run",

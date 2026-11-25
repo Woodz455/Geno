@@ -18,6 +18,7 @@ import {
   perspective,
   Picker,
   type AoQuality,
+  type CullMode,
   Ssao,
   tubeSettings,
   type Targets,
@@ -242,14 +243,13 @@ export interface OpenOptions {
  *  - `ao` : l'occlusion ambiante, pleine, à demi-résolution, ou coupée ;
  *  - `window` : les nucléosomes et l'ADN de toute la fenêtre générée (« context », jusqu'à
  *    ±40 monomères autour de la base), ou seulement ceux du champ de vue (« visible ») ;
- *  - `cull` : les tubes sans leurs segments hors du cône de vue. */
+ *  - `cull` : les tubes sans leurs segments hors du cône de vue (`CullMode`, `tube.ts`). */
 export interface Quality {
   ao: AoQuality;
   window: "context" | "visible";
-  /** Les segments de tube hors du cône de vue ne sont pas dessinés (`tube.ts`, sans effet visible). */
-  cull: boolean;
+  cull: CullMode;
 }
-export const DEFAULT_QUALITY: Quality = { ao: "full", window: "context", cull: false };
+export const DEFAULT_QUALITY: Quality = { ao: "full", window: "context", cull: "off" };
 
 /** Une paire de bases vue **de côté** (semaine 12) : l'œil sur la dyade de la paire `rank`
  *  (rang dans la région fine), son barreau couché dans le plan de l'image, `width` µm de champ.
