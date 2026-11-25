@@ -93,8 +93,10 @@ for (const t of targets) {
   const g3d = resolve(ROOT, "pipeline/data/g3d/gm12878.g3d");
   const data = existsSync(g3d) ? (await readFile(g3d)).toString("base64") : "";
   await mkdir(resolve(ROOT, "dist/materiel"), { recursive: true });
+  // Semaine 22 : les compteurs WebGL (`tools/glcount.js`) d'abord, pour la mémoire GPU allouée.
+  const glcount = await readFile(resolve(ROOT, "tools/glcount.js"), "utf8");
   const html = tpl.replace("<script>/*SCRIPT*/</script>", () =>
-    `<script id="g3d" type="text/plain">${data}</script>\n<script>${js.replace(/<\/script/gi, "<\\/script")}</script>`);
+    `<script>${glcount}</script>\n<script id="g3d" type="text/plain">${data}</script>\n<script>${js.replace(/<\/script/gi, "<\\/script")}</script>`);
   await writeFile(resolve(ROOT, "dist/materiel/index.html"), html);
   console.log(`  dist/materiel/index.html  ${(html.length / 1024).toFixed(1)} ko${data ? "  (.g3d intégré)" : "  (sans .g3d : make g3d)"}`);
 }

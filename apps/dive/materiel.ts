@@ -10,7 +10,7 @@
 import { BufferSource } from "@geno/g3d";
 import { distanceFor, type Orbit } from "@geno/viewer";
 import { median, percentile, runBench } from "./bench.js";
-import { FOV, openDive } from "./dive.js";
+import { DEFAULT_QUALITY, FOV, openDive, type Quality } from "./dive.js";
 
 interface Doc {
   id: string;
@@ -32,6 +32,18 @@ declare global {
 }
 
 const FRAMES = 240;
+const SEGMENT = { from: 0.55, to: 0.95, frames: 120 };
+/** Semaine 22 : les réglages du diagnostic (`docs/S22_BUDGETS.md`, révision du 2026-11-25). */
+const VARIANTS: [string, Partial<Quality>][] = [
+  ["pleine", {}],
+  ["élimination hors champ", { cull: true }],
+  ["occlusion coupée", { ao: "off" }],
+  ["occlusion à demi-résolution", { ao: "half" }],
+  ["fenêtre visible", { window: "visible" }],
+  ["élimination + fenêtre visible", { cull: true, window: "visible" }],
+  ["élimination + occlusion moitié", { cull: true, ao: "half" }],
+];
+const gpuBytes = (): number | null => (window as unknown as { __glcount?: { peak: number } }).__glcount?.peak ?? null;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("scene");
 const status = $("status");
@@ -106,6 +118,8 @@ async function main(): Promise<void> {
   };
   requestAnimationFrame(idle);
   button.disabled = false;
+  const diag = $<HTMLButtonElement>("diag");
+  diag.disabled = false;
 
   // La base, si la page est servie par claude.ai. Absente : on mesure quand même.
   let db: Db | null = null;
@@ -174,7 +188,9 @@ async function main(): Promise<void> {
 
       const record = {
         at: new Date().toISOString(),
-        scene: "semaine 13",
+        scene: `semaine 22 · ${JSON.stringify(scene.quality)}`,
+        quality: { ...scene.quality },
+        gpu_bytes_peak: gpuBytes(),
         device: ($<HTMLInputElement>("device").value || "").slice(0, 80),
         gpu: r.gpu.slice(0, 200),
         ua: navigator.userAgent.slice(0, 300),
@@ -206,6 +222,61 @@ async function main(): Promise<void> {
     } finally {
       running = false;
       button.disabled = false;
+      scene.render({ ...scene.overview, distance: distanceFor(24, FOV) });
+    }
+  });
+
+  // Semaine 22 : le diagnostic. Le passage lent (55–95 % du trajet) sous chaque réglage, puis la
+  // plongée entière en qualité par défaut ; chaque passe est enregistrée à part.
+  diag.addEventListener("click", async () => {
+    diag.disabled = button.disabled = true;
+    running = true;
+    const device = ($<HTMLInputElement>("device").value || "").slice(0, 80);
+    const start = { ...scene.quality };
+    try {
+      const [w, h] = fit();
+      scene.resize(w, h);
+      const passes: [string, Partial<Quality>, boolean][] = [
+        ...VARIANTS.map(([n, q]) => [n, q, false] as [string, Partial<Quality>, boolean]),
+        ["plongée entière, réglage par défaut", {}, true],
+      ];
+      for (const [k, [name, q, whole]] of passes.entries()) {
+        scene.setQuality({ ...DEFAULT_QUALITY, ...q });
+        const r = await runBench(scene, whole ? FRAMES : SEGMENT.frames, {
+          ...(whole ? {} : { from: SEGMENT.from, to: SEGMENT.to }),
+          onProgress: (f, phase) => (status.textContent = `Diagnostic ${k + 1}/${passes.length} — ${name}, passe ${phase} : ${Math.round(f * 100)} %`),
+        });
+        const record = {
+          at: new Date().toISOString(),
+          scene: `semaine 22 · diagnostic · ${name}`,
+          variant: name,
+          quality: { ...scene.quality },
+          segment: whole ? [0, 1] : [SEGMENT.from, SEGMENT.to],
+          device,
+          gpu: r.gpu.slice(0, 200),
+          ua: navigator.userAgent.slice(0, 300),
+          width: w,
+          height: h,
+          dpr: window.devicePixelRatio || 1,
+          frames: r.rafMs.length,
+          raf_ms_median: median(r.rafMs),
+          raf_ms_p95: percentile(r.rafMs, 0.95),
+          raf_dropped_share: r.rafMs.filter((x) => x > 25).length / r.rafMs.length,
+          frame_ms_median: median(r.frameMs),
+          frame_ms_p95: percentile(r.frameMs, 0.95),
+          gpu_bytes_peak: gpuBytes(),
+          raf_ms: r.rafMs.map((x) => Math.round(x * 10) / 10),
+          frame_ms: r.frameMs.map((x) => Math.round(x * 10) / 10),
+        };
+        if (db) await db.collection("runs").add(record);
+      }
+      status.textContent = db ? "Diagnostic enregistré : 8 passes. Merci." : "Diagnostic terminé (non enregistré).";
+    } catch (e) {
+      status.textContent = `Le diagnostic a échoué : ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      scene.setQuality(start);
+      running = false;
+      diag.disabled = button.disabled = false;
       scene.render({ ...scene.overview, distance: distanceFor(24, FOV) });
     }
   });
