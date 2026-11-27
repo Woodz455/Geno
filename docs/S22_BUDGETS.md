@@ -205,7 +205,15 @@ l'iPhone restent dans la base, avec leur étiquette, et ne servent pas au choix.
 
 Écart d'image des combinaisons ajoutées (même mesure que plus haut) :
 
-(mesure en cours, ajoutée au commit suivant)
+| Combinaison | écart moyen | max | images identiques |
+|---|---:|---:|---:|
+| élimination (détail inchangé) + occlusion moitié | 0,712 | 3,63 | 0 |
+| élimination (détail inchangé) + fenêtre visible | 0,714 | 8,18 | 180 |
+| élimination (détail inchangé) + fenêtre + occlusion moitié | 1,391 | 8,63 | 0 |
+| élimination + fenêtre + occlusion moitié | 1,492 | 8,75 | 0 |
+
+« Détail inchangé » n'ajoute rien à l'écart des leviers qu'il accompagne : ces deux premières
+lignes égalent l'occlusion moitié seule (0,712) et la fenêtre seule (0,714).
 
 ### Cliquet provisoire (2026-11-25)
 
