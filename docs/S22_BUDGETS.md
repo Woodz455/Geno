@@ -158,6 +158,55 @@ Par la règle, si « détail inchangé » tient 20 ms sur les trois cibles, elle
 Précision : le segment joué par le banc, depuis la v5, va de 55 à 95 % du trajet. C'est le
 segment lent de 59 à 92 %, avec une marge de chaque côté.
 
+### Révision du 2026-11-27 — passage 1 incomplet, les combinaisons qui cumulent les leviers
+
+**Ce qui est arrivé.** Le 2026-11-27, la base du banc n'a reçu que l'**iPhone 14** : la plongée
+entière, puis le diagnostic (banc v6). Aucune passe du PC Iris Xe ni de la machine à GPU dédié.
+Le passage 1 n'est donc pas complet, et la règle de choix ne s'applique pas encore.
+
+Résultats de l'iPhone sur le passage lent, en 120 images chacun (rAF, horloge arrondie à la ms) :
+
+| Réglage | images manquées (> 18 ms) | p95 rAF |
+|---|---:|---:|
+| pleine | 67 | 38 ms |
+| occlusion coupée | 61 | 40 ms |
+| occlusion moitié | 63 | 37 ms |
+| fenêtre visible | 31 | 31 ms |
+| élimination, détail inchangé | 17 | 21 ms |
+| élimination | 13 | 23 ms |
+| élimination + fenêtre | 10 | 26 ms |
+| élimination + occlusion moitié | 9 | 22 ms |
+
+La plongée entière, au réglage par défaut, a un p95 de 29 ms ; la mémoire GPU comptée culmine à
+40,6 Mo.
+
+**Ce que ça dit.**
+- **Aucun réglage ne tient 20 ms sur l'iPhone.**
+- **Le levier est l'élimination** : les images manquées passent de 67 à 13–17.
+- **L'occlusion ambiante n'en est pas un** : la couper ne change rien (61 contre 67).
+- **Une partie du coût restant tombe au début** du premier réglage joué après « pleine »
+  (8 des 17 images manquées de « détail inchangé » sont dans son deuxième dixième). Cela ressemble
+  à un coût unique, pas au réglage.
+
+**Ce qui change dans le banc (v7)**, avant le passage 1 complet ; les seuils et la règle ne
+changent pas :
+- **Quatre combinaisons qui cumulent les leviers.** La règle les prévoyait déjà
+  (« variantes ou combinaisons de variantes ») :
+  - élimination (détail inchangé) + occlusion moitié ;
+  - élimination (détail inchangé) + fenêtre visible ;
+  - élimination (détail inchangé) + fenêtre + occlusion moitié ;
+  - élimination + fenêtre + occlusion moitié.
+- **Une passe de mise en température, non enregistrée**, avant la première passe mesurée.
+- **Une erreur de la base dite en clair**, et une fin qui dit si les passes ont été enregistrées.
+  Sans base, l'ancienne page affichait seulement « terminé ».
+
+Le passage 1 complet est donc le diagnostic v7, joué sur les trois cibles. Les passes v6 de
+l'iPhone restent dans la base, avec leur étiquette, et ne servent pas au choix.
+
+Écart d'image des combinaisons ajoutées (même mesure que plus haut) :
+
+(mesure en cours, ajoutée au commit suivant)
+
 ### Cliquet provisoire (2026-11-25)
 
 Pour que la CI tourne dès maintenant, `tools/perf-budgets.json` est inscrit à la qualité de

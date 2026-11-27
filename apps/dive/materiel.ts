@@ -33,7 +33,8 @@ declare global {
 
 const FRAMES = 240;
 const SEGMENT = { from: 0.55, to: 0.95, frames: 120 };
-/** Semaine 22 : les réglages du diagnostic (`docs/S22_BUDGETS.md`, révisions du 2026-11-25). */
+/** Semaine 22 : les réglages du diagnostic (`docs/S22_BUDGETS.md`, révisions du 2026-11-25 et
+ *  du 2026-11-27 : les combinaisons qui cumulent les leviers). */
 const VARIANTS: [string, Partial<Quality>][] = [
   ["pleine", {}],
   ["élimination, détail inchangé", { cull: "same" }],
@@ -43,7 +44,16 @@ const VARIANTS: [string, Partial<Quality>][] = [
   ["fenêtre visible", { window: "visible" }],
   ["élimination + fenêtre visible", { cull: "on", window: "visible" }],
   ["élimination + occlusion moitié", { cull: "on", ao: "half" }],
+  ["élimination (détail inchangé) + occlusion moitié", { cull: "same", ao: "half" }],
+  ["élimination (détail inchangé) + fenêtre visible", { cull: "same", window: "visible" }],
+  ["élimination (détail inchangé) + fenêtre + occlusion moitié", { cull: "same", window: "visible", ao: "half" }],
+  ["élimination + fenêtre + occlusion moitié", { cull: "on", window: "visible", ao: "half" }],
 ];
+/** Un refus de la base arrive en `{ code, message }`, pas en `Error` : le dire en clair. */
+const why = (e: unknown): string =>
+  e instanceof Error ? e.message
+  : e && typeof e === "object" && "code" in e ? `${String((e as { code: unknown }).code)} — ${String((e as { message?: unknown }).message ?? "")}`
+  : String(e);
 const gpuBytes = (): number | null => (window as unknown as { __glcount?: { peak: number } }).__glcount?.peak ?? null;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("scene");
@@ -219,7 +229,7 @@ async function main(): Promise<void> {
         status.textContent = "Mesure terminée (non enregistrée).";
       }
     } catch (e) {
-      status.textContent = `La mesure a échoué : ${e instanceof Error ? e.message : String(e)}`;
+      status.textContent = `La mesure a échoué : ${why(e)}`;
     } finally {
       running = false;
       button.disabled = false;
@@ -241,6 +251,14 @@ async function main(): Promise<void> {
         ...VARIANTS.map(([n, q]) => [n, q, false] as [string, Partial<Quality>, boolean]),
         ["plongée entière, réglage par défaut", {}, true],
       ];
+      // Chauffe, non enregistrée (révision du 2026-11-27) : les coûts uniques (compilation,
+      // génération de la fibre) ne tombent plus dans la première passe mesurée.
+      scene.setQuality(DEFAULT_QUALITY);
+      await runBench(scene, SEGMENT.frames, {
+        from: SEGMENT.from, to: SEGMENT.to,
+        onProgress: (f) => (status.textContent = `Diagnostic — mise en température : ${Math.round(f * 100)} %`),
+      });
+      let saved = 0;
       for (const [k, [name, q, whole]] of passes.entries()) {
         scene.setQuality({ ...DEFAULT_QUALITY, ...q });
         const r = await runBench(scene, whole ? FRAMES : SEGMENT.frames, {
@@ -269,11 +287,16 @@ async function main(): Promise<void> {
           raf_ms: r.rafMs.map((x) => Math.round(x * 10) / 10),
           frame_ms: r.frameMs.map((x) => Math.round(x * 10) / 10),
         };
-        if (db) await db.collection("runs").add(record);
+        if (db) {
+          await db.collection("runs").add(record);
+          saved++;
+        }
       }
-      status.textContent = db ? "Diagnostic enregistré : 8 passes. Merci." : "Diagnostic terminé (non enregistré).";
+      status.textContent = db
+        ? `Diagnostic enregistré : ${saved} passes sur ${passes.length}. Merci.`
+        : "Diagnostic terminé, mais NON enregistré : cette vue n'a pas accès à la base. Ouvrez le lien dans claude.ai, connecté.";
     } catch (e) {
-      status.textContent = `Le diagnostic a échoué : ${e instanceof Error ? e.message : String(e)}`;
+      status.textContent = `Le diagnostic a échoué : ${why(e)}`;
     } finally {
       scene.setQuality(start);
       running = false;
@@ -284,5 +307,5 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  status.textContent = `Impossible de démarrer : ${e instanceof Error ? e.message : String(e)}`;
+  status.textContent = `Impossible de démarrer : ${why(e)}`;
 });

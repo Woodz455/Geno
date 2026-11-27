@@ -21,6 +21,10 @@ const ALL = [
   ["occlusion coupée", "ao=off"],
   ["élimination + fenêtre visible", "cull=on&window=visible"],
   ["élimination + occlusion moitié", "cull=on&ao=half"],
+  ["élimination (détail inchangé) + occlusion moitié", "cull=same&ao=half"],
+  ["élimination (détail inchangé) + fenêtre visible", "cull=same&window=visible"],
+  ["élimination (détail inchangé) + fenêtre + occlusion moitié", "cull=same&window=visible&ao=half"],
+  ["élimination + fenêtre + occlusion moitié", "cull=on&window=visible&ao=half"],
 ];
 // `node tools/quality-diff.mjs 240 cull=same` : une seule variante.
 const VARIANTS = process.argv[3] ? ALL.filter(([, q]) => q === process.argv[3]) : ALL;
