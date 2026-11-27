@@ -1,0 +1,29 @@
+{
+ "rule": "cliquet provisoire : valeur mesurée à la qualité de référence + 10 %, réinscrit sur la variante retenue après le passage 1 (docs/S22_BUDGETS.md, 2026-11-25)",
+ "measured_with": {
+  "ao": "full",
+  "window": "context",
+  "cull": "off"
+ },
+ "draws_per_frame": 31,
+ "instances_per_frame": 40575,
+ "vertices_per_frame": 30025334,
+ "fullscreen_pixels_per_frame": 1140480,
+ "gpu_bytes_peak": 29613354,
+ "first_render_g3d_bytes": 18023,
+ "pages": {
+  "decouverte.html": 170872,
+  "dive.html": 151066,
+  "fiber.html": 47730,
+  "first.html": 19723,
+  "headless.html": 22807,
+  "helix.html": 67060,
+  "macro.html": 45160,
+  "materiel/index.html": 3169316,
+  "pick.html": 79610,
+  "recherche.html": 57023,
+  "spike.html": 19501,
+  "variant.html": 55463,
+  "vues.html": 4907664
+ }
+}

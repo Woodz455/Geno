@@ -1,0 +1,13 @@
+{
+  "assembly": "GRCh38",
+  "source": "fixtures",
+  "note": "Données de test, pas des données de référence. Voir fixtures/README.md.",
+  "tracks": [
+    { "name": "cytoband", "file": "cytoband.fixture.txt", "format": "cytoband" },
+    { "name": "genes",    "file": "gencode.fixture.gtf",  "format": "gtf", "feature": "gene" },
+    { "name": "exons",    "file": "gencode.fixture.gtf",  "format": "gtf", "feature": "exon" },
+    { "name": "ccre",     "file": "ccre.fixture.bed",     "format": "bed" },
+    { "name": "chromhmm", "file": "chromhmm.fixture.bed", "format": "bed" },
+    { "name": "ctcf",     "file": "ctcf.fixture.bed",     "format": "bed" }
+  ]
+}
